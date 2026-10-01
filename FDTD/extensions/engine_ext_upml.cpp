@@ -16,6 +16,8 @@
 */
 
 #include "engine_ext_upml.h"
+#include <typeinfo>
+#include <cstdint>
 #include "operator_ext_upml.h"
 #include "FDTD/engine.h"
 #include "FDTD/engine_sse.h"
@@ -231,4 +233,19 @@ void Engine_Ext_UPML::DoPostCurrentUpdatesImpl(EngType* eng, int threadID)
 void Engine_Ext_UPML::DoPostCurrentUpdates(int threadID)
 {
 	ENG_DISPATCH_ARGS(DoPostCurrentUpdatesImpl, threadID);
+}
+
+bool Engine_Ext_UPML::IsDisjoint(const Engine_Ext_UPML& other) const
+{
+	if (typeid(*this)!=typeid(Engine_Ext_UPML) || typeid(other)!=typeid(Engine_Ext_UPML))
+		return false;
+	for (unsigned int n=0; n<3; ++n)
+	{
+		const uint64_t first = m_Op_UPML->m_StartPos[n];
+		const uint64_t second = other.m_Op_UPML->m_StartPos[n];
+		if (first+m_Op_UPML->m_numLines[n]<=second ||
+		    second+other.m_Op_UPML->m_numLines[n]<=first)
+			return true;
+	}
+	return false;
 }
