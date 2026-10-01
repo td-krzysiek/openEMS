@@ -25,6 +25,7 @@
 #include "FDTD/operator_cylindermultigrid.h"
 #include "FDTD/engine_multithread.h"
 #include "FDTD/operator_multithread.h"
+#include "FDTD/operator_tiling.h"
 #include "FDTD/extensions/operator_ext_excitation.h"
 #include "FDTD/extensions/operator_ext_tfsf.h"
 #include "FDTD/extensions/operator_ext_mur_abc.h"
@@ -243,6 +244,10 @@ void openEMS::collectCommandLineArguments()
 						cout << "openEMS - enabled compressed sse engine" << endl;
 						m_engine = EngineType_SSE_Compressed;
 					}
+					else if (val == "tiling")
+					{
+						m_engine = EngineType_Tiling;
+					}
 					else if (val == "multithreaded")
 					{
 						cout << "openEMS - enabled multithreading" << endl;
@@ -252,6 +257,7 @@ void openEMS::collectCommandLineArguments()
 			),
 		    "Choose engine type \n\n"
 			"  fastest: \tfastest available engine (default)\n"
+			"  tiling: \texperimental spatial/temporal tiling (Cartesian only)\n"
 			"  basic: \tbasic FDTD engine\n"
 			"  sse: \tengine using SSE vector extensions\n"
 			"  sse-compressed: \tengine using compressed "
@@ -271,7 +277,7 @@ void openEMS::collectCommandLineArguments()
 				}
 			),
 			"Force use n threads for multithreaded engine "
-			"(needs: --engine=multithreaded)"
+			"(needs: --engine=multithreaded or --engine=tiling)"
 		)
 		(
 			"no-simulation",
@@ -776,6 +782,11 @@ void openEMS::SetupCylinderMultiGrid(std::string val)
 
 bool openEMS::SetupOperator()
 {
+	if (m_engine == EngineType_Tiling && CylinderCoords)
+	{
+		cerr << "Tiling engine does not support cylindrical coordinates" << endl;
+		return false;
+	}
 	if (CylinderCoords)
 	{
 		if (m_CC_MultiGrid.size()>0)
@@ -794,6 +805,10 @@ bool openEMS::SetupOperator()
 	else if (m_engine == EngineType_SSE_Compressed)
 	{
 		FDTD_Op = Operator_SSE_Compressed::New();
+	}
+	else if (m_engine == EngineType_Tiling)
+	{
+		FDTD_Op = Operator_Tiling::New(m_engine_numThreads);
 	}
 	else if (m_engine == EngineType_Multithreaded)
 	{
@@ -1363,7 +1378,16 @@ int openEMS::SetupFDTD()
 	}
 
 	//create FDTD engine
-	FDTD_Eng = FDTD_Op->CreateEngine();
+	try
+	{
+		FDTD_Eng = FDTD_Op->CreateEngine();
+	}
+	catch (const std::exception& error)
+	{
+		cerr << "openEMS::SetupFDTD: " << error.what() << endl;
+		Signal::SetupHandlerForSIGINT(SIGNAL_ORIGINAL);
+		return 2;
+	}
 
 	if (Op_Ext_SSD)
 	{

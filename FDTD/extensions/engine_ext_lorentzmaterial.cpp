@@ -171,3 +171,99 @@ void Engine_Ext_LorentzMaterial::DoPreCurrentUpdates()
 {
 	ENG_DISPATCH(DoPreCurrentUpdatesImpl);
 }
+
+template <typename EngType>
+void Engine_Ext_LorentzMaterial::DoPreVoltageUpdatesTiledImpl(EngType* eng, unsigned int start[3], unsigned int stop[3])
+{
+	for (int o=0;o<m_Order;++o)
+	{
+		if (m_Op_Ext_Lor->m_volt_ADE_On[o]==false) continue;
+
+		unsigned int **pos = m_Op_Ext_Lor->m_LM_pos[o];
+
+		if (m_Op_Ext_Lor->m_volt_Lor_ADE_On[o])
+		{
+			for (const auto i : m_volt_map.at(GetTileKey(o, start, stop)))
+			{
+				volt_Lor_ADE[o][0][i]+=m_Op_Ext_Lor->v_Lor_ADE[o][0][i]*volt_ADE[o][0][i];
+				volt_ADE[o][0][i] *= m_Op_Ext_Lor->v_int_ADE[o][0][i];
+				volt_ADE[o][0][i] += m_Op_Ext_Lor->v_ext_ADE[o][0][i] * (eng->EngType::GetVolt(0,pos[0][i],pos[1][i],pos[2][i])-volt_Lor_ADE[o][0][i]);
+
+				volt_Lor_ADE[o][1][i]+=m_Op_Ext_Lor->v_Lor_ADE[o][1][i]*volt_ADE[o][1][i];
+				volt_ADE[o][1][i] *= m_Op_Ext_Lor->v_int_ADE[o][1][i];
+				volt_ADE[o][1][i] += m_Op_Ext_Lor->v_ext_ADE[o][1][i] * (eng->EngType::GetVolt(1,pos[0][i],pos[1][i],pos[2][i])-volt_Lor_ADE[o][1][i]);
+
+				volt_Lor_ADE[o][2][i]+=m_Op_Ext_Lor->v_Lor_ADE[o][2][i]*volt_ADE[o][2][i];
+				volt_ADE[o][2][i] *= m_Op_Ext_Lor->v_int_ADE[o][2][i];
+				volt_ADE[o][2][i] += m_Op_Ext_Lor->v_ext_ADE[o][2][i] * (eng->EngType::GetVolt(2,pos[0][i],pos[1][i],pos[2][i])-volt_Lor_ADE[o][2][i]);
+			}
+		}
+		else
+		{
+			for (const auto i : m_volt_map.at(GetTileKey(o, start, stop)))
+			{
+				volt_ADE[o][0][i] *= m_Op_Ext_Lor->v_int_ADE[o][0][i];
+				volt_ADE[o][0][i] += m_Op_Ext_Lor->v_ext_ADE[o][0][i] * eng->EngType::GetVolt(0,pos[0][i],pos[1][i],pos[2][i]);
+
+				volt_ADE[o][1][i] *= m_Op_Ext_Lor->v_int_ADE[o][1][i];
+				volt_ADE[o][1][i] += m_Op_Ext_Lor->v_ext_ADE[o][1][i] * eng->EngType::GetVolt(1,pos[0][i],pos[1][i],pos[2][i]);
+
+				volt_ADE[o][2][i] *= m_Op_Ext_Lor->v_int_ADE[o][2][i];
+				volt_ADE[o][2][i] += m_Op_Ext_Lor->v_ext_ADE[o][2][i] * eng->EngType::GetVolt(2,pos[0][i],pos[1][i],pos[2][i]);
+			}
+		}
+	}
+}
+
+void Engine_Ext_LorentzMaterial::DoPreVoltageUpdates(int, unsigned int start[3], unsigned int stop[3])
+{
+	ENG_DISPATCH_ARGS(DoPreVoltageUpdatesTiledImpl, start, stop);
+}
+
+template <typename EngType>
+void Engine_Ext_LorentzMaterial::DoPreCurrentUpdatesTiledImpl(EngType* eng, unsigned int start[3], unsigned int stop[3])
+{
+	for (int o=0;o<m_Order;++o)
+	{
+		if (m_Op_Ext_Lor->m_curr_ADE_On[o]==false) continue;
+
+		unsigned int **pos = m_Op_Ext_Lor->m_LM_pos[o];
+
+		if (m_Op_Ext_Lor->m_curr_Lor_ADE_On[o])
+		{
+			for (const auto i : m_curr_map.at(GetTileKey(o, start, stop)))
+			{
+				curr_Lor_ADE[o][0][i]+=m_Op_Ext_Lor->i_Lor_ADE[o][0][i]*curr_ADE[o][0][i];
+				curr_ADE[o][0][i] *= m_Op_Ext_Lor->i_int_ADE[o][0][i];
+				curr_ADE[o][0][i] += m_Op_Ext_Lor->i_ext_ADE[o][0][i] * (eng->EngType::GetCurr(0,pos[0][i],pos[1][i],pos[2][i])-curr_Lor_ADE[o][0][i]);
+
+				curr_Lor_ADE[o][1][i]+=m_Op_Ext_Lor->i_Lor_ADE[o][1][i]*curr_ADE[o][1][i];
+				curr_ADE[o][1][i] *= m_Op_Ext_Lor->i_int_ADE[o][1][i];
+				curr_ADE[o][1][i] += m_Op_Ext_Lor->i_ext_ADE[o][1][i] * (eng->EngType::GetCurr(1,pos[0][i],pos[1][i],pos[2][i])-curr_Lor_ADE[o][1][i]);
+
+				curr_Lor_ADE[o][2][i]+=m_Op_Ext_Lor->i_Lor_ADE[o][2][i]*curr_ADE[o][2][i];
+				curr_ADE[o][2][i] *= m_Op_Ext_Lor->i_int_ADE[o][2][i];
+				curr_ADE[o][2][i] += m_Op_Ext_Lor->i_ext_ADE[o][2][i] * (eng->EngType::GetCurr(2,pos[0][i],pos[1][i],pos[2][i])-curr_Lor_ADE[o][2][i]);
+			}
+		}
+		else
+		{
+			for (const auto i : m_curr_map.at(GetTileKey(o, start, stop)))
+			{
+				curr_ADE[o][0][i] *= m_Op_Ext_Lor->i_int_ADE[o][0][i];
+				curr_ADE[o][0][i] += m_Op_Ext_Lor->i_ext_ADE[o][0][i] * eng->EngType::GetCurr(0,pos[0][i],pos[1][i],pos[2][i]);
+
+				curr_ADE[o][1][i] *= m_Op_Ext_Lor->i_int_ADE[o][1][i];
+				curr_ADE[o][1][i] += m_Op_Ext_Lor->i_ext_ADE[o][1][i] * eng->EngType::GetCurr(1,pos[0][i],pos[1][i],pos[2][i]);
+
+				curr_ADE[o][2][i] *= m_Op_Ext_Lor->i_int_ADE[o][2][i];
+				curr_ADE[o][2][i] += m_Op_Ext_Lor->i_ext_ADE[o][2][i] * eng->EngType::GetCurr(2,pos[0][i],pos[1][i],pos[2][i]);
+			}
+		}
+	}
+}
+
+void Engine_Ext_LorentzMaterial::DoPreCurrentUpdates(int, unsigned int start[3], unsigned int stop[3])
+{
+	ENG_DISPATCH_ARGS(DoPreCurrentUpdatesTiledImpl, start, stop);
+}

@@ -32,7 +32,15 @@ public:
 
 	virtual void DoPreCurrentUpdates();
 
+	virtual void DoPreVoltageUpdates(int timestep, unsigned int start[3], unsigned int stop[3]);
+
+	virtual void DoPreCurrentUpdates(int timestep, unsigned int start[3], unsigned int stop[3]);
+
 protected:
+	template <typename EngType>
+	void DoPreCurrentUpdatesTiledImpl(EngType* eng, unsigned int start[3], unsigned int stop[3]);
+	template <typename EngType>
+	void DoPreVoltageUpdatesTiledImpl(EngType* eng, unsigned int start[3], unsigned int stop[3]);
 	template <typename EngType>
 	void DoPreVoltageUpdatesImpl(EngType* eng);
 

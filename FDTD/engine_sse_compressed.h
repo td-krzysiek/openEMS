@@ -30,6 +30,8 @@ public:
 protected:
 	Engine_SSE_Compressed(const Operator_SSE_Compressed* op);
 	const Operator_SSE_Compressed* Op;
+	void UpdateVoltagesTiled(const unsigned int start[3], const unsigned int stop[3]);
+	void UpdateCurrentsTiled(const unsigned int start[3], const unsigned int stop[3]);
 
 	virtual void UpdateVoltages(unsigned int startX, unsigned int numX);
 	virtual void UpdateCurrents(unsigned int startX, unsigned int numX);
