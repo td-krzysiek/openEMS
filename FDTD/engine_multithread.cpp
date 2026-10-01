@@ -158,7 +158,7 @@ void Engine_Multithread::changeNumThreads(unsigned int numThreads)
 	if (m_IterateBarrier!=0)
 		delete m_IterateBarrier;
 	// make sure all threads are waiting
-	m_IterateBarrier = new boost::barrier(m_numThreads); // numThread workers
+	m_IterateBarrier = new IterationBarrier(m_numThreads); // numThread workers
 
 	if (m_startBarrier!=0)
 		delete m_startBarrier;

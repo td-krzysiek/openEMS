@@ -18,6 +18,8 @@
 #ifndef ENGINE_MULTITHREAD_H
 #define ENGINE_MULTITHREAD_H
 
+#include "iteration_barrier.h"
+
 #include "operator_multithread.h"
 #include "engine_sse_compressed.h"
 
@@ -107,7 +109,7 @@ protected:
 	const Operator_Multithread* m_Op_MT;
 	boost::thread_group *m_thread_group;
 	boost::barrier *m_startBarrier, *m_stopBarrier;
-	boost::barrier *m_IterateBarrier;
+	IterationBarrier *m_IterateBarrier;
 	volatile unsigned int m_iterTS;
 	unsigned int m_numThreads; //!< number of worker threads
 	unsigned int m_max_numThreads; //!< max. number of worker threads
