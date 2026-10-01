@@ -73,6 +73,7 @@ protected:
 
 class Engine_Multithread : public Engine_SSE_Compressed
 {
+	std::vector<bool> m_extensionGroupStart, m_extensionGroupEnd;
 	friend class NS_Engine_Multithread::thread;
 	friend class Engine_CylinderMultiGrid;
 public:

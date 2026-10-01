@@ -27,6 +27,8 @@
 
 #include "engine_multithread.h"
 #include "extensions/engine_extension.h"
+#include "extensions/engine_ext_upml.h"
+#include <typeinfo>
 #include "tools/denormal.h"
 #include "tools/useful.h"
 
@@ -196,6 +198,33 @@ bool Engine_Multithread::IterateTS(unsigned int iterTS)
 {
 	m_iterTS = iterTS;
 
+	// Extensions can change during derived-engine initialization. Refresh while
+	// all workers are stopped, before releasing the next iteration interval.
+	m_extensionGroupStart.assign(m_Eng_exts.size(), true);
+	m_extensionGroupEnd.assign(m_Eng_exts.size(), true);
+	if (typeid(*this)==typeid(Engine_Multithread) && typeid(*m_Op_MT)==typeid(Operator_Multithread))
+	{
+		for (size_t first=0; first<m_Eng_exts.size();)
+		{
+			size_t next=first+1;
+			for (; next<m_Eng_exts.size(); ++next)
+			{
+				Engine_Ext_UPML* candidate = dynamic_cast<Engine_Ext_UPML*>(m_Eng_exts[next]);
+				if (!candidate) break;
+				bool independent = true;
+				for (size_t previous=first; previous<next; ++previous)
+				{
+					Engine_Ext_UPML* member = dynamic_cast<Engine_Ext_UPML*>(m_Eng_exts[previous]);
+					if (!member || !candidate->IsDisjoint(*member)) {independent=false; break;}
+				}
+				if (!independent) break;
+				m_extensionGroupEnd[next-1] = false;
+				m_extensionGroupStart[next] = false;
+			}
+			first = next;
+		}
+	}
+
 	//cerr << "bool Engine_Multithread::IterateTS(): starting threads ...";
 	m_startBarrier->wait(); // start the threads
 
@@ -229,7 +258,8 @@ void Engine_Multithread::DoPreVoltageUpdates(int threadID)
 	for (int n=m_Eng_exts.size()-1; n>=0; --n)
 	{
 		m_Eng_exts.at(n)->DoPreVoltageUpdates(threadID);
-		m_IterateBarrier->wait();
+		if (m_extensionGroupStart.size()!=m_Eng_exts.size() || m_extensionGroupStart[n])
+			m_IterateBarrier->wait();
 	}
 
 }
@@ -240,7 +270,8 @@ void Engine_Multithread::DoPostVoltageUpdates(int threadID)
 	for (size_t n=0; n<m_Eng_exts.size(); ++n)
 	{
 		m_Eng_exts.at(n)->DoPostVoltageUpdates(threadID);
-		m_IterateBarrier->wait();
+		if (m_extensionGroupEnd.size()!=m_Eng_exts.size() || m_extensionGroupEnd[n])
+			m_IterateBarrier->wait();
 	}
 }
 
@@ -250,7 +281,8 @@ void Engine_Multithread::Apply2Voltages(int threadID)
 	for (size_t n=0; n<m_Eng_exts.size(); ++n)
 	{
 		m_Eng_exts.at(n)->Apply2Voltages(threadID);
-		m_IterateBarrier->wait();
+		if (m_extensionGroupEnd.size()!=m_Eng_exts.size() || m_extensionGroupEnd[n])
+			m_IterateBarrier->wait();
 	}
 }
 
@@ -260,7 +292,8 @@ void Engine_Multithread::DoPreCurrentUpdates(int threadID)
 	for (int n=m_Eng_exts.size()-1; n>=0; --n)
 	{
 		m_Eng_exts.at(n)->DoPreCurrentUpdates(threadID);
-		m_IterateBarrier->wait();
+		if (m_extensionGroupStart.size()!=m_Eng_exts.size() || m_extensionGroupStart[n])
+			m_IterateBarrier->wait();
 	}
 }
 
@@ -270,7 +303,8 @@ void Engine_Multithread::DoPostCurrentUpdates(int threadID)
 	for (size_t n=0; n<m_Eng_exts.size(); ++n)
 	{
 		m_Eng_exts.at(n)->DoPostCurrentUpdates(threadID);
-		m_IterateBarrier->wait();
+		if (m_extensionGroupEnd.size()!=m_Eng_exts.size() || m_extensionGroupEnd[n])
+			m_IterateBarrier->wait();
 	}
 }
 
@@ -280,7 +314,8 @@ void Engine_Multithread::Apply2Current(int threadID)
 	for (size_t n=0; n<m_Eng_exts.size(); ++n)
 	{
 		m_Eng_exts.at(n)->Apply2Current(threadID);
-		m_IterateBarrier->wait();
+		if (m_extensionGroupEnd.size()!=m_Eng_exts.size() || m_extensionGroupEnd[n])
+			m_IterateBarrier->wait();
 	}
 }
 
