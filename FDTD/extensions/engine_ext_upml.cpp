@@ -42,7 +42,7 @@ void Engine_Ext_UPML::SetNumberOfThreads(int nrThread)
 {
 	Engine_Extension::SetNumberOfThreads(nrThread);
 
-	m_numX = AssignJobs2Threads(m_Op_UPML->m_numLines[0],m_NrThreads,false);
+	m_numX = AssignJobs2Threads(m_Op_UPML->m_numLines[0]*m_Op_UPML->m_numLines[1],m_NrThreads,false);
 	m_start.resize(m_NrThreads,0);
 	m_start.at(0)=0;
 	for (size_t n=1; n<m_numX.size(); ++n)
@@ -62,11 +62,12 @@ void Engine_Ext_UPML::DoPreVoltageUpdatesImpl(EngType* eng, int threadID)
 	unsigned int loc_pos[3];
 	FDTD_FLOAT f_help;
 
-	for (unsigned int lineX=0; lineX<m_numX.at(threadID); ++lineX)
+	for (unsigned int row=0; row<m_numX.at(threadID); ++row)
 	{
-		loc_pos[0]=lineX+m_start.at(threadID);
+		const unsigned int xy = row + m_start.at(threadID);
+		loc_pos[0] = xy / m_Op_UPML->m_numLines[1];
+		loc_pos[1] = xy % m_Op_UPML->m_numLines[1];
 		pos[0] = loc_pos[0] + m_Op_UPML->m_StartPos[0];
-		for (loc_pos[1]=0; loc_pos[1]<m_Op_UPML->m_numLines[1]; ++loc_pos[1])
 		{
 			pos[1] = loc_pos[1] + m_Op_UPML->m_StartPos[1];
 			for (loc_pos[2]=0; loc_pos[2]<m_Op_UPML->m_numLines[2]; ++loc_pos[2])
@@ -109,11 +110,12 @@ void Engine_Ext_UPML::DoPostVoltageUpdatesImpl(EngType* eng, int threadID)
 	unsigned int loc_pos[3];
 	FDTD_FLOAT f_help;
 
-	for (unsigned int lineX=0; lineX<m_numX.at(threadID); ++lineX)
+	for (unsigned int row=0; row<m_numX.at(threadID); ++row)
 	{
-		loc_pos[0]=lineX+m_start.at(threadID);
+		const unsigned int xy = row + m_start.at(threadID);
+		loc_pos[0] = xy / m_Op_UPML->m_numLines[1];
+		loc_pos[1] = xy % m_Op_UPML->m_numLines[1];
 		pos[0] = loc_pos[0] + m_Op_UPML->m_StartPos[0];
-		for (loc_pos[1]=0; loc_pos[1]<m_Op_UPML->m_numLines[1]; ++loc_pos[1])
 		{
 			pos[1] = loc_pos[1] + m_Op_UPML->m_StartPos[1];
 			for (loc_pos[2]=0; loc_pos[2]<m_Op_UPML->m_numLines[2]; ++loc_pos[2])
@@ -153,11 +155,12 @@ void Engine_Ext_UPML::DoPreCurrentUpdatesImpl(EngType* eng, int threadID)
 	unsigned int loc_pos[3];
 	FDTD_FLOAT f_help;
 
-	for (unsigned int lineX=0; lineX<m_numX.at(threadID); ++lineX)
+	for (unsigned int row=0; row<m_numX.at(threadID); ++row)
 	{
-		loc_pos[0]=lineX+m_start.at(threadID);
+		const unsigned int xy = row + m_start.at(threadID);
+		loc_pos[0] = xy / m_Op_UPML->m_numLines[1];
+		loc_pos[1] = xy % m_Op_UPML->m_numLines[1];
 		pos[0] = loc_pos[0] + m_Op_UPML->m_StartPos[0];
-		for (loc_pos[1]=0; loc_pos[1]<m_Op_UPML->m_numLines[1]; ++loc_pos[1])
 		{
 			pos[1] = loc_pos[1] + m_Op_UPML->m_StartPos[1];
 			for (loc_pos[2]=0; loc_pos[2]<m_Op_UPML->m_numLines[2]; ++loc_pos[2])
@@ -201,11 +204,12 @@ void Engine_Ext_UPML::DoPostCurrentUpdatesImpl(EngType* eng, int threadID)
 	unsigned int loc_pos[3];
 	FDTD_FLOAT f_help;
 
-	for (unsigned int lineX=0; lineX<m_numX.at(threadID); ++lineX)
+	for (unsigned int row=0; row<m_numX.at(threadID); ++row)
 	{
-		loc_pos[0]=lineX+m_start.at(threadID);
+		const unsigned int xy = row + m_start.at(threadID);
+		loc_pos[0] = xy / m_Op_UPML->m_numLines[1];
+		loc_pos[1] = xy % m_Op_UPML->m_numLines[1];
 		pos[0] = loc_pos[0] + m_Op_UPML->m_StartPos[0];
-		for (loc_pos[1]=0; loc_pos[1]<m_Op_UPML->m_numLines[1]; ++loc_pos[1])
 		{
 			pos[1] = loc_pos[1] + m_Op_UPML->m_StartPos[1];
 			for (loc_pos[2]=0; loc_pos[2]<m_Op_UPML->m_numLines[2]; ++loc_pos[2])
