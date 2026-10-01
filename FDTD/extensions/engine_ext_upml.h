@@ -43,7 +43,23 @@ public:
 	virtual void DoPostCurrentUpdates() {Engine_Ext_UPML::DoPostCurrentUpdates(0);};
 	virtual void DoPostCurrentUpdates(int threadID);
 
+	virtual void DoPreVoltageUpdates(int timestep, unsigned int start[3], unsigned int stop[3]);
+
+	virtual void DoPostVoltageUpdates(int timestep, unsigned int start[3], unsigned int stop[3]);
+
+	virtual void DoPreCurrentUpdates(int timestep, unsigned int start[3], unsigned int stop[3]);
+
+	virtual void DoPostCurrentUpdates(int timestep, unsigned int start[3], unsigned int stop[3]);
+
 protected:
+	template <typename EngType>
+	void DoPostCurrentUpdatesTiledImpl(EngType* eng, unsigned int start[3], unsigned int stop[3]);
+	template <typename EngType>
+	void DoPreCurrentUpdatesTiledImpl(EngType* eng, unsigned int start[3], unsigned int stop[3]);
+	template <typename EngType>
+	void DoPostVoltageUpdatesTiledImpl(EngType* eng, unsigned int start[3], unsigned int stop[3]);
+	template <typename EngType>
+	void DoPreVoltageUpdatesTiledImpl(EngType* eng, unsigned int start[3], unsigned int stop[3]);
 	template <typename EngType>
 	void DoPreVoltageUpdatesImpl(EngType* eng, int threadID);
 

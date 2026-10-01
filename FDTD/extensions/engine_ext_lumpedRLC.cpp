@@ -26,6 +26,8 @@ Engine_Ext_LumpedRLC::Engine_Ext_LumpedRLC(Operator_Ext_LumpedRLC* op_ext_RLC) :
 {
 	// Local pointer of the operator.
 	m_Op_Ext_RLC = op_ext_RLC;
+	// A zero-cell extension has no state to update in any engine.
+	m_TilingSupported = (op_ext_RLC->RLC_count == 0);
 
 	v_Vdn		= new FDTD_FLOAT*[3];
 	v_Jn		= new FDTD_FLOAT*[3];

@@ -19,6 +19,7 @@
 #define ENGINE_EXT_DISPERSIVE_H
 
 #include "engine_extension.h"
+#include "tools/TileMap.h"
 #include "FDTD/engine.h"
 #include "FDTD/operator.h"
 #include "engine_extension_dispatcher.h"
@@ -34,7 +35,12 @@ public:
 	virtual void Apply2Voltages();
 	virtual void Apply2Current();
 
+	virtual void InitializeTiling(const std::vector<Range3D>& tiles);
+	virtual void Apply2Voltages(int timestep, unsigned int start[3], unsigned int stop[3]);
+	virtual void Apply2Current(int timestep, unsigned int start[3], unsigned int stop[3]);
 protected:
+	TileMap m_volt_map, m_curr_map;
+	bool InsideTile(const unsigned int start[3], const unsigned int stop[3], unsigned int x, unsigned int y, unsigned int z);
 	template <typename EngType>
 	void Apply2VoltagesImpl(EngType* eng);
 

@@ -1,5 +1,7 @@
 set(SOURCES
   ${SOURCES}
+  ${CMAKE_CURRENT_SOURCE_DIR}/engine_tiling.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/operator_tiling.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/operator.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_multithread.cpp
