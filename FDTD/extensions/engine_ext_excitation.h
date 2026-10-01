@@ -34,7 +34,15 @@ public:
 	virtual void Apply2Voltages();
 	virtual void Apply2Current();
 
+	virtual void Apply2Voltages(int timestep, unsigned int start[3], unsigned int stop[3]);
+
+	virtual void Apply2Current(int timestep, unsigned int start[3], unsigned int stop[3]);
+
 protected:
+	template <typename EngType>
+	void Apply2CurrentTiledImpl(EngType* eng, int timestep, unsigned int start[3], unsigned int stop[3]);
+	template <typename EngType>
+	void Apply2VoltagesTiledImpl(EngType* eng, int timestep, unsigned int start[3], unsigned int stop[3]);
 	template <typename EngType>
 	void Apply2VoltagesImpl(EngType* eng);
 

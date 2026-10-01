@@ -19,6 +19,10 @@ number moved up and patch releases now have somewhere to go.
 
 ### Added
 
+- Experimental Cartesian spatial/temporal tiling engine (`--engine=tiling`),
+  with opt-in tile settings and regression tests. Supports UPML, excitation,
+  conducting sheets and Lorentz/Drude materials; rejects unsupported extensions.
+
 - **SAR calculation reworked**, following IEEE/IEC 62704-1: averaging is done
   once for all frequencies instead of per frequency, and is multi-threaded,
   together giving a large speedup. The new `--autorange` option restricts the
