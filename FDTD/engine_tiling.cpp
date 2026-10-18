@@ -123,7 +123,7 @@ void Engine_Tiling::changeNumThreads(unsigned int threads)
     InitializeTiling(allTiles);
     m_startBarrier = new boost::barrier(threads + 1);
     m_stopBarrier = new boost::barrier(threads + 1);
-    m_IterateBarrier = new boost::barrier(threads);
+    m_IterateBarrier = new IterationBarrier(threads);
     m_stopThreads = false;
     m_thread_group = new boost::thread_group();
     m_teamReady = false;

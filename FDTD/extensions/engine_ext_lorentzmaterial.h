@@ -29,8 +29,10 @@ public:
 	virtual ~Engine_Ext_LorentzMaterial();
 
 	virtual void DoPreVoltageUpdates();
+	virtual void DoPreVoltageUpdates(int threadID);
 
 	virtual void DoPreCurrentUpdates();
+	virtual void DoPreCurrentUpdates(int threadID);
 
 	virtual void DoPreVoltageUpdates(int timestep, unsigned int start[3], unsigned int stop[3]);
 
@@ -42,10 +44,10 @@ protected:
 	template <typename EngType>
 	void DoPreVoltageUpdatesTiledImpl(EngType* eng, unsigned int start[3], unsigned int stop[3]);
 	template <typename EngType>
-	void DoPreVoltageUpdatesImpl(EngType* eng);
+	void DoPreVoltageUpdatesImpl(EngType* eng, int threadID, int numThreads);
 
 	template <typename EngType>
-	void DoPreCurrentUpdatesImpl(EngType* eng);
+	void DoPreCurrentUpdatesImpl(EngType* eng, int threadID, int numThreads);
 
 	Operator_Ext_LorentzMaterial* m_Op_Ext_Lor;
 

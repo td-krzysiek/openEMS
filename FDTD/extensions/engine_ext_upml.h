@@ -33,6 +33,8 @@ public:
 
 	virtual void SetNumberOfThreads(int nrThread);
 
+	bool IsDisjoint(const Engine_Ext_UPML& other) const;
+
 	virtual void DoPreVoltageUpdates() {Engine_Ext_UPML::DoPreVoltageUpdates(0);};
 	virtual void DoPreVoltageUpdates(int threadID);
 	virtual void DoPostVoltageUpdates() {Engine_Ext_UPML::DoPostVoltageUpdates(0);};

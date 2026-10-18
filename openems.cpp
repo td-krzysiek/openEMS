@@ -1,3 +1,4 @@
+#include "FDTD/extensions/operator_ext_opaquesurface.h"
 /*
 *	Copyright (C) 2010 Thorsten Liebig (Thorsten.Liebig@gmx.de)
 *
@@ -1307,6 +1308,8 @@ int openEMS::SetupFDTD()
 	if (m_CSX->GetQtyPropertyType(CSProperties::ABSORBING_BC)>0)
 		SetupAbsorbingSheets();
 
+
+	FDTD_Op->AddExtension(new Operator_Ext_OpaqueSurface(FDTD_Op));
 
 	//check all properties to request material storage during operator creation...
 	SetupMaterialStorages();

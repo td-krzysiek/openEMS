@@ -19,6 +19,11 @@ number moved up and patch releases now have somewhere to go.
 
 ### Added
 
+- Experimental opt-in opaque RF surface boundary for grid-conforming Cartesian metal boxes; excludes interior H and uses passive implicit R-L face currents.
+
+- Experimental opt-in positive R-L sheet-admittance fit through the existing
+  CSXCAD property-attribute mechanism, for roughness-model qualification.
+
 - Experimental Cartesian spatial/temporal tiling engine (`--engine=tiling`),
   with opt-in tile settings and regression tests. Supports UPML, excitation,
   conducting sheets and Lorentz/Drude materials; rejects unsupported extensions.
@@ -91,6 +96,10 @@ number moved up and patch releases now have somewhere to go.
   the cost of performance — mainly useful for engine or code verification.
 
 ### Changed
+
+- Experimental combined performance build: distribute standard-engine UPML work
+  over XY rows, group disjoint UPML barriers, parallelize compatible Lorentz
+  pre-updates, and use POSIX iteration barriers on Linux, including tiling.
 
 - **The MPI engine was removed.** It had not compiled for years, as it used
   the C++ MPI bindings that MPI-3 dropped, it had no tests, and several
