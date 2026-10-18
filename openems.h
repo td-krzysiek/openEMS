@@ -60,6 +60,8 @@ public:
 	virtual void RunFDTD();
 
 	void Reset();
+	//! Free the operator, the engine and the processings of a simulation, the setup is kept (called at the end of RunFDTD())
+	void FreeSimulation();
 
 	void SetNumberOfTimeSteps(unsigned int val) {NrTS=val;}
 	void SetEnableDumps(bool val) {Enable_Dumps=val;}
@@ -162,7 +164,7 @@ protected:
 
 	bool m_Abort;
 
-	enum EngineType {EngineType_Basic, EngineType_SSE, EngineType_SSE_Compressed, EngineType_Multithreaded, EngineType_Tiling};
+	enum EngineType {EngineType_Basic, EngineType_SSE, EngineType_SSE_Compressed, EngineType_Multithreaded, EngineType_Tiling, EngineType_GPU, EngineType_GPU_Reference};
 	EngineType m_engine;
 	unsigned int m_engine_numThreads;
 

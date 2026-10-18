@@ -38,7 +38,7 @@ Engine_Ext_LorentzMaterial::Engine_Ext_LorentzMaterial(Operator_Ext_LorentzMater
 			if (m_Op_Ext_Lor->m_curr_Lor_ADE_On[o]==true)
 			{
 				curr_Lor_ADE[o][n] = new FDTD_FLOAT[m_Op_Ext_Lor->m_LM_Count[o]];
-				for (unsigned int i=0; i<m_Op_Ext_Lor->m_LM_Count[o]; ++i)
+				for (size_t i=0; i<m_Op_Ext_Lor->m_LM_Count[o]; ++i)
 					curr_Lor_ADE[o][n][i]=0.0;
 			}
 			else
@@ -47,7 +47,7 @@ Engine_Ext_LorentzMaterial::Engine_Ext_LorentzMaterial(Operator_Ext_LorentzMater
 			if (m_Op_Ext_Lor->m_volt_Lor_ADE_On[o]==true)
 			{
 				volt_Lor_ADE[o][n] = new FDTD_FLOAT[m_Op_Ext_Lor->m_LM_Count[o]];
-				for (unsigned int i=0; i<m_Op_Ext_Lor->m_LM_Count[o]; ++i)
+				for (size_t i=0; i<m_Op_Ext_Lor->m_LM_Count[o]; ++i)
 					volt_Lor_ADE[o][n][i]=0.0;
 			}
 			else
@@ -87,12 +87,12 @@ void Engine_Ext_LorentzMaterial::DoPreVoltageUpdatesImpl(EngType* eng, int threa
 
 		unsigned int **pos = m_Op_Ext_Lor->m_LM_pos[o];
 		const std::uint64_t count = m_Op_Ext_Lor->m_LM_Count.at(o);
-		const unsigned int begin = count * threadID / numThreads;
-		const unsigned int end = count * (threadID+1) / numThreads;
+		const size_t begin = count * threadID / numThreads;
+		const size_t end = count * (threadID+1) / numThreads;
 
 		if (m_Op_Ext_Lor->m_volt_Lor_ADE_On[o])
 		{
-			for (unsigned int i=begin; i<end; ++i)
+			for (size_t i=begin; i<end; ++i)
 			{
 				volt_Lor_ADE[o][0][i]+=m_Op_Ext_Lor->v_Lor_ADE[o][0][i]*volt_ADE[o][0][i];
 				volt_ADE[o][0][i] *= m_Op_Ext_Lor->v_int_ADE[o][0][i];
@@ -109,7 +109,7 @@ void Engine_Ext_LorentzMaterial::DoPreVoltageUpdatesImpl(EngType* eng, int threa
 		}
 		else
 		{
-			for (unsigned int i=begin; i<end; ++i)
+			for (size_t i=begin; i<end; ++i)
 			{
 				volt_ADE[o][0][i] *= m_Op_Ext_Lor->v_int_ADE[o][0][i];
 				volt_ADE[o][0][i] += m_Op_Ext_Lor->v_ext_ADE[o][0][i] * eng->EngType::GetVolt(0,pos[0][i],pos[1][i],pos[2][i]);
@@ -138,12 +138,12 @@ void Engine_Ext_LorentzMaterial::DoPreCurrentUpdatesImpl(EngType* eng, int threa
 
 		unsigned int **pos = m_Op_Ext_Lor->m_LM_pos[o];
 		const std::uint64_t count = m_Op_Ext_Lor->m_LM_Count.at(o);
-		const unsigned int begin = count * threadID / numThreads;
-		const unsigned int end = count * (threadID+1) / numThreads;
+		const size_t begin = count * threadID / numThreads;
+		const size_t end = count * (threadID+1) / numThreads;
 
 		if (m_Op_Ext_Lor->m_curr_Lor_ADE_On[o])
 		{
-			for (unsigned int i=begin; i<end; ++i)
+			for (size_t i=begin; i<end; ++i)
 			{
 				curr_Lor_ADE[o][0][i]+=m_Op_Ext_Lor->i_Lor_ADE[o][0][i]*curr_ADE[o][0][i];
 				curr_ADE[o][0][i] *= m_Op_Ext_Lor->i_int_ADE[o][0][i];
@@ -160,7 +160,7 @@ void Engine_Ext_LorentzMaterial::DoPreCurrentUpdatesImpl(EngType* eng, int threa
 		}
 		else
 		{
-			for (unsigned int i=begin; i<end; ++i)
+			for (size_t i=begin; i<end; ++i)
 			{
 				curr_ADE[o][0][i] *= m_Op_Ext_Lor->i_int_ADE[o][0][i];
 				curr_ADE[o][0][i] += m_Op_Ext_Lor->i_ext_ADE[o][0][i] * eng->EngType::GetCurr(0,pos[0][i],pos[1][i],pos[2][i]);

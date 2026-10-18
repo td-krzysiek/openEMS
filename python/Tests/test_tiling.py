@@ -48,6 +48,13 @@ def fixture(destination, engine, threads, case):
                                               eps_relax=80e-12, mue_plasma=0.5e9,
                                               mue_pole_freq=0, mue_relax=80e-12)
         material.AddBox([-6, -6, 3], [6, 6, 6])
+    if case == 'debye':
+        from CSXCAD.CSProperties import CSPropDebyeMaterial
+        material = CSPropDebyeMaterial(csx.GetParameterSet(), name='debye',
+                                      epsilon=3, order=1)
+        material.SetDispersiveMaterialProperty(0, eps_delta=1, eps_relax=1e-10)
+        csx.AddProperty(material)
+        material.AddBox([-6, -6, 3], [6, 6, 6])
     csx.AddMetal('ground').AddBox([-15, -12, 0], [15, 12, 0], priority=10)
     csx.AddConductingSheet('patch', conductivity=5.8e7, thickness=35e-6).AddBox(
         [-4.5, -3.75, 1], [4.5, 3.75, 1], priority=10)
@@ -149,7 +156,7 @@ class TestTiling(unittest.TestCase):
                     self.compare(name, ref, self.run_case(name, case, threads=threads, tiles=tiles))
 
     def test_rejections(self):
-        for case in ['mur', 'rlc']:
+        for case in ['mur', 'rlc', 'debye']:
             with self.subTest(case=case):
                 self.run_case('reject-' + case, case, rejection='does not support the experimental tiling engine')
         self.run_case('reject-zero', tiles=(0, 10, 5), rejection='OPENEMS_TILE_X')

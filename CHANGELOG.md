@@ -13,6 +13,98 @@ there are unreleased changes. It becomes the next release entry.
 
 ## Unreleased
 
+### Added
+
+- **A GPU engine**, `--engine=gpu` (`engine='gpu'` from Python), with a Metal
+  backend on macOS and a HIP backend for AMD (ROCm) and NVIDIA (CUDA) GPUs. It
+  is selected like the other engines, runs Cartesian and cylindrical meshes
+  (including multi-grid) with the usual extensions on the device, and writes
+  the same probes and dumps. Without a usable GPU the setup fails with an
+  error instead of running something slower. `--engine=gpu-reference` runs it
+  on a CPU reference backend, to check the device backends against.
+- `python -m openEMS.compare <sim_path_a> <sim_path_b>` compares the probes
+  and field dumps of two runs, e.g. of two engines, and
+  `openEMS.compare.compare_sim_results()` does the same from Python.
+
+### Fixed
+
+- Reject the new Debye extension with the experimental tiling engine until
+  its pre/post hooks have tiled implementations, instead of skipping them.
+- Include the experimental opaque-surface boundary's physical exterior
+  capacitance in timestep selection, preventing growth on graded meshes.
+  Extensions can prepare EC elements through a default no-op `PreprocessEC()`
+  hook before timestep selection; existing extensions keep their behavior.
+
+
+- A run switched flush-to-zero on in the calling process and left it on: in
+  Python, numpy computations after `Run()` lost their denormal (subnormal)
+  values, and the results of a following run with the basic engine depended
+  on it. Every engine now flushes denormals to zero during the run only.
+- Python: an option passed as `False` to `Run()`, e.g. `debug_PEC=False`, made
+  openEMS ignore all options after it without a message, so that for example
+  a following `engine=...` or `numThreads=...` had no effect.
+- A node-interpolated B-field dump of a closed cylindrical mesh was zero on
+  its first alpha line: the B field was not evaluated across the seam of the
+  mesh as the H field is.
+- A simulation that was aborted (`SetAbort()`, an `ABORT` file, Ctrl-C) no
+  longer ends with the warning that the max. number of timesteps was reached;
+  it reports the abort.
+- An error during the setup or the run of a simulation, e.g. running out of
+  memory, no longer terminates the process: openEMS ends with an error message,
+  Python raises a `RuntimeError`, and Ctrl-C works again afterwards.
+- A simulation with more than about 1.4 billion mesh nodes no longer
+  overflows the size of its field and coefficient arrays, which corrupted
+  memory without a message. The operator statistics show the right memory
+  size above about 89 million nodes, and the cell count, the speed, frequency
+  domain and SAR dumps, the SAR calculation, VTK field dumps and the node
+  counts of materials, excitations and lumped elements no longer wrap around
+  at 2 to 4 billion nodes.
+- A SAR dump kept a second, unused copy of its frequency domain fields:
+  24 bytes per dumped cell and frequency less memory now.
+
+### Changed
+
+- The Python bindings need Python 3.6 or newer (was 3.4), the oldest version
+  CI still tests; CentOS 7 and Ubuntu 14.04 are no longer tested.
+- Time-domain HDF5 field dumps are written in the background instead of
+  stalling the timestepping, with the file kept open for the whole run; with
+  the GPU engine from snapshots of the fields.
+- Field dumps are evaluated on several threads, with every engine; large
+  dumps, like the surfaces of an NF2FF box, slow the simulation down less.
+- The end criteria is checked every Nyquist period during the first minute of
+  a simulation, and only after that with the progress report every few
+  seconds. A short simulation used to run on until the first report, on a fast
+  machine several times longer than necessary, with correspondingly larger
+  dumps; it now stops where the end criteria is met, at the same timestep on
+  every machine. `--exact-endcriteria` keeps this for the whole run.
+- The memory of the operator and the engine is freed at the end of the
+  simulation, not when the `openEMS` object is destroyed. A post-processing in
+  the same script (NF2FF, SAR) has it available, and running one `openEMS`
+  object several times no longer keeps the memory of every run.
+- Reading a time-domain field dump with many timesteps is much faster: its
+  datasets are listed once instead of looked up one by one, which took
+  quadratic time. A far-field (NF2FF) calculation from a recording of 3200
+  timesteps went from 79 s to 2.4 s per frequency.
+
+### Build
+
+- `ENABLE_HIP` and `ENABLE_METAL` CMake options for the GPU backends. HIP
+  (CMake 3.28) is on when a HIP compiler is found. `OPENEMS_HIP_AS_CUDA`
+  compiles the same sources as CUDA, for NVIDIA GPUs without a HIP compiler
+  (CMake 3.24, a CUDA compiler and the HIP headers, looked for in `ROCM_PATH`
+  and `/opt/rocm`); it is the default on Windows. Metal (macOS, CMake 3.16)
+  is on by default. The GPU code is built for the GPU of the build machine
+  unless `CMAKE_HIP_ARCHITECTURES` / `CMAKE_CUDA_ARCHITECTURES` name others.
+  Whatever a backend is missing switches it off with a warning; openEMS
+  builds without it.
+
+### Upgrade notes
+
+- **Rebuild the Python bindings** together with openEMS: the layout of its
+  array classes changed, the soname did not.
+
+## 0.37.0 — 2026-10-09
+
 The version scheme changed with this release: the previous release was v0.0.36,
 this one is v0.37.0. The leading `0.0.` was never going anywhere, so the minor
 number moved up and patch releases now have somewhere to go.
@@ -139,14 +231,21 @@ number moved up and patch releases now have somewhere to go.
 - Default thread counts (multithreaded engine, nf2ff, SAR) now respect CPU
   affinity and cgroup CPU quotas (Linux only) instead of always using every
   CPU of the host, so a container or systemd unit with a CPU limit no longer
-  oversubscribes it.
+  oversubscribes it. They also follow the `numThreads` option of a run: the
+  field dumps, and the NF2FF and SAR calculations of the same Python process.
+- Python `CalcNF2FF()` reads an existing result file by default
+  (`read_cached=True`), as its docstring already stated and as the Octave
+  `CalcNF2FF` (`'Mode', 0`) always did. Pass `read_cached=False` to force
+  recalculation.
 
 ### Fixed
 
-- Include the experimental opaque-surface boundary's physical exterior
-  capacitance in timestep selection, preventing growth on graded meshes.
-  Extensions can prepare EC elements through a default no-op `PreprocessEC()`
-  hook before timestep selection; existing extensions keep their behavior.
+- **`DebyeMaterial` diverged** once `sum(eps_delta)` approached `epsilon`, and did
+  so silently -- the NaN energy satisfied the end criteria, so the run reported a
+  normal finish. Its branch carries no inductance, so integrating it like the
+  Drude/Lorentz branch put the update's root on -1. It now integrates the pole's
+  capacitor voltage, in its own extension pair; `eps_delta` is no longer limited,
+  and a pole shorter than three timesteps is refused with a warning (#229).
 
 - Python: a `ContinuousStructure` handed to `SetCSX()` is no longer destroyed
   twice. `SetCSX()` takes ownership, which the binding now states, and

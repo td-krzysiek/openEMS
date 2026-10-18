@@ -22,23 +22,28 @@
 #include <fstream>
 #include "tools/signal.h"
 #include "tools/useful.h"
+#include "tools/denormal.h"
 #include "FDTD/operator_cylinder.h"
 #include "FDTD/operator_cylindermultigrid.h"
 #include "FDTD/engine_multithread.h"
 #include "FDTD/operator_multithread.h"
 #include "FDTD/operator_tiling.h"
+#include "FDTD/operator_gpu.h"
 #include "FDTD/extensions/operator_ext_excitation.h"
 #include "FDTD/extensions/operator_ext_tfsf.h"
 #include "FDTD/extensions/operator_ext_mur_abc.h"
 #include "FDTD/extensions/operator_ext_upml.h"
 #include "FDTD/extensions/operator_ext_lorentzmaterial.h"
+#include "FDTD/extensions/operator_ext_debyematerial.h"
 #include "FDTD/extensions/operator_ext_lumpedRLC.h"
 #include "FDTD/extensions/operator_ext_conductingsheet.h"
 #include "FDTD/extensions/operator_ext_steadystate.h"
 #include "FDTD/extensions/operator_ext_absorbing_bc.h"
 #include "FDTD/extensions/engine_ext_steadystate.h"
 #include "FDTD/engine_interface_fdtd.h"
-#include "FDTD/engine_interface_cylindrical_fdtd.h"
+#include "FDTD/engine_interface_sse_fdtd.h"
+#include "FDTD/engine_interface_gpu_fdtd.h"
+#include "FDTD/engine_gpu.h"
 #include "Common/processvoltage.h"
 #include "Common/processcurrent.h"
 #include "Common/processfieldprobe.h"
@@ -59,6 +64,12 @@
 
 using namespace std;
 namespace po = boost::program_options;
+
+// restores the original SIGINT handler when leaving a function, also by an exception
+struct RestoreSIGINT
+{
+	~RestoreSIGINT() {Signal::SetupHandlerForSIGINT(SIGNAL_ORIGINAL);}
+};
 
 double CalcDiffTime(timeval t1, timeval t2)
 {
@@ -99,7 +110,7 @@ openEMS::~openEMS()
 	Reset();
 }
 
-void openEMS::Reset()
+void openEMS::FreeSimulation()
 {
 	if (PA) PA->DeleteAll();
 	delete PA;
@@ -108,11 +119,16 @@ void openEMS::Reset()
 	FDTD_Eng=0;
 	delete FDTD_Op;
 	FDTD_Op=0;
+	Eng_Ext_SSD=0; // non-owning observer; deleted by the engine (m_Eng_exts) in 'delete FDTD_Eng' above
+}
+
+void openEMS::Reset()
+{
+	FreeSimulation();
 	delete m_CSX;
 	m_CSX=0;
 	delete m_Exc;
 	m_Exc=0;
-	Eng_Ext_SSD=0; // non-owning observer; deleted by the engine (m_Eng_exts) in 'delete FDTD_Eng' above
 
 	CylinderCoords = false;
 	m_CC_MultiGrid.clear();
@@ -254,6 +270,16 @@ void openEMS::collectCommandLineArguments()
 						cout << "openEMS - enabled multithreading" << endl;
 						m_engine = EngineType_Multithreaded;
 					}
+					else if (val == "gpu")
+					{
+						cout << "openEMS - enabled GPU engine" << endl;
+						m_engine = EngineType_GPU;
+					}
+					else if (val == "gpu-reference")
+					{
+						cout << "openEMS - enabled GPU engine with the reference backend" << endl;
+						m_engine = EngineType_GPU_Reference;
+					}
 				}
 			),
 		    "Choose engine type \n\n"
@@ -265,6 +291,8 @@ void openEMS::collectCommandLineArguments()
 			"operator + sse vector extensions\n"
 			"  multithreaded: \tengine using compressed "
 			"operator + sse vector extensions + multithreading\n"
+			"  gpu: \tGPU engine on the best available backend\n"
+			"  gpu-reference: \tGPU engine with the reference backend on the CPU\n"
 		)
 		(
 			"numThreads",
@@ -318,10 +346,11 @@ void openEMS::collectCommandLineArguments()
 					m_exactEndCriteria = true;
 				}
 			),
-			"evaluate the energy end criteria every Nyquist timesteps instead of "
-			"every few seconds of wall-clock time, so the run stops at the same "
-			"timestep regardless of machine speed/load; costs performance, useful "
-			"mainly for engine/code verification"
+			"evaluate the energy end criteria every Nyquist timesteps for the whole "
+			"run, not only during its first minute and then every few seconds of "
+			"wall-clock time, so the run stops at the same timestep regardless of "
+			"machine speed/load; costs performance, useful mainly for engine/code "
+			"verification"
 		);
 
 	// register our supported options to g_settings
@@ -348,6 +377,7 @@ void openEMS::SetLibraryArguments(std::vector<std::string> allOptions)
 
 void openEMS::SetNumberOfThreads(int val)
 {
+	SetThreadLimit(0);   // clamp to the machine, not to the limit of a previous run
 	if ((val<0) || (val>(int)AvailableThreads()))
 		val = AvailableThreads();
 	m_engine_numThreads = val;
@@ -463,6 +493,17 @@ void openEMS::SetupAbsorbingSheets()
 
 }
 
+//! The engine interface for the field storage of the engine of \a op; what depends on the mesh, the interfaces ask the operator
+static Engine_Interface_FDTD* NewEngineInterface(Operator* op)
+{
+	if (dynamic_cast<Engine_GPU*>(op->GetEngine()))
+		return new Engine_Interface_GPU_FDTD(op);
+	Operator_sse* op_sse = dynamic_cast<Operator_sse*>(op);
+	if (op_sse)
+		return new Engine_Interface_SSE_FDTD(op_sse);
+	return new Engine_Interface_FDTD(op);
+}
+
 Engine_Interface_FDTD* openEMS::NewEngineInterface(int multigridlevel)
 {
 	Operator_CylinderMultiGrid* op_cyl_mg = dynamic_cast<Operator_CylinderMultiGrid*>(FDTD_Op);
@@ -473,7 +514,7 @@ Engine_Interface_FDTD* openEMS::NewEngineInterface(int multigridlevel)
 		{
 			if (g_settings.GetVerboseLevel()>0)
 				cout << __func__ << ": Operator with requested multi-grid level found." << endl;
-			return new Engine_Interface_Cylindrical_FDTD(op_cyl_mg);
+			return ::NewEngineInterface(op_cyl_mg);
 		}
 		Operator_Cylinder* op_cyl_inner = op_cyl_mg->GetInnerOperator();
 		op_cyl_mg = dynamic_cast<Operator_CylinderMultiGrid*>(op_cyl_inner);
@@ -481,17 +522,11 @@ Engine_Interface_FDTD* openEMS::NewEngineInterface(int multigridlevel)
 		{
 			if (g_settings.GetVerboseLevel()>0)
 				cout << __func__ << ": Operator with highest multi-grid level chosen." << endl;
-			return new Engine_Interface_Cylindrical_FDTD(op_cyl_inner);
+			return ::NewEngineInterface(op_cyl_inner);
 		}
 		// try next level
 	}
-	Operator_Cylinder* op_cyl = dynamic_cast<Operator_Cylinder*>(FDTD_Op);
-	if (op_cyl)
-		return new Engine_Interface_Cylindrical_FDTD(op_cyl);
-	Operator_sse* op_sse = dynamic_cast<Operator_sse*>(FDTD_Op);
-	if (op_sse)
-		return new Engine_Interface_SSE_FDTD(op_sse);
-	return new Engine_Interface_FDTD(FDTD_Op);
+	return ::NewEngineInterface(FDTD_Op);
 }
 
 void openEMS::SetVerboseLevel(int level)
@@ -788,16 +823,20 @@ bool openEMS::SetupOperator()
 		cerr << "Tiling engine does not support cylindrical coordinates" << endl;
 		return false;
 	}
+	// what defaults to AvailableThreads() (GPU operator build, field dumps, SAR, nf2ff) honours numThreads
+	SetThreadLimit(m_engine_numThreads);
+
 	if (CylinderCoords)
 	{
+		bool gpu = (m_engine == EngineType_GPU) || (m_engine == EngineType_GPU_Reference);
+		Operator_Cylinder* op_cyl = NULL;
 		if (m_CC_MultiGrid.size()>0)
-		{
-			FDTD_Op = Operator_CylinderMultiGrid::New(m_CC_MultiGrid, m_engine_numThreads);
-			if (FDTD_Op==NULL)
-				FDTD_Op = Operator_Cylinder::New(m_engine_numThreads);
-		}
-		else
-			FDTD_Op = Operator_Cylinder::New(m_engine_numThreads);
+			op_cyl = Operator_CylinderMultiGrid::New(m_CC_MultiGrid, m_engine_numThreads);
+		if (op_cyl==NULL)
+			op_cyl = Operator_Cylinder::New(m_engine_numThreads);
+		if (gpu)
+			op_cyl->SetGPUBackend(m_engine == EngineType_GPU_Reference ? "reference" : "auto");
+		FDTD_Op = op_cyl;
 	}
 	else if (m_engine == EngineType_SSE)
 	{
@@ -814,6 +853,10 @@ bool openEMS::SetupOperator()
 	else if (m_engine == EngineType_Multithreaded)
 	{
 		FDTD_Op = Operator_Multithread::New(m_engine_numThreads);
+	}
+	else if ((m_engine == EngineType_GPU) || (m_engine == EngineType_GPU_Reference))
+	{
+		FDTD_Op = Operator_GPU::New(m_engine == EngineType_GPU_Reference ? "reference" : "auto");
 	}
 	else
 	{
@@ -1191,21 +1234,23 @@ ContinuousStructure* openEMS::GetCSX() const
 
 int openEMS::SetupFDTD()
 {
+	// of a previous setup that was not run
+	FreeSimulation();
+
 	timeval startTime;
 	gettimeofday(&startTime,NULL);
 
 	Signal::SetupHandlerForSIGINT(SIGNAL_EXIT_FORCE);
+	RestoreSIGINT restoreSIGINT;
 
 	if (m_CSX==NULL)
 	{
 		cerr << "openEMS::SetupFDTD: Error: CSXCAD is not set!" << endl;
-		Signal::SetupHandlerForSIGINT(SIGNAL_ORIGINAL);
 		return 3;
 	}
 	if (m_CSX==NULL)
 	{
 		cerr << "openEMS::SetupFDTD: Error: CSXCAD is not set!" << endl;
-		Signal::SetupHandlerForSIGINT(SIGNAL_ORIGINAL);
 		return 3;
 	}
 	std::string ec = m_CSX->Update();
@@ -1227,7 +1272,6 @@ int openEMS::SetupFDTD()
 	//*************** setup operator ************//
 	if (SetupOperator()==false)
 	{
-		Signal::SetupHandlerForSIGINT(SIGNAL_ORIGINAL);
 		return 2;
 	}
 
@@ -1244,7 +1288,6 @@ int openEMS::SetupFDTD()
 	if (m_Exc==NULL)
 	{
 		cerr << "openEMS::SetupFDTD: Error, excitation is not defined! Abort!" << endl;
-		Signal::SetupHandlerForSIGINT(SIGNAL_ORIGINAL);
 		return 3;
 	}
 
@@ -1255,7 +1298,6 @@ int openEMS::SetupFDTD()
 
 	if (FDTD_Op->SetGeometryCSX(m_CSX)==false)
 	{
-		Signal::SetupHandlerForSIGINT(SIGNAL_ORIGINAL);
 		return(2);
 	}
 
@@ -1299,8 +1341,10 @@ int openEMS::SetupFDTD()
 		FDTD_Op->AddExtension(Op_Ext_SSD);
 	}
 
-	if ((m_CSX->GetQtyPropertyType(CSProperties::LORENTZMATERIAL)>0) || (m_CSX->GetQtyPropertyType(CSProperties::DEBYEMATERIAL)>0))
+	if (m_CSX->GetQtyPropertyType(CSProperties::LORENTZMATERIAL)>0)
 		FDTD_Op->AddExtension(new Operator_Ext_LorentzMaterial(FDTD_Op));
+	if (m_CSX->GetQtyPropertyType(CSProperties::DEBYEMATERIAL)>0)
+		FDTD_Op->AddExtension(new Operator_Ext_DebyeMaterial(FDTD_Op));
 	if (m_CSX->GetQtyPropertyType(CSProperties::CONDUCTINGSHEET)>0)
 		FDTD_Op->AddExtension(new Operator_Ext_ConductingSheet(FDTD_Op, m_Exc->GetMaxFreq()));
 	if (m_CSX->GetQtyPropertyType(CSProperties::LUMPED_ELEMENT)>0)
@@ -1376,7 +1420,6 @@ int openEMS::SetupFDTD()
 	if (m_no_simulation)
 	{
 		// simulation was disabled (to generate debug output only)
-		Signal::SetupHandlerForSIGINT(SIGNAL_ORIGINAL);
 		return 1;
 	}
 
@@ -1385,11 +1428,12 @@ int openEMS::SetupFDTD()
 	{
 		FDTD_Eng = FDTD_Op->CreateEngine();
 	}
-	catch (const std::exception& error)
+	catch (const std::exception& e)
 	{
-		cerr << "openEMS::SetupFDTD: " << error.what() << endl;
-		Signal::SetupHandlerForSIGINT(SIGNAL_ORIGINAL);
-		return 2;
+		// e.g. the GPU engine without a device: do not run something else instead
+		cerr << "openEMS::SetupFDTD: Error: creating the FDTD engine failed: " << e.what() << endl;
+		return 4;
+
 	}
 
 	if (Op_Ext_SSD)
@@ -1401,7 +1445,6 @@ int openEMS::SetupFDTD()
 	//setup all processing classes
 	if (SetupProcessing()==false)
 	{
-		Signal::SetupHandlerForSIGINT(SIGNAL_ORIGINAL);
 		return 2;
 	}
 
@@ -1417,7 +1460,6 @@ int openEMS::SetupFDTD()
 		PA->DumpBoxes2File("box_dump_");
 	}
 
-	Signal::SetupHandlerForSIGINT(SIGNAL_ORIGINAL);
 	return 0;
 }
 
@@ -1462,11 +1504,24 @@ bool openEMS::CheckAbortCond()
 	return false;
 }
 
+//! Wall-clock time of a run (s) during which the end criteria is evaluated every Nyquist period, see RunFDTD()
+static const double EXACT_ENDCRIT_TIME = 60;
+
 void openEMS::RunFDTD()
 {
+	if ((FDTD_Op==NULL) || (FDTD_Eng==NULL) || (PA==NULL))
+	{
+		cerr << "openEMS::RunFDTD: Error: no simulation is set up, run SetupFDTD() first!" << endl;
+		return;
+	}
+
 	cout << "Running FDTD engine... this may take a while... grab a cup of coffee?!?" << endl;
 
 	Signal::SetupHandlerForSIGINT(SIGNAL_EXIT_GRACEFUL);
+	RestoreSIGINT restoreSIGINT;
+	// every engine flushes denormals to zero (fast, and the same results for all engines), and
+	// the caller gets its own setting back, e.g. Python for its post-processing
+	Denormal::FlushToZero flushToZero;
 
 	//special handling of a field processing, needed to realize the end criteria...
 	ProcessFields* ProcField = new ProcessFields(NewEngineInterface());
@@ -1479,14 +1534,22 @@ void openEMS::RunFDTD()
 	//add all timesteps to end-crit field processing with max excite amplitude
 	unsigned int maxExcite = FDTD_Op->GetExcitationSignal()->GetMaxExcitationTimestep();
 	ProcField->AddStep(maxExcite);
-	// --exact-endcriteria: also evaluate on a fixed timestep schedule, independent of the
-	// wall-clock progress report, at the cost of far more (expensive, full-domain) energy
-	// estimates -- default stays wall-clock throttled to keep normal runs fast
-	if ((Eng_Ext_SSD==NULL) && m_exactEndCriteria)
+	// The end criteria is evaluated on a fixed timestep schedule, every Nyquist period,
+	// during the first EXACT_ENDCRIT_TIME seconds: a wall-clock schedule lets a short
+	// simulation run several times longer than necessary, the more the faster the engine.
+	// After that only with the wall-clock progress report, which then is a small overshoot
+	// and saves the (full-domain) energy estimates -- unless --exact-endcriteria asks
+	// for a machine-independent stopping point.
+	bool exactEndCrit = (Eng_Ext_SSD==NULL);
+	if (exactEndCrit)
 	{
 		unsigned int endCritInterval = FDTD_Op->GetExcitationSignal()->GetNyquistNum();
-		cout << "Exact-endcriteria: evaluating the end criteria every "
-			 << endCritInterval << " timestep(s) (this excitation's Nyquist rate)" << endl;
+		if (m_exactEndCriteria)
+			cout << "Exact-endcriteria: evaluating the end criteria every "
+				 << endCritInterval << " timestep(s) (this excitation's Nyquist rate)" << endl;
+		else if (g_settings.GetVerboseLevel()>0)
+			cout << "Evaluating the end criteria every " << endCritInterval << " timestep(s) during the first "
+				 << EXACT_ENDCRIT_TIME << " s, with the progress report after that" << endl;
 		ProcField->SetProcessInterval(endCritInterval);
 	}
 
@@ -1509,7 +1572,8 @@ void openEMS::RunFDTD()
 	PA->PreProcess();
 	int step=PA->Process();
 	if ((step<0) || (step>(int)NrTS)) step=NrTS;
-	while ((FDTD_Eng->GetNumberOfTimesteps()<NrTS) && (change>endCrit) && !CheckAbortCond())
+	bool aborted = false;
+	while ((FDTD_Eng->GetNumberOfTimesteps()<NrTS) && (change>endCrit) && !(aborted = CheckAbortCond()))
 	{
 		FDTD_Eng->IterateTS(step);
 		step=PA->Process();
@@ -1521,7 +1585,7 @@ void openEMS::RunFDTD()
 			currE = ProcField->CalcTotalEnergyEstimate();
 			if (currE>maxE)
 				maxE=currE;
-			if (m_exactEndCriteria && maxE)
+			if (exactEndCrit && maxE)
 				change = currE/maxE;
 		}
 
@@ -1532,6 +1596,15 @@ void openEMS::RunFDTD()
 
 		t_diff = CalcDiffTime(currTime,prevTime);
 
+		if (exactEndCrit && !m_exactEndCriteria && (CalcDiffTime(currTime,startTime)>EXACT_ENDCRIT_TIME))
+		{
+			// from here on with the progress report only
+			exactEndCrit = false;
+			if (g_settings.GetVerboseLevel()>0)
+				cout << "Evaluating the end criteria with the progress report only from here on" << endl;
+			ProcField->ClearProcessInterval();
+		}
+
 		if (t_diff>4)
 		{
 			t_run = CalcDiffTime(currTime,startTime);
@@ -1540,7 +1613,7 @@ void openEMS::RunFDTD()
 			cout << " || Speed: " << setw(6) << setprecision(1) << std::fixed << speed*1e-6 << " MC/s (" <<  setw(4) << setprecision(3) << std::scientific << t_diff/(currTS-prevTS) << " s/TS)" ;
 			if (Eng_Ext_SSD==NULL)
 			{
-				if (!m_exactEndCriteria) // otherwise already kept current above, every Nyquist period
+				if (!exactEndCrit) // otherwise already kept current above, every Nyquist period
 				{
 					currE = ProcField->CalcTotalEnergyEstimate();
 					if (currE>maxE)
@@ -1562,7 +1635,16 @@ void openEMS::RunFDTD()
 			FDTD_Eng->NextInterval(speed);
 		}
 	}
-	if ((change>endCrit) && (FDTD_Op->GetExcitationSignal()->GetExciteType()==0))
+	if (aborted)
+	{
+		// not the timestep limit: say so, the advice below would be wrong
+		cout << "RunFDTD: simulation aborted after " << FDTD_Eng->GetNumberOfTimesteps() << " timesteps";
+		// the energy decay, once there is one: with a Gaussian pulse, after the first check
+		if ((Eng_Ext_SSD==NULL) && (FDTD_Op->GetExcitationSignal()->GetExciteType()==0) && (change<1))
+			cout << " (-" << setprecision(2) << std::fixed << fabs(10.0*log10(change)) << "dB)";
+		cout << endl;
+	}
+	else if ((change>endCrit) && (FDTD_Op->GetExcitationSignal()->GetExciteType()==0))
 		cerr << "RunFDTD: Warning: Max. number of timesteps was reached before the end-criteria of -" << fabs(10.0*log10(endCrit)) << "dB was reached... " << endl << \
 				"\tYou may want to choose a higher number of max. timesteps... " << endl;
 	else if (FDTD_Op->GetExcitationSignal()->GetExciteType()==0)
@@ -1580,7 +1662,9 @@ void openEMS::RunFDTD()
 	//*************** postproc ************//
 	PA->PostProcess();
 
-	Signal::SetupHandlerForSIGINT(SIGNAL_ORIGINAL);
+	// the results are written: free the memory of the operator and the engine,
+	// e.g. for a post-processing in the same process (NF2FF, SAR)
+	FreeSimulation();
 }
 
 bool openEMS::DumpStatistics(const string& filename, double time)
