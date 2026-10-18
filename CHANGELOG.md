@@ -15,6 +15,9 @@ there are unreleased changes. It becomes the next release entry.
 
 ### Added
 
+- Treat touching/overlapping conforming boxes with identical experimental
+  opaque-surface fits as one conductor, excluding internal contact faces.
+  Different-fit contacts are rejected. CPU/GPU updates are unchanged.
 - Metal and HIP/CUDA device updates for the experimental opaque RF surface
   boundary, including its passive R-L histories and HIP fused-step fixups.
   The device boundary uses FP32; the CPU boundary keeps FP64. The existing
