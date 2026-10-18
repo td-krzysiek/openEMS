@@ -992,6 +992,11 @@ int Operator::CalcECOperator( DebugFlags debugFlags )
 	if (Calc_EC()==0)
 		return -1;
 
+	// Physics which changes physical C/L must participate in timestep selection.
+	for (size_t n=0; n<m_Op_exts.size(); ++n)
+		if (m_Op_exts.at(n)->IsActive())
+			m_Op_exts.at(n)->PreprocessEC();
+
 	m_InvaildTimestep = false;
 	opt_dT = 0;
 	if (dT>0)

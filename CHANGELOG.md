@@ -143,6 +143,11 @@ number moved up and patch releases now have somewhere to go.
 
 ### Fixed
 
+- Include the experimental opaque-surface boundary's physical exterior
+  capacitance in timestep selection, preventing growth on graded meshes.
+  Extensions can prepare EC elements through a default no-op `PreprocessEC()`
+  hook before timestep selection; existing extensions keep their behavior.
+
 - Python: a `ContinuousStructure` handed to `SetCSX()` is no longer destroyed
   twice. `SetCSX()` takes ownership, which the binding now states, and
   `GetCSX()` no longer leaks a fresh structure per call. Requires a CSXCAD
