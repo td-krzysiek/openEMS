@@ -18,7 +18,7 @@ Sim_Path.mkdir(parents=True,exist_ok=True)
 engines=['multithreaded']+(['gpu'] if '--gpu' in sys.argv else [])
 reference=None
 for engine in engines:
-    for variant in ['whole','split','overlap','split_properties']:
+    for variant in ['whole','split','overlap','split_properties','different_fit']:
         folder=Sim_Path/(engine+'-'+variant)
         fdtd=openEMS(NrTS=4096,EndCriteria=0)
         fdtd.SetGaussExcite(100e9,50e9);fdtd.SetBoundaryCond(['PML_4']*6)
@@ -27,23 +27,30 @@ for engine in engines:
         for axis in 'xyz':grid.AddLine(axis,np.linspace(0,2,21))
         metal=csx.AddMetal('opaque')
         metal.AddAttribute('ExperimentalOpaqueSurfaceV1','1;10,1e-12')
-        spans=[(.8,1.2)] if variant=='whole' else [(.8,1),(1,1.2)] if variant.startswith('split') else [(.8,1.1),(.9,1.2),(.9,1.2)]
+        spans=[(.8,1.2)] if variant=='whole' else [(.8,1),(1,1.2)] if variant.startswith('split') or variant=='different_fit' else [(.8,1.1),(.9,1.2),(.9,1.2)]
         for index,(lo,hi) in enumerate(spans):
-            if variant=='split_properties' and index:
+            if variant in ['split_properties','different_fit'] and index:
                 metal=csx.AddMetal('opaque_second')
-                metal.AddAttribute('ExperimentalOpaqueSurfaceV1','1;10,1e-12')
+                metal.AddAttribute('ExperimentalOpaqueSurfaceV1','2;10,1e-12' if variant=='different_fit' else '1;10,1e-12')
             metal.AddBox([lo,.8,.8],[hi,1.2,1.2])
         # A finite x slab avoids exact-plane roundoff in native CSXCAD output.
         csx.AddExcitation('source',exc_type=0,exc_val=[0,1,0]).AddBox([.55,.9,.9],[.65,1.1,1.1],priority=20)
         csx.AddProbe('voltage',p_type=0).AddBox([1.4,.8,.8],[1.4,.9,.8])
         sys.stdout.flush();saved=os.dup(1)
+        error=None
         with (Sim_Path/(engine+'-'+variant+'.log')).open('w') as log:
             try:
                 os.dup2(log.fileno(),1)
                 fdtd.Run(str(folder),cleanup=True,engine=engine,numThreads=2,exact_endcriteria=True,verbose=2)
+            except RuntimeError as exc:
+                error=exc
             finally:
                 sys.stdout.flush();os.dup2(saved,1);os.close(saved)
         text=(Sim_Path/(engine+'-'+variant+'.log')).read_text()
+        if variant=='different_fit':
+            assert error is not None and 'identical fits' in str(error), 'Different-fit contact was not rejected'
+            print(engine,variant,'rejected as expected');continue
+        assert error is None, str(error)
         assert 'Time for 4096 iterations' in text, 'Fixed regression window not completed'
         if engine=='gpu':
             assert 'all extensions run on the device' in text and 'host fallback' not in text
