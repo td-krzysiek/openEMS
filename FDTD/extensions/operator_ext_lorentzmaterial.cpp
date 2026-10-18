@@ -21,9 +21,7 @@
 #include "../operator_cylinder.h"
 
 #include "CSPropLorentzMaterial.h"
-#include "CSPropDebyeMaterial.h"
 
-using std::cerr;
 using std::endl;
 
 Operator_Ext_LorentzMaterial::Operator_Ext_LorentzMaterial(Operator* op) : Operator_Ext_Dispersive(op)
@@ -124,9 +122,6 @@ bool Operator_Ext_LorentzMaterial::BuildExtension()
 	double coord[3];
 	unsigned int numLines[3] = {m_Op->GetNumberOfLines(0,true),m_Op->GetNumberOfLines(1,true),m_Op->GetNumberOfLines(2,true)};
 	CSPropLorentzMaterial* mat = NULL;
-	CSPropDebyeMaterial* debye_mat = NULL;
-
-	bool warn_once = true;
 
 	bool b_pos_on;
 	std::vector<unsigned int> v_pos[3];
@@ -157,16 +152,6 @@ bool Operator_Ext_LorentzMaterial::BuildExtension()
 		if (LorMat->GetDispersionOrder()>m_Order)
 			m_Order=LorMat->GetDispersionOrder();
 	}
-	LD_props = m_Op->CSX->GetPropertyByType(CSProperties::DEBYEMATERIAL);
-	for (size_t n=0;n<LD_props.size();++n)
-	{
-		CSPropDebyeMaterial* DebyeMat = dynamic_cast<CSPropDebyeMaterial*>(LD_props.at(n));
-		if (DebyeMat==NULL)
-			return false; //sanity check, this should not happen
-		if (DebyeMat->GetDispersionOrder()>m_Order)
-			m_Order=DebyeMat->GetDispersionOrder();
-	}
-
 	m_LM_pos = new unsigned int**[m_Order];
 
 	m_volt_ADE_On = new bool[m_Order];
@@ -256,23 +241,6 @@ bool Operator_Ext_LorentzMaterial::BuildExtension()
 								C_L[n] = 1/(w_Lor_Pol*w_Lor_Pol*L_D[n]);
 							}
 						}
-						if ((debye_mat = prop->ToDebyeMaterial()))
-						{
-							C_L[n] = 8.85418781762e-12*debye_mat->GetEpsDeltaWeighted(order,n,coord) * m_Op->GetEdgeArea(n, pos) / m_Op->GetEdgeLength(n,pos);
-							t_relax = debye_mat->GetEpsRelaxTimeWeighted(order,n,coord);
-							if ((t_relax<2.0*dT) && warn_once)
-							{
-								warn_once = false;
-								cerr << "Operator_Ext_LorentzMaterial::BuildExtension(): Warning, debye relaxation time is to small, skipping..." << endl;
-							}
-							if ((C_L[n]>0) && (t_relax>0) && (t_relax>2.0*dT))
-							{
-								R_D[n] = t_relax/C_L[n];
-								b_pos_on = true;
-								m_volt_ADE_On[order] = true;
-								m_volt_Lor_ADE_On[order] = true;
-							}
-						}
 					}
 
 					for (int n=0; n<3; ++n)
@@ -326,11 +294,6 @@ bool Operator_Ext_LorentzMaterial::BuildExtension()
 									v_ext[n].push_back(dT/(L_D[n]+dT*R_D[n]/2.0)*m_Op_Cyl->m_Cyl_Ext->vi_R0[pos[2]]);
 								else
 									v_ext[n].push_back(dT/(L_D[n]+dT*R_D[n]/2.0)*m_Op->GetVI(n,pos[0],pos[1],pos[2]));
-							}
-							else if ((R_D[n]>0) && (C_L[n]>0))
-							{
-								v_int[n].push_back((2.0*dT-R_D[n]*C_L[n])/(C_L[n]*R_D[n]));
-								v_ext[n].push_back(2.0/R_D[n]*m_Op->GetVI(n,pos[0],pos[1],pos[2]));
 							}
 							else
 							{
@@ -401,14 +364,14 @@ bool Operator_Ext_LorentzMaterial::BuildExtension()
 		for (int n=0; n<3; ++n)
 		{
 			m_LM_pos[order][n] = new unsigned int[m_LM_Count.at(order)];
-			for (unsigned int i=0; i<m_LM_Count.at(order); ++i)
+			for (size_t i=0; i<m_LM_Count.at(order); ++i)
 				m_LM_pos[order][n][i] = v_pos[n].at(i);
 			if (m_volt_ADE_On[order])
 			{
 				v_int_ADE[order][n]  = new FDTD_FLOAT[m_LM_Count.at(order)];
 				v_ext_ADE[order][n]  = new FDTD_FLOAT[m_LM_Count.at(order)];
 
-				for (unsigned int i=0; i<m_LM_Count.at(order); ++i)
+				for (size_t i=0; i<m_LM_Count.at(order); ++i)
 				{
 					v_int_ADE[order][n][i] = v_int[n].at(i);
 					v_ext_ADE[order][n][i] = v_ext[n].at(i);
@@ -419,7 +382,7 @@ bool Operator_Ext_LorentzMaterial::BuildExtension()
 				i_int_ADE[order][n]  = new FDTD_FLOAT[m_LM_Count.at(order)];
 				i_ext_ADE[order][n]  = new FDTD_FLOAT[m_LM_Count.at(order)];
 
-				for (unsigned int i=0; i<m_LM_Count.at(order); ++i)
+				for (size_t i=0; i<m_LM_Count.at(order); ++i)
 				{
 					i_int_ADE[order][n][i] = i_int[n].at(i);
 					i_ext_ADE[order][n][i] = i_ext[n].at(i);
@@ -429,13 +392,13 @@ bool Operator_Ext_LorentzMaterial::BuildExtension()
 			if (m_volt_Lor_ADE_On[order])
 			{
 				v_Lor_ADE[order][n]  = new FDTD_FLOAT[m_LM_Count.at(order)];
-				for (unsigned int i=0; i<m_LM_Count.at(order); ++i)
+				for (size_t i=0; i<m_LM_Count.at(order); ++i)
 					v_Lor_ADE[order][n][i] = v_Lor[n].at(i);
 			}
 			if (m_curr_Lor_ADE_On[order])
 			{
 				i_Lor_ADE[order][n]  = new FDTD_FLOAT[m_LM_Count.at(order)];
-				for (unsigned int i=0; i<m_LM_Count.at(order); ++i)
+				for (size_t i=0; i<m_LM_Count.at(order); ++i)
 					i_Lor_ADE[order][n][i] = i_Lor[n].at(i);
 			}
 		}
