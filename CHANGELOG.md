@@ -33,6 +33,9 @@ there are unreleased changes. It becomes the next release entry.
 
 ### Fixed
 
+- Python NF2FF rejects an invalid phase centre outside a closed Cartesian
+  recording box instead of silently reversing surface normals. Document
+  that centre coordinates are in metres, independently of CSX drawing units.
 - Reject the new Debye extension with the experimental tiling engine until
   its pre/post hooks have tiled implementations, instead of skipping them.
 - Include the experimental opaque-surface boundary's physical exterior

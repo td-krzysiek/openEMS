@@ -104,13 +104,15 @@ class nf2ff:
         :param freq: array like -- list of frequency for transformation
         :param theta/phi: array like -- Theta/Phi angles to calculate the far-field
         :param radius: float -- Radius to calculate the far-field (default is 1m)
-        :param center: (3,) array -- phase center, must be inside the recording box
+        :param center: (3,) array -- phase center in metres (independent of the
+            CSX drawing unit), must be inside the recording box
         :param outfile: str -- File to save results in. (defaults to recording name)
         :param read_cached: bool -- enable/disable read already existing results (default on)
         :param verbose: int -- set verbose level (default 0)
 
         :returns: nf2ff_results class instance
         """
+        center = self._validate_center(center)
         if np.isscalar(freq):
             freq = [freq]
         self.freq  = freq
@@ -155,6 +157,20 @@ class nf2ff:
             if not utilities.Check_Array_Equal(result.freq, self.freq, 1e-6, relative=True):
                 raise Exception('Frequency array does not match. Did you read an invalid cached result? Try "read_cached=False"')
         return result
+
+    def _validate_center(self, center):
+        center = np.asarray(center, dtype=float)
+        if center.shape != (3,) or not np.isfinite(center).all():
+            raise ValueError('NF2FF center must contain three finite coordinates in metres')
+        grid = self.CSX.GetGrid()
+        # The Cartesian closed-box test is not applicable to cylindrical
+        # coordinates or open/mirrored surfaces; preserve their conventions.
+        if grid.GetMeshType() == 0 and all(self.directions) and not any(self.mirror):
+            bounds = np.asarray([self.start, self.stop], dtype=float) * grid.GetDeltaUnit()
+            if np.any(center <= np.min(bounds, axis=0)) or np.any(center >= np.max(bounds, axis=0)):
+                raise ValueError('NF2FF center must be inside the closed recording box; '
+                                 'center coordinates are in metres, not CSX drawing units')
+        return center.tolist()
 
 class nf2ff_results:
     """
