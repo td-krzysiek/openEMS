@@ -23,8 +23,9 @@ double number(const std::string& s) {
 }
 }
 
-bool Operator_Ext_OpaqueSurface::BuildExtension()
+void Operator_Ext_OpaqueSurface::PreprocessEC()
 {
+    fits.clear(); edges.clear(); interior_h.clear(); pml_guard_edges=0;
     auto* csx=m_Op->GetGeometryCSX();
     std::vector<Box> boxes;
     for (size_t i=0;i<csx->GetQtyProperties();++i) {
@@ -65,11 +66,10 @@ bool Operator_Ext_OpaqueSurface::BuildExtension()
             boxes.push_back(b);
         }
     }
-    if (boxes.empty()) return false;
+    if (boxes.empty()) return;
     if (m_Op_Cyl) throw std::runtime_error("Opaque surface requires Cartesian coordinates");
-    dt=m_Op->GetTimestep();
     const double unit=m_Op->GetGridDelta(), eps0=8.854187817620389e-12;
-    unsigned int pos[3]; size_t suppressed=0, skipped=0;
+    unsigned int pos[3];
     // Exclude interior magnetic unknowns: otherwise finite face E drives a
     // spurious inductive field in what is supposed to be excluded metal.
     for (int n=0;n<3;++n)
@@ -78,7 +78,7 @@ bool Operator_Ext_OpaqueSurface::BuildExtension()
     for (pos[2]=0;pos[2]+1<m_Op->GetNumberOfLines(2);++pos[2]) {
         double c[3]; m_Op->GetYeeCoords(n,pos,c,true);
         for (const auto& b:boxes) if (interior(c,b)) {
-            m_Op->SetII(n,pos[0],pos[1],pos[2],0);m_Op->SetIV(n,pos[0],pos[1],pos[2],0);++suppressed;break;
+            interior_h.push_back({{static_cast<unsigned int>(n),pos[0],pos[1],pos[2]}});break;
         }
     }
     for (unsigned int n=0;n<3;++n)
@@ -112,7 +112,7 @@ bool Operator_Ext_OpaqueSurface::BuildExtension()
             pml=pml || (low>0 && pos[axis]<=static_cast<unsigned int>(low)) ||
                 (high>0 && pos[axis]+high+1>=m_Op->GetNumberOfLines(axis));
         }
-        if (pml) {++skipped;continue;}
+        if (pml) {++pml_guard_edges;continue;}
         // Integrate only exterior dielectric quadrants of the electric dual face.
         double cap=0,gd=0;
         for (int sp : {-1,1}) for (int sq : {-1,1}) {
@@ -131,16 +131,36 @@ bool Operator_Ext_OpaqueSurface::BuildExtension()
             gd+=g*dp*dq*unit*unit/(4*length);
         }
         if (!(cap>0)) throw std::runtime_error("Opaque surface has no exterior capacitance");
-        const auto& fit=fits[fi];double bs=0;
-        for (size_t j=0;j<fit.w.size();++j) bs+=dt*fit.w[j]*scale/(2*fit.tau[j]+dt);
-        const double g=gd+fit.g*scale, denom=cap/dt+(g+bs)/2;
-        Edge e;e.n=n;e.fit=fi;e.scale=scale;e.vi=1/denom;e.vv=(cap/dt-(g+bs)/2)/denom;
+        Edge e;e.n=n;e.fit=fi;e.scale=scale;e.capacitance=cap;e.dielectric_g=gd;
         std::copy(pos,pos+3,e.pos);edges.push_back(e);
-        m_Op->SetVV(n,pos[0],pos[1],pos[2],0);m_Op->SetVI(n,pos[0],pos[1],pos[2],0);
+        // Use the same physical exterior C in the CFL calculation and update.
+        // No artificial stabilizing capacitance is added to the RF model.
+        const unsigned int index=m_Op->MainOp->SetPos(pos[0],pos[1],pos[2]);
+        m_Op->EC_C[n][index]=cap;
+        m_Op->EC_G[n][index]=gd;
     }
     if (edges.empty()) throw std::runtime_error("No active opaque surface edges");
-    std::cout << "EXPERIMENTAL_OPAQUE_SURFACE_V1 active: " << edges.size() << " edges, " << suppressed
-        << " excluded interior H, " << skipped << " PML-guard edges kept PEC" << std::endl;
+}
+
+bool Operator_Ext_OpaqueSurface::BuildExtension()
+{
+    if (fits.empty()) return false;
+    dt=m_Op->GetTimestep();
+    for (const auto& h:interior_h) {
+        m_Op->SetII(h[0],h[1],h[2],h[3],0);
+        m_Op->SetIV(h[0],h[1],h[2],h[3],0);
+    }
+    for (auto& e:edges) {
+        const auto& fit=fits[e.fit];double bs=0;
+        for (size_t j=0;j<fit.w.size();++j) bs+=dt*fit.w[j]*e.scale/(2*fit.tau[j]+dt);
+        const double g=e.dielectric_g+fit.g*e.scale;
+        const double denom=e.capacitance/dt+(g+bs)/2;
+        e.vi=1/denom;e.vv=(e.capacitance/dt-(g+bs)/2)/denom;
+        m_Op->SetVV(e.n,e.pos[0],e.pos[1],e.pos[2],0);
+        m_Op->SetVI(e.n,e.pos[0],e.pos[1],e.pos[2],0);
+    }
+    std::cout << "EXPERIMENTAL_OPAQUE_SURFACE_V1 active: " << edges.size() << " edges, " << interior_h.size()
+        << " excluded interior H, " << pml_guard_edges << " PML-guard edges kept PEC" << std::endl;
     return true;
 }
 
