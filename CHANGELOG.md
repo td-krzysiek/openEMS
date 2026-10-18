@@ -36,6 +36,8 @@ there are unreleased changes. It becomes the next release entry.
 
 ### Fixed
 
+- Release waiting operator setup workers when a controller-side exception
+  occurs before the EC/PEC phases finish, instead of hanging during cleanup.
 - Reject the new Debye extension with the experimental tiling engine until
   its pre/post hooks have tiled implementations, instead of skipping them.
 - Include the experimental opaque-surface boundary's physical exterior

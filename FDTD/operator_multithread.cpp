@@ -51,6 +51,8 @@ Engine* Operator_Multithread::CreateEngine()
 
 Operator_Multithread::Operator_Multithread() : Operator_SSE_Compressed()
 {
+	m_workerStage=NoWaiters;
+	m_abortWorkers=false;
 	m_CalcEC_Start=NULL;
 	m_CalcEC_Stop=NULL;
 
@@ -61,6 +63,8 @@ Operator_Multithread::Operator_Multithread() : Operator_SSE_Compressed()
 void Operator_Multithread::Init()
 {
 	Operator_SSE_Compressed::Init();
+	m_workerStage=NoWaiters;
+	m_abortWorkers=false;
 
 	m_CalcEC_Start=NULL;
 	m_CalcEC_Stop=NULL;
@@ -71,7 +75,7 @@ void Operator_Multithread::Init()
 
 void Operator_Multithread::Delete()
 {
-	m_thread_group.join_all();
+	FinishWorkerThreads();
 
 	delete m_CalcEC_Start;
 	m_CalcEC_Start=NULL;
@@ -82,6 +86,20 @@ void Operator_Multithread::Delete()
 	m_CalcPEC_Start=NULL;
 	delete m_CalcPEC_Stop;
 	m_CalcPEC_Stop=NULL;
+}
+
+void Operator_Multithread::FinishWorkerThreads()
+{
+	// Controller-side setup failures can leave workers waiting for the next
+	// phase. Release that barrier before joining; no EC/PEC work is performed.
+	if (m_workerStage!=NoWaiters)
+	{
+		m_abortWorkers=true;
+		if (m_workerStage==WaitingEC) m_CalcEC_Start->wait();
+		else m_CalcPEC_Start->wait();
+	}
+	m_thread_group.join_all();
+	m_workerStage=NoWaiters;
 }
 
 void Operator_Multithread::Reset()
@@ -136,13 +154,25 @@ int Operator_Multithread::CalcECOperator( DebugFlags debugFlags )
 	delete m_CalcPEC_Stop;
 	m_CalcPEC_Stop = new boost::barrier(m_numThreads+1); // numThread workers + 1 controller
 
+	m_workerStage=WaitingEC;
+	m_abortWorkers=false;
 	for (unsigned int n=0; n<m_numThreads; n++)
 	{
 		boost::thread *t = new boost::thread( Operator_Thread(this,m_Start_Lines.at(n),m_Stop_Lines.at(n),n) );
 		m_thread_group.add_thread( t );
 	}
 
-	return Operator_SSE_Compressed::CalcECOperator( debugFlags );
+	try
+	{
+		int result=Operator_SSE_Compressed::CalcECOperator( debugFlags );
+		FinishWorkerThreads();
+		return result;
+	}
+	catch (...)
+	{
+		FinishWorkerThreads();
+		throw;
+	}
 }
 
 bool Operator_Multithread::Calc_EC()
@@ -158,6 +188,7 @@ bool Operator_Multithread::Calc_EC()
 	m_CalcEC_Start->wait();
 
 	m_CalcEC_Stop->wait();
+	m_workerStage=WaitingPEC;
 
 	return true;
 }
@@ -173,6 +204,7 @@ bool Operator_Multithread::CalcPEC()
 	m_CalcPEC_Start->wait();
 
 	m_CalcPEC_Stop->wait();
+	m_workerStage=NoWaiters;
 
 	for (unsigned int t=0; t<m_numThreads; ++t)
 		for (int n=0; n<3; ++n)
@@ -198,11 +230,13 @@ void Operator_Thread::operator()()
 {
 	//************** calculate EC (Calc_EC) ***********************//
 	m_OpPtr->m_CalcEC_Start->wait();
+	if (m_OpPtr->m_abortWorkers) return;
 	m_OpPtr->Calc_EC_Range(m_start,m_stop);
 	m_OpPtr->m_CalcEC_Stop->wait();
 
 	//************** calculate EC (Calc_EC) ***********************//
 	m_OpPtr->m_CalcPEC_Start->wait();
+	if (m_OpPtr->m_abortWorkers) return;
 	for (int n=0; n<3; ++n)
 		m_OpPtr->m_Nr_PEC_thread[m_threadID][n] = 0;
 
