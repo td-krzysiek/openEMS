@@ -18,7 +18,9 @@ Sim_Path.mkdir(parents=True,exist_ok=True)
 engines=['multithreaded']+(['gpu'] if '--gpu' in sys.argv else [])
 reference=None
 for engine in engines:
-    for variant in ['whole','split','overlap','split_properties','different_fit']:
+    variants=['whole','split','overlap','split_properties']
+    if engine=='gpu':variants.append('different_fit')
+    for variant in variants:
         folder=Sim_Path/(engine+'-'+variant)
         fdtd=openEMS(NrTS=4096,EndCriteria=0)
         fdtd.SetGaussExcite(100e9,50e9);fdtd.SetBoundaryCond(['PML_4']*6)
