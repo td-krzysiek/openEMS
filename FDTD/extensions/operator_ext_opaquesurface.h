@@ -17,6 +17,7 @@ public:
     explicit Operator_Ext_OpaqueSurface(Operator* op) : Operator_Extension(op) {}
     virtual void PreprocessEC();
     virtual bool BuildExtension();
+    virtual bool IsGPUSave() const {return true;}
     virtual Engine_Extension* CreateEngineExtention();
     virtual std::string GetExtensionName() const {return "Experimental opaque surface V1";}
     std::vector<Fit> fits;

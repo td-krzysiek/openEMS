@@ -33,7 +33,7 @@ def solve(binary,engine='multithreaded',pec=False):
         start=time.monotonic();reason=None
         with (folder/'solver.log').open('w') as log:
             process=subprocess.Popen([binary,'model.xml','--engine='+engine,'--numThreads=4',
-                '--exact-endcriteria'],cwd=folder,env=env,stdout=log,stderr=subprocess.STDOUT)
+                '--exact-endcriteria','-vv'],cwd=folder,env=env,stdout=log,stderr=subprocess.STDOUT)
             try:
                 while process.poll() is None:
                     time.sleep(.5);text=(folder/'solver.log').read_text()
@@ -63,7 +63,7 @@ def solve(binary,engine='multithreaded',pec=False):
         result=dict(exit=process.returncode,reason=reason,converged='reached after' in text,
             capped='Max. number of timesteps was reached' in text,
             dt=float(step.group(1)) if step else None,finite=all(math.isfinite(v) for v in samples),
-            nonzero=any(abs(v)>1e-12 for v in samples[1::2]),dfts=dfts,log=text)
+            nonzero=any(abs(v)>1e-12 for v in samples[1::2]),dfts=dfts,log=text,samples=samples)
         output=os.environ.get('OPENEMS_TEST_OUTPUT')
         if output:
             digest=hashlib.sha256(Path(binary).read_bytes()).hexdigest()
@@ -71,7 +71,7 @@ def solve(binary,engine='multithreaded',pec=False):
             target=Path(output)/name
             target.parent.mkdir(parents=True,exist_ok=True)
             shutil.copytree(folder,target)
-            record={k:v for k,v in result.items() if k not in ['log','dfts']}
+            record={k:v for k,v in result.items() if k not in ['log','dfts','samples']}
             record.update(binary_sha256=digest,xml_sha256=hashlib.sha256((target/'model.xml').read_bytes()).hexdigest(),
                 engine=engine,pec=pec,dfts={k:[v.real,v.imag] for k,v in dfts.items()})
             (target/'result.json').write_text(json.dumps(record,indent=2)+'\n')
@@ -85,7 +85,10 @@ class SurfaceStability(unittest.TestCase):
         # The default Rennings timestep must include the physical exterior C.
         binary=os.path.abspath(os.environ['OPENEMS_BIN'])
         results=[]
-        for engine in ['multithreaded','tiling']:
+        engines=['multithreaded','tiling']
+        if os.environ.get('OPENEMS_TEST_GPU'):
+            engines.append('gpu')
+        for engine in engines:
             result=solve(binary,engine)
             self.assertEqual(result['exit'],0,result['log'][-2000:])
             self.assertIsNone(result['reason'])
@@ -93,11 +96,23 @@ class SurfaceStability(unittest.TestCase):
             self.assertFalse(result['capped'])
             self.assertTrue(result['finite'] and result['nonzero'])
             self.assertLess(result['dt'],1.59e-14)
+            if engine=='gpu':
+                self.assertIn('Engine_GPU: all extensions run on the device',result['log'])
+                self.assertNotIn('host fallback',result['log'])
+                backend=os.environ.get('OPENEMS_GPU_BACKEND')
+                if backend:self.assertIn('backend: '+backend,result['log'])
             results.append(result)
-        self.assertAlmostEqual(results[0]['dt'],results[1]['dt'],delta=1e-20)
-        for name in results[0]['dfts']:
-            a,b=[r['dfts'][name] for r in results]
-            self.assertLess(abs(a-b)/max(abs(a),abs(b)),3e-5)
+        for result in results[1:]:
+            self.assertAlmostEqual(results[0]['dt'],result['dt'],delta=1e-20)
+            for name in results[0]['dfts']:
+                a,b=results[0]['dfts'][name],result['dfts'][name]
+                self.assertLess(abs(a-b)/max(abs(a),abs(b)),3e-5)
+            # Whole pulse, including decay: equal time axes and relative peak error.
+            a,b=results[0]['samples'],result['samples']
+            self.assertEqual(len(a),len(b))
+            self.assertEqual(a[::2],b[::2])
+            peak=max(abs(v) for v in a[1::2])
+            self.assertLess(max(abs(x-y) for x,y in zip(a[1::2],b[1::2]))/peak,1e-4)
         baseline=os.environ.get('OPENEMS_BASELINE_BIN')
         if baseline:
             result=solve(os.path.abspath(baseline))
