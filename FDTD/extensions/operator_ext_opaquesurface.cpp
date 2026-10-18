@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "operator_ext_opaquesurface.h"
 #include "engine_ext_opaquesurface.h"
+#include "opaque_surface_union.h"
 #include "FDTD/operator.h"
 #include "CSPrimBox.h"
 #include "CSPropMaterial.h"
@@ -11,11 +12,7 @@
 #include <stdexcept>
 
 namespace {
-struct Box {double lo[3],hi[3]; unsigned int fit;};
-bool interior(const double* c,const Box& b) {
-    for (int n=0;n<3;++n) if (c[n]<=b.lo[n] || c[n]>=b.hi[n]) return false;
-    return true;
-}
+struct Box {double lo[3],hi[3]; unsigned int first[3],last[3],fit;};
 double number(const std::string& s) {
     size_t used=0; double v=std::stod(s,&used);
     if (used!=s.size() || !std::isfinite(v)) throw std::runtime_error("Invalid opaque surface coefficient");
@@ -43,7 +40,10 @@ void Operator_Ext_OpaqueSurface::PreprocessEC()
             if (f.w.back()<=0 || f.tau.back()<=0) throw std::runtime_error("Opaque surface branches must be positive");
         }
         if (f.g<0 || f.w.empty() || f.w.size()>128) throw std::runtime_error("Invalid opaque surface fit order/conductance");
-        unsigned int fi=fits.size(); fits.push_back(f);
+        unsigned int fi=0;
+        for (;fi<fits.size();++fi)
+            if (fits[fi].g==f.g && fits[fi].w==f.w && fits[fi].tau==f.tau) break;
+        if (fi==fits.size()) fits.push_back(f);
         for (auto* primitive:prop->GetAllPrimitives()) {
             auto* box=dynamic_cast<CSPrimBox*>(primitive);
             if (!box || primitive->GetTransform()->HasTransform()) throw std::runtime_error("Opaque surface supports untransformed Cartesian boxes only");
@@ -56,18 +56,22 @@ void Operator_Ext_OpaqueSurface::PreprocessEC()
                     bool inside=false; auto pos=m_Op->SnapToMeshLine(n,value,inside);
                     if (!inside || std::abs(m_Op->GetDiscLine(n,pos)-value)>1e-8)
                         throw std::runtime_error("Opaque surface box faces must coincide with mesh lines");
+                    if (value==b.lo[n]) b.first[n]=pos; else b.last[n]=pos;
                 }
             }
             for (const auto& other:boxes) {
                 bool overlap=true;
                 for (int n=0;n<3;++n) overlap=overlap && b.hi[n]>=other.lo[n] && other.hi[n]>=b.lo[n];
-                if (overlap) throw std::runtime_error("Opaque surface boxes must be disjoint, including their faces");
+                if (overlap && b.fit!=other.fit)
+                    throw std::runtime_error("Touching opaque surface boxes must use identical fits");
             }
             boxes.push_back(b);
         }
     }
     if (boxes.empty()) return;
     if (m_Op_Cyl) throw std::runtime_error("Opaque surface requires Cartesian coordinates");
+    OpaqueSurfaceUnion metal_union(m_Op->GetNumberOfLines(0)-1,m_Op->GetNumberOfLines(1)-1,m_Op->GetNumberOfLines(2)-1);
+    for (const auto& b:boxes) metal_union.Add(b.first,b.last,b.fit);
     const double unit=m_Op->GetGridDelta(), eps0=8.854187817620389e-12;
     unsigned int pos[3];
     // Exclude interior magnetic unknowns: otherwise finite face E drives a
@@ -76,10 +80,8 @@ void Operator_Ext_OpaqueSurface::PreprocessEC()
     for (pos[0]=0;pos[0]+1<m_Op->GetNumberOfLines(0);++pos[0])
     for (pos[1]=0;pos[1]+1<m_Op->GetNumberOfLines(1);++pos[1])
     for (pos[2]=0;pos[2]+1<m_Op->GetNumberOfLines(2);++pos[2]) {
-        double c[3]; m_Op->GetYeeCoords(n,pos,c,true);
-        for (const auto& b:boxes) if (interior(c,b)) {
-            interior_h.push_back({{static_cast<unsigned int>(n),pos[0],pos[1],pos[2]}});break;
-        }
+        if (metal_union.InteriorH(n,pos))
+            interior_h.push_back({{static_cast<unsigned int>(n),pos[0],pos[1],pos[2]}});
     }
     for (unsigned int n=0;n<3;++n)
     for (pos[0]=0;pos[0]<m_Op->GetNumberOfLines(0);++pos[0])
@@ -89,20 +91,24 @@ void Operator_Ext_OpaqueSurface::PreprocessEC()
         double c[3]; m_Op->GetYeeCoords(n,pos,c,false);
         const unsigned int p=(n+1)%3,q=(n+2)%3;
         const double length=m_Op->GetEdgeLength(n,pos);
+        int quadrants[2][2];metal_union.Quadrants(n,pos,quadrants);
         double scale=0; unsigned int fi=0;
-        for (const auto& b:boxes) {
-            if (c[n]<=b.lo[n] || c[n]>=b.hi[n]) continue;
-            for (unsigned int normal : {p,q}) {
-                // A metal face on the outer domain wall has no exterior
-                // half cell and is governed by the domain boundary condition.
-                if (!pos[normal] || pos[normal]+1>=m_Op->GetNumberOfLines(normal)) continue;
-                unsigned int along=3-n-normal;
-                if (c[along]<b.lo[along]-1e-9 || c[along]>b.hi[along]+1e-9) continue;
-                if (std::abs(c[normal]-b.lo[normal])>1e-9 && std::abs(c[normal]-b.hi[normal])>1e-9) continue;
-                double low=pos[along] ? (m_Op->GetDiscLine(along,pos[along]-1)+c[along])/2 : c[along];
-                double high=pos[along]+1<m_Op->GetNumberOfLines(along) ? (m_Op->GetDiscLine(along,pos[along]+1)+c[along])/2 : c[along];
-                scale+=std::max(0.,std::min(high,b.hi[along])-std::max(low,b.lo[along]))*unit/length;
-                fi=b.fit;
+        for (int a=0;a<2;++a) for (int b=0;b<2;++b)
+            if (quadrants[a][b]>=0) fi=quadrants[a][b];
+        // Count each exposed half-face once, independently of primitive
+        // segmentation/overlap. Internal contacts contribute no admittance.
+        for (int side=0;side<2;++side) {
+            if (pos[p] && pos[p]+1<m_Op->GetNumberOfLines(p) &&
+                (quadrants[0][side]>=0)!=(quadrants[1][side]>=0)) {
+                int other=static_cast<int>(pos[q])+(side ? 1:-1);
+                if (other>=0 && other<static_cast<int>(m_Op->GetNumberOfLines(q)))
+                    scale+=std::abs(m_Op->GetDiscLine(q,other)-c[q])*unit/(2*length);
+            }
+            if (pos[q] && pos[q]+1<m_Op->GetNumberOfLines(q) &&
+                (quadrants[side][0]>=0)!=(quadrants[side][1]>=0)) {
+                int other=static_cast<int>(pos[p])+(side ? 1:-1);
+                if (other>=0 && other<static_cast<int>(m_Op->GetNumberOfLines(p)))
+                    scale+=std::abs(m_Op->GetDiscLine(p,other)-c[p])*unit/(2*length);
             }
         }
         if (scale==0) continue;
@@ -121,8 +127,7 @@ void Operator_Ext_OpaqueSurface::PreprocessEC()
             double dp=std::abs(m_Op->GetDiscLine(p,pos[p]+sp)-c[p]);
             double dq=std::abs(m_Op->GetDiscLine(q,pos[q]+sq)-c[q]);
             double sample[3]={c[0],c[1],c[2]};sample[p]+=sp*dp/4;sample[q]+=sq*dq/4;
-            bool metal=false;for (const auto& b:boxes) metal=metal || interior(sample,b);
-            if (metal) continue;
+            if (quadrants[sp>0 ? 1:0][sq>0 ? 1:0]>=0) continue;
             auto* mat=dynamic_cast<CSPropMaterial*>(csx->GetPropertyByCoordPriority(sample,CSProperties::MATERIAL));
             double eps=mat ? mat->GetEpsilonWeighted(n,sample):m_Op->GetBackgroundEpsR();
             double g=mat ? mat->GetKappaWeighted(n,sample):m_Op->GetBackgroundKappa();
