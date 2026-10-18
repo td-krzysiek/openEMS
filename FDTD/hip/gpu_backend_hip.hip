@@ -1162,6 +1162,7 @@ static const HIP_ExtensionFactory HIP_EXTENSIONS[] = {
 	HIP_CreateExt_LorentzMaterial,
 	HIP_CreateExt_DebyeMaterial,
 	HIP_CreateExt_LumpedRLC,
+	HIP_CreateExt_OpaqueSurface,
 	HIP_CreateExt_TFSF,
 	HIP_CreateExt_Absorbing_BC,
 	HIP_CreateExt_SteadyState,

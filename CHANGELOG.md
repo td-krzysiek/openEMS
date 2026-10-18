@@ -15,6 +15,11 @@ there are unreleased changes. It becomes the next release entry.
 
 ### Added
 
+- Metal and HIP/CUDA device updates for the experimental opaque RF surface
+  boundary, including its passive R-L histories and HIP fused-step fixups.
+  The device boundary uses FP32; the CPU boundary keeps FP64. The existing
+  Cartesian, disjoint, conforming-box restrictions and timestep selection
+  remain unchanged. This is not a production antenna/material qualification.
 - **A GPU engine**, `--engine=gpu` (`engine='gpu'` from Python), with a Metal
   backend on macOS and a HIP backend for AMD (ROCm) and NVIDIA (CUDA) GPUs. It
   is selected like the other engines, runs Cartesian and cylindrical meshes
