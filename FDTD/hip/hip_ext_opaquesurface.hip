@@ -2,13 +2,14 @@
 #include "hip/hip_runtime.h"
 #include "hip_internal.h"
 #include "FDTD/gpu_opaquesurface.h"
+#include "FDTD/extensions/operator_ext_opaquesurface.h"
 #include "FDTD/extensions/engine_ext_opaquesurface.h"
 #include <unordered_set>
 
 struct OpaqueData
 {
 	const uint64_t* index;
-	const uint32_t* offset;
+	const uint32_t *offset, *fit_offset;
 	const float *vv, *vi, *a, *b, *memory;
 	float *voltage, *state;
 };
@@ -19,13 +20,14 @@ __global__ void opaque_apply(float* volt, const float* curr, OpaqueData D, uint3
 	if (i>=count) return;
 	const uint64_t* ix=D.index+5*i;
 	const float curl=curr[ix[1]]-curr[ix[2]]-curr[ix[3]]+curr[ix[4]];
+	const uint32_t start=D.offset[i], end=D.offset[i+1], fit=D.fit_offset[i];
 	float mem=0;
-	for (uint32_t j=D.offset[i]; j<D.offset[i+1]; ++j)
-		mem+=D.memory[j]*D.state[j];
+	for (uint32_t j=start; j<end; ++j)
+		mem+=D.memory[fit+j-start]*D.state[j];
 	const float old=D.voltage[i];
 	const float next=D.vv[i]*old+D.vi[i]*(curl-mem);
-	for (uint32_t j=D.offset[i]; j<D.offset[i+1]; ++j)
-		D.state[j]=D.a[j]*D.state[j]+D.b[j]*(next+old);
+	for (uint32_t j=start; j<end; ++j)
+		D.state[j]=D.a[fit+j-start]*D.state[j]+D.b[j]*(next+old);
 	D.voltage[i]=next;
 	volt[ix[0]]=next;
 }
@@ -40,13 +42,14 @@ public:
 		if (!count) return;
 		data.index=d->Alloc<uint64_t>(h.index.size(),h.index.data());
 		data.offset=d->Alloc<uint32_t>(h.offset.size(),h.offset.data());
+		data.fit_offset=d->Alloc<uint32_t>(h.fit_offset.size(),h.fit_offset.data());
 		data.vv=d->Alloc<float>(h.vv.size(),h.vv.data());
 		data.vi=d->Alloc<float>(h.vi.size(),h.vi.data());
 		data.a=d->Alloc<float>(h.a.size(),h.a.data());
 		data.b=d->Alloc<float>(h.b.size(),h.b.data());
 		data.memory=d->Alloc<float>(h.memory.size(),h.memory.data());
 		data.voltage=d->Alloc<float>(count);
-		data.state=d->Alloc<float>(h.a.size());
+		data.state=d->Alloc<float>(h.b.size());
 		// The fused volume step speculates currents before this voltage update.
 		// Register every modified edge so it recomputes the affected currents.
 		for (size_t i=0; i<count; ++i) modified.insert(h.index[5*i]);

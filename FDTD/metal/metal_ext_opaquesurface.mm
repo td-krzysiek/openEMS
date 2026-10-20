@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "metal_internal.h"
 #include "FDTD/gpu_opaquesurface.h"
+#include "FDTD/extensions/operator_ext_opaquesurface.h"
 #include "FDTD/extensions/engine_ext_opaquesurface.h"
 
 static const char* OPAQUE_SOURCE = R"MSL(
@@ -16,18 +17,20 @@ kernel void opaque_apply(device float* volt [[buffer(0)]],
                          device float* voltage [[buffer(9)]],
                          device float* state [[buffer(10)]],
                          constant uint& count [[buffer(11)]],
+                         const device uint* fit_offset [[buffer(12)]],
                          uint i [[thread_position_in_grid]])
 {
 	if (i>=count) return;
 	const ulong k=ulong(5)*i;
 	const float curl=curr[index[k+1]]-curr[index[k+2]]-curr[index[k+3]]+curr[index[k+4]];
+	const uint start=offset[i], end=offset[i+1], fit=fit_offset[i];
 	float mem=0;
-	for (uint j=offset[i]; j<offset[i+1]; ++j)
-		mem+=memory[j]*state[j];
+	for (uint j=start; j<end; ++j)
+		mem+=memory[fit+j-start]*state[j];
 	const float old=voltage[i];
 	const float next=vv[i]*old+vi[i]*(curl-mem);
-	for (uint j=offset[i]; j<offset[i+1]; ++j)
-		state[j]=a[j]*state[j]+b[j]*(next+old);
+	for (uint j=start; j<end; ++j)
+		state[j]=a[fit+j-start]*state[j]+b[j]*(next+old);
 	voltage[i]=next;
 	volt[index[k]]=next;
 }
@@ -43,13 +46,14 @@ public:
 		if (!count) return;
 		index=d->NewBuffer(h.index.size()*sizeof(uint64_t),h.index.data());
 		offset=d->NewBuffer(h.offset.size()*sizeof(uint32_t),h.offset.data());
+		fit_offset=d->NewBuffer(h.fit_offset.size()*sizeof(uint32_t),h.fit_offset.data());
 		vv=d->NewBuffer(h.vv.size()*sizeof(float),h.vv.data());
 		vi=d->NewBuffer(h.vi.size()*sizeof(float),h.vi.data());
 		a=d->NewBuffer(h.a.size()*sizeof(float),h.a.data());
 		b=d->NewBuffer(h.b.size()*sizeof(float),h.b.data());
 		memory=d->NewBuffer(h.memory.size()*sizeof(float),h.memory.data());
 		voltage=d->NewBuffer(count*sizeof(float));
-		state=d->NewBuffer(h.a.size()*sizeof(float));
+		state=d->NewBuffer(h.b.size()*sizeof(float));
 		d->Pipeline(OPAQUE_SOURCE,"opaque_apply");
 	}
 	virtual void Apply2Voltages()
@@ -70,12 +74,13 @@ public:
 		[enc setBuffer:voltage offset:0 atIndex:9];
 		[enc setBuffer:state offset:0 atIndex:10];
 		[enc setBytes:&count length:sizeof(count) atIndex:11];
+		[enc setBuffer:fit_offset offset:0 atIndex:12];
 		d->Dispatch(pso,count);
 	}
 private:
 	GPU_Backend_Metal::Impl* d;
 	uint32_t count;
-	id<MTLBuffer> index, offset, vv, vi, a, b, memory, voltage, state;
+	id<MTLBuffer> index, offset, fit_offset, vv, vi, a, b, memory, voltage, state;
 };
 
 GPU_Extension* Metal_CreateExt_OpaqueSurface(GPU_Backend_Metal::Impl* d, Engine_Extension* ext, Engine* eng)
