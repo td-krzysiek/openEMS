@@ -326,6 +326,24 @@ ENDIF()
 
 add_library( openEMS SHARED ${SOURCES})
 
+# Experimental internal domain runtime. Existing engines and language frontends
+# keep their selection and behavior; this does not add an antenna-ready mode.
+option(ENABLE_DOMAIN_RUNTIME "Build experimental backend-independent domain runtime" OFF)
+if(ENABLE_DOMAIN_RUNTIME)
+  add_subdirectory(FDTD/distributed)
+  add_library(openEMS_domain_operator STATIC FDTD/distributed/operator_slice.cpp)
+  set_target_properties(openEMS_domain_operator PROPERTIES CXX_STANDARD 11 POSITION_INDEPENDENT_CODE ON)
+  target_link_libraries(openEMS_domain_operator PUBLIC openEMS_domain_runtime openEMS)
+  if(OPENEMS_DOMAIN_TESTS)
+    enable_testing()
+    add_executable(test_domain_operator TESTSUITE/distributed/test_operator.cpp)
+    target_link_libraries(test_domain_operator openEMS_domain_operator)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+      target_compile_options(test_domain_operator PRIVATE -ffp-contract=off)
+    endif()
+  endif()
+endif()
+
 IF(ENABLE_HIP AND OPENEMS_HIP_AS_CUDA)
   target_include_directories( openEMS PRIVATE ${HIP_INCLUDE_DIR} )
   target_compile_definitions( openEMS PRIVATE __HIP_PLATFORM_NVIDIA__=1 )

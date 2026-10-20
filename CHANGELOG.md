@@ -98,6 +98,11 @@ there are unreleased changes. It becomes the next release entry.
 
 ### Build
 
+- Optional internal domain-runtime library (`ENABLE_DOMAIN_RUNTIME`, off by
+  default), with backend-independent ownership/coordination, a CPU executor
+  and optional MPI halo/collective adapters. Dynamic solver extensions and
+  production antenna processing are not supported by this experimental path.
+
 - `ENABLE_HIP` and `ENABLE_METAL` CMake options for the GPU backends. HIP
   (CMake 3.28) is on when a HIP compiler is found. `OPENEMS_HIP_AS_CUDA`
   compiles the same sources as CUDA, for NVIDIA GPUs without a HIP compiler
