@@ -7,12 +7,19 @@
 #include <string>
 #include <vector>
 
-namespace openems { namespace distributed {
+namespace openems
+{
+namespace distributed
+{
 
 size_t CheckedAdd(size_t a, size_t b);
 size_t CheckedMultiply(size_t a, size_t b);
 
-enum class FieldPhase : uint64_t { Voltage=0, Current=1 };
+enum class FieldPhase : uint64_t
+{
+	Voltage = 0,
+	Current = 1
+};
 
 struct GridShape
 {
@@ -48,10 +55,27 @@ class PartitionPlan
 {
 public:
 	PartitionPlan(uint64_t id, GridShape shape, const std::vector<uint32_t>& cuts);
-	uint64_t Id() const {return m_Id;}
-	const GridShape& Shape() const {return m_Shape;}
-	const std::vector<Domain>& Domains() const {return m_Domains;}
-	const std::vector<HaloRecipe>& Halos() const {return m_Halos;}
+
+	uint64_t Id() const
+	{
+		return m_Id;
+	}
+
+	const GridShape& Shape() const
+	{
+		return m_Shape;
+	}
+
+	const std::vector<Domain>& Domains() const
+	{
+		return m_Domains;
+	}
+
+	const std::vector<HaloRecipe>& Halos() const
+	{
+		return m_Halos;
+	}
+
 	uint32_t Owner(uint32_t global_x) const;
 
 private:
@@ -87,5 +111,6 @@ struct MessageId
 	bool operator==(const MessageId& other) const;
 };
 
-} }
+}
+}
 #endif

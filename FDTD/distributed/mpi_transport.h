@@ -5,7 +5,10 @@
 #include "runtime.h"
 #include <mpi.h>
 
-namespace openems { namespace distributed {
+namespace openems
+{
+namespace distributed
+{
 
 // Optional adapter. MPI initialization/finalization belongs to the application.
 // All methods and token progress run on the initializing MPI thread.
@@ -18,6 +21,7 @@ public:
 	CompletionPtr Send(const MessageId&, HostBuffer) override;
 	void Progress() override;
 	void Fail(const std::string&) override;
+
 private:
 	struct Impl;
 	std::shared_ptr<Impl> m_Impl;
@@ -32,10 +36,12 @@ public:
 	double Sum(double) override;
 	bool All(bool) override;
 	void Fail(const std::string&) override;
+
 private:
 	MPI_Comm m_Comm;
 	double Reduce(double, MPI_Op);
 };
 
-} }
+}
+}
 #endif
