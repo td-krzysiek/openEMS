@@ -74,6 +74,9 @@ there are unreleased changes. It becomes the next release entry.
 
 ### Changed
 
+- Share experimental opaque-surface GPU `a` and memory coefficients per fit
+  instead of per edge on HIP and Metal, preserving per-edge states and scales.
+
 - The Python bindings need Python 3.6 or newer (was 3.4), the oldest version
   CI still tests; CentOS 7 and Ubuntu 14.04 are no longer tested.
 - Time-domain HDF5 field dumps are written in the background instead of
