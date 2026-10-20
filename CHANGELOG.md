@@ -76,6 +76,9 @@ there are unreleased changes. It becomes the next release entry.
 
 - Share experimental opaque-surface GPU `a` and memory coefficients per fit
   instead of per edge on HIP and Metal, preserving per-edge states and scales.
+- HIP/CUDA UPML stores either exact compressed coefficient sets or full
+  arrays, rather than both. Separate pre/post updates also use compressed
+  sets, so the memory saving does not require UPML fusion.
 
 - The Python bindings need Python 3.6 or newer (was 3.4), the oldest version
   CI still tests; CentOS 7 and Ubuntu 14.04 are no longer tested.
