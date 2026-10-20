@@ -4,6 +4,21 @@ Internal C++11 building blocks for one Cartesian FDTD problem across compute
 resources. This is not an antenna-ready engine or a new `--engine` selection.
 Existing CPU/GPU engines and Python/Matlab interfaces remain unchanged.
 
+## Code style
+
+Use explicit braces for every conditional and loop, including one-statement
+bodies. Expand functions and control flow over multiple lines. The scoped
+`.clang-format` configuration uses Allman braces, four-column tab indentation
+and a 100-column limit (checked with clang-format 23.1.3).
+
+Apply the same configuration to the executor and test files:
+
+```sh
+clang-format --style=file:FDTD/distributed/.clang-format -i \
+  FDTD/distributed/*.{h,cpp} FDTD/hip/hip_domain_executor.{h,hip} \
+  TESTSUITE/distributed/*.{h,cpp}
+```
+
 ## Boundaries
 
 | Layer | Responsibility |
