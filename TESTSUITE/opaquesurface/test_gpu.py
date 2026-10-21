@@ -22,7 +22,7 @@ import xml.etree.ElementTree as ET
 HERE=Path(__file__).resolve().parent
 
 
-def fixture(rotation,pec=False):
+def fixture(rotation,pec=False,uniform=False):
     root=ET.parse(HERE/'graded_microstrip.xml').getroot()
     fdtd=root.find('FDTD')
     fdtd.set('NumberOfTimesteps','6000');fdtd.set('endCriteria','0')
@@ -49,6 +49,10 @@ def fixture(rotation,pec=False):
         if rotation==2:
             fit='0.3'+''.join(';{},{}'.format(.2+.001*j,(j+1)*1e-13) for j in range(128))
             metals[1].find('Attributes').set('ExperimentalOpaqueSurfaceV1',fit)
+        if uniform:
+            # Exercise the tiled device layout, including 128-pole histories.
+            fit=metals[1].find('Attributes').get('ExperimentalOpaqueSurfaceV1')
+            metals[0].find('Attributes').set('ExperimentalOpaqueSurfaceV1',fit)
     if rotation:
         # Permute all coordinates and component vectors together, including
         # material/excitation boxes, probes and mesh. All PML faces are equal.
@@ -98,10 +102,13 @@ class OpaqueGPU(unittest.TestCase):
         with tempfile.TemporaryDirectory(prefix='openems-opaque-gpu-') as temp:
             output=os.environ.get('OPENEMS_TEST_OUTPUT')
             parent=Path(output)/'compact' if output else Path(temp)
-            for rotation,pec in [(0,False),(1,False),(2,False),(0,True)]:
-                root=fixture(rotation,pec);reference=None
+            cases=[(0,False,False),(1,False,False),(2,False,False),(0,True,False)]
+            cases += [(r,False,True) for r in range(3)]
+            for rotation,pec,uniform in cases:
+                root=fixture(rotation,pec,uniform);reference=None
                 for engine in engines:
-                    folder=parent/('r{}-{}-{}'.format(rotation,'pec' if pec else 'surface',engine))
+                    kind='pec' if pec else ('uniform' if uniform else 'surface')
+                    folder=parent/('r{}-{}-{}'.format(rotation,kind,engine))
                     traces,text=run(binary,folder,root,engine)
                     if not pec:self.assertIn('EXPERIMENTAL_OPAQUE_SURFACE_V1 active:',text)
                     errors={}
@@ -122,7 +129,7 @@ class OpaqueGPU(unittest.TestCase):
                             complex_error=max(complex_error,delta)
                         errors[name]={'peak_relative':error,'complex_relative':complex_error}
                     (folder/'comparison.json').write_text(json.dumps(dict(engine=engine,
-                        rotation=rotation,pec=pec,errors=errors,
+                        rotation=rotation,pec=pec,uniform=uniform,errors=errors,
                         binary_sha256=hashlib.sha256(Path(binary).read_bytes()).hexdigest()),indent=2)+'\n')
 
 
