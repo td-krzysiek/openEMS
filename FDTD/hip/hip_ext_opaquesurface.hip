@@ -12,22 +12,40 @@ struct OpaqueData
 	const uint32_t *offset, *fit_offset;
 	const float *vv, *vi, *a, *b, *memory;
 	float *voltage, *state;
+	uint32_t pole_count;
 };
 
 __global__ void opaque_apply(float* volt, const float* curr, OpaqueData D, uint32_t count)
 {
 	const size_t i = size_t(blockIdx.x)*blockDim.x+threadIdx.x;
-	if (i>=count) return;
+	if (i>=count)
+	{
+		return;
+	}
 	const uint64_t* ix=D.index+5*i;
 	const float curl=curr[ix[1]]-curr[ix[2]]-curr[ix[3]]+curr[ix[4]];
-	const uint32_t start=D.offset[i], end=D.offset[i+1], fit=D.fit_offset[i];
+	uint32_t start = D.offset[i];
+	const uint32_t poles = D.offset[i+1] - start;
+	const uint32_t fit = D.fit_offset[i];
+	uint32_t stride = 1;
+	if (D.pole_count)
+	{
+		const uint32_t first = uint32_t(i) - uint32_t(i) % GPU_OpaqueSurfaceData::TileWidth;
+		stride = min(uint32_t(GPU_OpaqueSurfaceData::TileWidth), count - first);
+		start = first * D.pole_count + uint32_t(i) - first;
+	}
 	float mem=0;
-	for (uint32_t j=start; j<end; ++j)
-		mem+=D.memory[fit+j-start]*D.state[j];
+	for (uint32_t j = 0; j < poles; ++j)
+	{
+		mem += D.memory[fit+j] * D.state[start+j*stride];
+	}
 	const float old=D.voltage[i];
 	const float next=D.vv[i]*old+D.vi[i]*(curl-mem);
-	for (uint32_t j=start; j<end; ++j)
-		D.state[j]=D.a[fit+j-start]*D.state[j]+D.b[j]*(next+old);
+	for (uint32_t j = 0; j < poles; ++j)
+	{
+		const uint32_t k = start + j * stride;
+		D.state[k] = D.a[fit+j]*D.state[k]+D.b[k]*(next+old);
+	}
 	D.voltage[i]=next;
 	volt[ix[0]]=next;
 }
@@ -39,7 +57,11 @@ public:
 	    : d(impl), count(static_cast<uint32_t>(op->edges.size()))
 	{
 		GPU_OpaqueSurfaceData h(*op,d->dim.nx,d->dim.ny,d->dim.nz);
-		if (!count) return;
+		if (!count)
+		{
+			return;
+		}
+		data.pole_count = h.pole_count;
 		data.index=d->Alloc<uint64_t>(h.index.size(),h.index.data());
 		data.offset=d->Alloc<uint32_t>(h.offset.size(),h.offset.data());
 		data.fit_offset=d->Alloc<uint32_t>(h.fit_offset.size(),h.fit_offset.data());
@@ -65,8 +87,11 @@ public:
 	}
 	virtual void Apply2Voltages()
 	{
-		if (count) HIP_Launch(d,"opaque_apply",opaque_apply,count,1,1,d->volt,
-		                     static_cast<const float*>(d->curr),data,count);
+		if (count)
+		{
+			HIP_Launch(d,"opaque_apply",opaque_apply,count,1,1,d->volt,
+			           static_cast<const float*>(d->curr),data,count);
+		}
 	}
 private:
 	GPU_Backend_HIP::Impl* d;
@@ -78,7 +103,10 @@ private:
 GPU_Extension* HIP_CreateExt_OpaqueSurface(GPU_Backend_HIP::Impl* d, Engine_Extension* ext, Engine* eng)
 {
 	UNUSED(eng);
-	if (!dynamic_cast<Engine_Ext_OpaqueSurface*>(ext)) return NULL;
+	if (!dynamic_cast<Engine_Ext_OpaqueSurface*>(ext))
+	{
+		return NULL;
+	}
 	auto* op=dynamic_cast<Operator_Ext_OpaqueSurface*>(ext->GetOperatorExtension());
 	return op ? new HIP_Ext_OpaqueSurface(d,op) : NULL;
 }

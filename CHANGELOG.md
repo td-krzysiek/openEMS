@@ -74,6 +74,10 @@ there are unreleased changes. It becomes the next release entry.
 
 ### Changed
 
+- Store uniform-order experimental opaque-surface GPU histories and scaled
+  coefficients in compact 32-edge tiles on HIP and Metal, without padding or
+  changing the per-edge FP32 arithmetic. Mixed orders keep edge-major storage.
+
 - Share experimental opaque-surface GPU `a` and memory coefficients per fit
   instead of per edge on HIP and Metal, preserving per-edge states and scales.
 

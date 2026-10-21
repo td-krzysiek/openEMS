@@ -3,6 +3,7 @@
 #define GPU_OPAQUESURFACE_H
 
 #include <cmath>
+#include <algorithm>
 #include <cstdint>
 #include <limits>
 #include <stdexcept>
@@ -16,12 +17,29 @@ struct GPU_OpaqueSurfaceData
 	std::vector<uint64_t> index; // voltage, Hq, Hq(low p), Hp, Hp(low q)
 	std::vector<uint32_t> offset, fit_offset; // per-edge state and shared-fit starts
 	std::vector<float> vv, vi, a, b, memory;
+	// Uniform-order histories are pole-major within compact 32-edge tiles.
+	// A partial last tile has no padding. Mixed orders retain edge-major storage.
+	enum { TileWidth = 32 };
+	uint32_t pole_count = 0;
+
+	uint32_t StateIndex(uint32_t edge, uint32_t pole) const
+	{
+		if (!pole_count)
+		{
+			return offset[edge] + pole;
+		}
+		const uint32_t first = edge - edge % TileWidth;
+		const uint32_t lanes = std::min(uint32_t(TileWidth), uint32_t(vv.size()) - first);
+		return first * pole_count + pole * lanes + edge - first;
+	}
 
 	static float Coefficient(double v)
 	{
 		const float f = static_cast<float>(v);
 		if (!std::isfinite(f) || (v!=0 && f==0))
+		{
 			throw std::runtime_error("Opaque surface coefficient is outside GPU FP32 range");
+		}
 		return f;
 	}
 
@@ -31,18 +49,41 @@ struct GPU_OpaqueSurfaceData
 	                      uint32_t nx, uint32_t ny, uint32_t nz)
 	{
 		if (op.edges.size()>std::numeric_limits<uint32_t>::max())
+		{
 			throw std::runtime_error("Too many opaque GPU edges");
+		}
 		const uint64_t stride[3] = {uint64_t(ny)*nz, nz, 1};
 		const uint64_t cells = uint64_t(nx)*ny*nz;
 		std::vector<uint32_t> fit_start(op.fits.size(),std::numeric_limits<uint32_t>::max());
 		offset.push_back(0);
+		bool uniform = true;
 		for (const auto& e : op.edges)
 		{
 			const auto& fit = op.fits.at(e.fit);
 			if (fit.w.empty() || fit.w.size()!=fit.tau.size() ||
 			    fit.w.size()>std::numeric_limits<uint32_t>::max() ||
-			    b.size()>std::numeric_limits<uint32_t>::max()-fit.w.size())
+			    offset.back()>std::numeric_limits<uint32_t>::max()-fit.w.size())
+			{
 				throw std::runtime_error("Too many opaque GPU branches");
+			}
+			if (offset.size() == 1)
+			{
+				pole_count = static_cast<uint32_t>(fit.w.size());
+			}
+			uniform = uniform && fit.w.size() == pole_count;
+			offset.push_back(offset.back() + static_cast<uint32_t>(fit.w.size()));
+		}
+		if (!uniform)
+		{
+			pole_count = 0;
+		}
+		// Pack directly: no second full-size host or device coefficient array.
+		b.resize(offset.back());
+		vv.reserve(op.edges.size());
+		vi.reserve(op.edges.size());
+		for (const auto& e : op.edges)
+		{
+			const auto& fit = op.fits[e.fit];
 			if (fit_start[e.fit]==std::numeric_limits<uint32_t>::max())
 			{
 				fit_start[e.fit]=static_cast<uint32_t>(a.size());
@@ -62,10 +103,18 @@ struct GPU_OpaqueSurfaceData
 			index.push_back(q*cells+node-(e.pos[p] ? stride[p] : 0));
 			index.push_back(p*cells+node);
 			index.push_back(p*cells+node-(e.pos[q] ? stride[q] : 0));
-			vv.push_back(Coefficient(e.vv)); vi.push_back(Coefficient(e.vi));
+			vv.push_back(Coefficient(e.vv));
+			vi.push_back(Coefficient(e.vi));
+		}
+		for (uint32_t i = 0; i < op.edges.size(); ++i)
+		{
+			const auto& e = op.edges[i];
+			const auto& fit = op.fits[e.fit];
 			for (size_t j=0; j<fit.w.size(); ++j)
-				b.push_back(Coefficient(op.dt*fit.w[j]*e.scale/(2*fit.tau[j]+op.dt)));
-			offset.push_back(static_cast<uint32_t>(b.size()));
+			{
+				b[StateIndex(i, static_cast<uint32_t>(j))] =
+				    Coefficient(op.dt*fit.w[j]*e.scale/(2*fit.tau[j]+op.dt));
+			}
 		}
 	}
 };
