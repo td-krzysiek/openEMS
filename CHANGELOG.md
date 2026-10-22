@@ -15,11 +15,6 @@ there are unreleased changes. It becomes the next release entry.
 
 ### Added
 
-- Opt-in `--dft-snapshots` requests export accumulated E/H HDF5 data at a
-  timestep boundary without stopping or resetting DFT sums. Snapshot directories
-  are published atomically and labelled unconverged with sample timing. Python
-  and Matlab request helpers are provided; final field dumps are unchanged.
-
 - Treat touching/overlapping conforming boxes with identical experimental
   opaque-surface fits as one conductor, excluding internal contact faces.
   Different-fit contacts are rejected. CPU/GPU updates are unchanged.
