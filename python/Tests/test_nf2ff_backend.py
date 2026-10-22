@@ -148,6 +148,33 @@ class TestNF2FFBackend(unittest.TestCase):
         np.testing.assert_allclose(gpu.E_phi[0], cpu.E_phi[0], atol=1e-4*peak)
         np.testing.assert_allclose(gpu.Dmax, cpu.Dmax, rtol=1e-4)
 
+    def test_mirrored_planes_match_cpu(self):
+        if not self.gpu:
+            self.skipTest('no GPU backend')
+        # This is a linear-transform comparison, not a physical mirrored antenna.
+        # Offset the mirror: an origin mirror can cancel this symmetric full
+        # box, making a peak-relative error and Dmax comparison ill-conditioned.
+        for mirrors in [[(1, 0)], [(2, 1)], [(1, 0), (2, 2)]]:
+            results = []
+            for backend in ['cpu', 'gpu']:
+                transform = _nf2ff._nf2ff([FREQ], THETA, PHI, [0, 0, 0], numThreads=2)
+                transform.SetBackend(backend)
+                for kind, axis in mirrors:
+                    transform.SetMirror(kind, axis, 0.08)
+                for face in range(6):
+                    self.assertTrue(transform.AnalyseFile(
+                        os.path.join(self.tmp, 'nf2ff_E_%d.h5' % face),
+                        os.path.join(self.tmp, 'nf2ff_H_%d.h5' % face)))
+                output = os.path.join(self.tmp, 'mirror-' + backend + '.h5')
+                transform.Write2HDF5(output)
+                results.append(nf2ff_results(output))
+            cpu, gpu = results
+            peak = max(float(np.max(np.abs(cpu.E_norm[0]))), 1e-30)
+            np.testing.assert_allclose(gpu.E_theta[0], cpu.E_theta[0], atol=1e-4 * peak)
+            np.testing.assert_allclose(gpu.E_phi[0], cpu.E_phi[0], atol=1e-4 * peak)
+            np.testing.assert_allclose(gpu.Dmax, cpu.Dmax, rtol=1e-4)
+            np.testing.assert_allclose(gpu.Prad, cpu.Prad, rtol=1e-6, atol=1e-12)
+
     def test_gpu_unavailable_is_an_error(self):
         """Asking for the GPU must fail, not silently run on the CPU."""
         if self.gpu:

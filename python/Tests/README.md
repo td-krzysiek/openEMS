@@ -122,3 +122,8 @@ because every script here passes its own options to `FDTD.Run` and the
 `openEMS` extension type cannot be patched from the outside. Checking that the
 engines agree is `TESTSUITE/enginetests/engine_compare`'s job anyway, and it is
 not specific to the language bindings.
+
+The opt-in native snapshot and NF2FF timing controls live under
+`tests/manual/` at the repository root. They require an explicit binary/device
+and output directory and therefore are not automatic full-suite scripts. See
+`DFT_SNAPSHOTS.md`.
