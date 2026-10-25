@@ -132,7 +132,15 @@ protected:
 Metal_Ext_LumpedRLC::Metal_Ext_LumpedRLC(GPU_Backend_Metal::Impl* impl, Operator_Ext_LumpedRLC* op_ext)
 {
 	d = impl;
-	const unsigned int count = op_ext->RLC_count;
+	std::vector<unsigned int> owned;
+	for (unsigned int p = 0; p < op_ext->RLC_count; ++p)
+	{
+		if (d->domain.Owns(op_ext->v_RLC_pos[0][p]))
+		{
+			owned.push_back(p);
+		}
+	}
+	const unsigned int count = static_cast<unsigned int>(owned.size());
 	m_Param.count = count;
 	// slot order as initialized by the host: v_Vdn[k] and v_Jn[k] in slot k
 	m_Param.vd0 = 0; m_Param.vd1 = 1; m_Param.vd2 = 2;
@@ -143,26 +151,42 @@ Metal_Ext_LumpedRLC::Metal_Ext_LumpedRLC(GPU_Backend_Metal::Impl* impl, Operator
 
 	std::vector<uint32_t> index(count);
 	std::set<uint32_t> edges;
-	for (unsigned int p=0; p<count; ++p)
+	for (unsigned int q = 0; q < count; ++q)
 	{
-		index[p] = ((op_ext->v_RLC_dir[p]*d->dim.nx + op_ext->v_RLC_pos[0][p])*d->dim.ny + op_ext->v_RLC_pos[1][p])*d->dim.nz + op_ext->v_RLC_pos[2][p];
-		if (!edges.insert(index[p]).second)
+		const unsigned int p = owned[q];
+		index[q] = ((op_ext->v_RLC_dir[p] * d->dim.nx + d->domain.LocalX(op_ext->v_RLC_pos[0][p])) *
+		                   d->dim.ny +
+		               op_ext->v_RLC_pos[1][p]) *
+		        d->dim.nz +
+		    op_ext->v_RLC_pos[2][p];
+		if (!edges.insert(index[q]).second)
+		{
 			m_Serial = true;
+		}
 	}
 	const size_t bytes = count*sizeof(float);
+	auto upload = [&](const FDTD_FLOAT* source)
+	{
+		std::vector<float> values;
+		for (unsigned int p : owned)
+		{
+			values.push_back(source[p]);
+		}
+		return d->NewBuffer(bytes, values.data());
+	};
 	m_Index = d->NewBuffer(count*sizeof(uint32_t), index.data());
 	m_Il = d->NewBuffer(bytes);
 	m_Vd = d->NewBuffer(3*bytes);
 	m_J  = d->NewBuffer(3*bytes);
-	m_ilv = d->NewBuffer(bytes, op_ext->v_RLC_ilv);
-	m_i2v = d->NewBuffer(bytes, op_ext->v_RLC_i2v);
-	m_vv2 = d->NewBuffer(bytes, op_ext->v_RLC_vv2);
-	m_vj1 = d->NewBuffer(bytes, op_ext->v_RLC_vj1);
-	m_vj2 = d->NewBuffer(bytes, op_ext->v_RLC_vj2);
-	m_vvd = d->NewBuffer(bytes, op_ext->v_RLC_vvd);
-	m_ib0 = d->NewBuffer(bytes, op_ext->v_RLC_ib0);
-	m_b1  = d->NewBuffer(bytes, op_ext->v_RLC_b1);
-	m_b2  = d->NewBuffer(bytes, op_ext->v_RLC_b2);
+	m_ilv = upload(op_ext->v_RLC_ilv);
+	m_i2v = upload(op_ext->v_RLC_i2v);
+	m_vv2 = upload(op_ext->v_RLC_vv2);
+	m_vj1 = upload(op_ext->v_RLC_vj1);
+	m_vj2 = upload(op_ext->v_RLC_vj2);
+	m_vvd = upload(op_ext->v_RLC_vvd);
+	m_ib0 = upload(op_ext->v_RLC_ib0);
+	m_b1 = upload(op_ext->v_RLC_b1);
+	m_b2 = upload(op_ext->v_RLC_b2);
 
 	d->Pipeline(RLC_SOURCE, "rlc_pre");
 	d->Pipeline(RLC_SOURCE, m_Serial ? "rlc_apply_serial" : "rlc_apply");

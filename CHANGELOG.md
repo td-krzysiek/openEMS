@@ -15,6 +15,18 @@ there are unreleased changes. It becomes the next release entry.
 
 ### Added
 
+- Experimental native GPU X-domain adapter behind `ENABLE_DOMAIN_RUNTIME`,
+  selected with `--gpu-devices=0,1`. HIP slices preserve native excitation,
+  UPML, lumped-RLC and opaque-surface ownership and exchange corrected
+  tangential halos after each half-step. Unsupported device extensions fail
+  explicitly. This initial local-host path does not enable distributed MPI
+  antenna execution or promise a speedup over the fused single-device engine.
+  Metal also supports the domain executor, with a non-installed test plugin
+  for two/three logical partitions on one physical GPU. Domain energy checks
+  exclude halo planes on both device backends.
+  Optional `--gpu-domain-cuts` selects fixed uneven ownership for different
+  device capacities; it does not perform adaptive balancing.
+
 - Generic in-memory pause/continue/stop requests and opt-in post-pulse decay
   gates share startup qualification's native wait mechanism. Decay gates
   publish DFT snapshots for an external NF2FF controller without resetting
@@ -107,6 +119,11 @@ there are unreleased changes. It becomes the next release entry.
 
 ### Changed
 
+- Native domain execution copies the physical lower-boundary current halo
+  within the device when supported, avoiding two device-to-host and two
+  host-to-device plane transfers per timestep. Other backends retain the
+  existing staged fallback.
+
 - Store uniform-order experimental opaque-surface GPU histories and scaled
   coefficients in compact 32-edge tiles on HIP and Metal, without padding or
   changing the per-edge FP32 arithmetic. Mixed orders keep edge-major storage.
@@ -148,6 +165,11 @@ there are unreleased changes. It becomes the next release entry.
   closed.
 
 ### Build
+
+- Optional internal domain-runtime library (`ENABLE_DOMAIN_RUNTIME`, off by
+  default), with backend-independent ownership/coordination, a CPU executor
+  and optional MPI halo/collective adapters. Dynamic solver extensions and
+  production antenna processing are not supported by this experimental path.
 
 - `ENABLE_HIP` and `ENABLE_METAL` CMake options for the GPU backends. HIP
   (CMake 3.28) is on when a HIP compiler is found. `OPENEMS_HIP_AS_CUDA`

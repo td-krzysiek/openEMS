@@ -412,8 +412,12 @@ __global__ void update_currents_nodes(const float* __restrict__ curr_in, float* 
 
 // Field energy: the squared voltages and currents of the nodes below L, summed along x
 // in float, one thread per (y,z) line. The host sums the lines in double.
-__global__ void energy_lines(const float* __restrict__ volt, const float* __restrict__ curr, float2* partial,
-                             HIP_GridDim N, HIP_GridDim L)
+__global__ void energy_lines(const float* __restrict__ volt,
+    const float* __restrict__ curr,
+    float2* partial,
+    HIP_GridDim N,
+    HIP_GridDim L,
+    unsigned int first_x)
 {
 	const unsigned int z = blockIdx.x*blockDim.x + threadIdx.x;
 	const unsigned int y = blockIdx.y*blockDim.y + threadIdx.y;
@@ -423,7 +427,7 @@ __global__ void energy_lines(const float* __restrict__ volt, const float* __rest
 	float E = 0, H = 0;
 	for (unsigned int x=0; x<L.nx; ++x)
 	{
-		const size_t i = nijk(N, 0, x, y, z);
+		const size_t i = nijk(N, 0, x + first_x, y, z);
 		E += volt[i]*volt[i];
 		E += volt[sn+i]*volt[sn+i];
 		E += volt[2*sn+i]*volt[2*sn+i];
@@ -876,6 +880,12 @@ bool GPU_Backend_HIP::Init(const Operator* op)
 	unsigned int numLines[3];
 	for (int n=0; n<3; ++n)
 		numLines[n] = op->GetNumberOfLines(n, true);
+	if (d->domain.enabled)
+	{
+		numLines[0] = d->domain.LocalLines();
+		// A corrected E halo must arrive before any H update in another domain.
+		++d->fused_blockers;
+	}
 	d->dim.nx = numLines[0];
 	d->dim.ny = numLines[1];
 	d->dim.nz = numLines[2];
@@ -922,7 +932,13 @@ bool GPU_Backend_HIP::Init(const Operator* op)
 	// Most nodes share one of a few coefficient sets (same material and mesh spacing): store
 	// every distinct set of the 12 coefficients of a node once and a set index per node
 	GPU_CoeffSets sets;
-	if (GPU_FindSets(d->numCells, 12, [&](size_t i, float* values) {GPU_NodeCoefficients(op, numLines, i, values);}, sets))
+	if (GPU_FindSets(d->numCells,
+	        12,
+	        [&](size_t i, float* values)
+	{
+		d->domain.Coefficients(op, numLines, i, values);
+	},
+	        sets))
 	{
 		d->coeff_mode = sets.mode;
 		d->index = d->AllocIndex(sets);
@@ -936,12 +952,49 @@ bool GPU_Backend_HIP::Init(const Operator* op)
 	// the full arrays, one host copy at a time
 	d->coeff_mode = 0;
 	std::vector<float> values;
-	auto upload = [&](int c) {GPU_CoefficientArray(op, numLines, c, values); return d->Alloc<float>(count, values.data());};
+	auto upload = [&](int c)
+	{
+		if (!d->domain.enabled)
+		{
+			GPU_CoefficientArray(op, numLines, c, values);
+		}
+		else
+		{
+			values.resize(count);
+			for (size_t i = 0; i < d->numCells; ++i)
+			{
+				float coefficients[12];
+				d->domain.Coefficients(op, numLines, i, coefficients);
+				for (unsigned int n = 0; n < 3; ++n)
+				{
+					values[n * d->numCells + i] = coefficients[3 * c + n];
+				}
+			}
+		}
+		return d->Alloc<float>(count, values.data());
+	};
 	d->vv = upload(0);
 	d->vi = upload(1);
 	d->ii = upload(2);
 	d->iv = upload(3);
 	return true;
+}
+
+bool GPU_Backend_HIP::InitDomain(const Operator* op, unsigned int begin, unsigned int end)
+{
+	d->domain.enabled = true;
+	d->domain.begin = begin;
+	d->domain.end = end;
+	for (int n = 0; n < 3; ++n)
+	{
+		d->domain.global[n] = op->GetNumberOfLines(n, true);
+	}
+	return Init(op);
+}
+
+void GPU_Backend_HIP::Activate()
+{
+	HIP_Check(hipSetDevice(d->ctx->device), "activate domain device");
 }
 
 void GPU_Backend_HIP::UpdateVoltages()
@@ -1053,6 +1106,41 @@ bool GPU_Backend_HIP::DownloadRange(bool currents, size_t offset, size_t count, 
 		return false;
 	const float* src = (currents ? d->curr : d->volt) + offset;
 	HIP_Check(hipMemcpyAsync(dst, src, count*sizeof(float), hipMemcpyDeviceToHost, d->Stream()), "range download");
+	d->Flush();
+	return true;
+}
+
+bool GPU_Backend_HIP::CopyRange(bool currents, size_t source, size_t destination, size_t count)
+{
+	const size_t size = 3 * d->numCells;
+	if (source > size || count > size - source || destination > size || count > size - destination)
+	{
+		return false;
+	}
+	if (!count || source == destination)
+	{
+		return true;
+	}
+	if (source < destination + count && destination < source + count)
+	{
+		return false;
+	}
+	float* field = currents ? d->curr : d->volt;
+	HIP_Check(hipMemcpyAsync(field + destination, field + source, count * sizeof(float),
+	              hipMemcpyDeviceToDevice, d->Stream()),
+	    "device-local field copy");
+	return true;
+}
+
+bool GPU_Backend_HIP::UploadRange(bool currents, size_t offset, size_t count, const FDTD_FLOAT* src)
+{
+	if (offset > 3 * d->numCells || count > 3 * d->numCells - offset)
+	{
+		return false;
+	}
+	float* dst = (currents ? d->curr : d->volt) + offset;
+	HIP_Check(hipMemcpyAsync(dst, src, count * sizeof(float), hipMemcpyHostToDevice, d->Stream()),
+	    "domain range upload");
 	d->Flush();
 	return true;
 }
@@ -1217,8 +1305,21 @@ bool GPU_Backend_HIP::CalcFastEnergy(const unsigned int numNodes[3], double& E_e
 {
 	E_energy = H_energy = 0;
 	HIP_GridDim L = {numNodes[0], numNodes[1], numNodes[2]};
-	if ((L.nx>d->dim.nx) || (L.ny>d->dim.ny) || (L.nz>d->dim.nz))
+	unsigned int first_x = 0;
+	if (d->domain.enabled)
+	{
+		if (L.nx > d->domain.global[0] || L.ny > d->domain.global[1] || L.nz > d->domain.global[2])
+		{
+			return false;
+		}
+		const unsigned int stop = std::min(L.nx, d->domain.end);
+		L.nx = stop > d->domain.begin ? stop - d->domain.begin : 0;
+		first_x = 1; // Exclude both halo planes from the global energy sum.
+	}
+	else if ((L.nx > d->dim.nx) || (L.ny > d->dim.ny) || (L.nz > d->dim.nz))
+	{
 		return false;
+	}
 	const size_t count = (size_t)L.ny*L.nz;
 	if (L.nx==0 || count==0)
 		return true;
@@ -1228,7 +1329,18 @@ bool GPU_Backend_HIP::CalcFastEnergy(const unsigned int numNodes[3], double& E_e
 		d->energy_count = count;
 		d->energy_host.resize(count);   // small, not pinned
 	}
-	HIP_Launch(d, "energy_lines", energy_lines, L.nz, L.ny, 1, (const float*)d->volt, (const float*)d->curr, d->energy, d->dim, L);
+	HIP_Launch(d,
+	    "energy_lines",
+	    energy_lines,
+	    L.nz,
+	    L.ny,
+	    1,
+	    (const float*)d->volt,
+	    (const float*)d->curr,
+	    d->energy,
+	    d->dim,
+	    L,
+	    first_x);
 	HIP_Check(hipMemcpyAsync(d->energy_host.data(), d->energy, count*sizeof(float2), hipMemcpyDeviceToHost, d->Stream()), "energy download");
 	d->Flush();
 	for (size_t k=0; k<count; ++k)

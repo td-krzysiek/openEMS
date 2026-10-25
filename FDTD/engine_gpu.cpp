@@ -349,6 +349,7 @@ void Engine_GPU::VoltageHalfStep()
 			m_GPU_exts.at(n)->DoPostVoltageUpdates();
 		for (size_t n=0; n<m_GPU_exts.size(); ++n)
 			m_GPU_exts.at(n)->Apply2Voltages();
+		m_Backend->FinishVoltagePhase();
 		return;
 	}
 
@@ -359,6 +360,12 @@ void Engine_GPU::VoltageHalfStep()
 	VoltagesToHost();
 	DoPostVoltageUpdates();
 	Apply2Voltages();
+	if (m_Backend->HasDomainPhases())
+	{
+		VoltagesToDevice();
+		CurrentsToDevice();
+		m_Backend->FinishVoltagePhase();
+	}
 }
 
 void Engine_GPU::CurrentHalfStep()
@@ -372,6 +379,7 @@ void Engine_GPU::CurrentHalfStep()
 			m_GPU_exts.at(n)->DoPostCurrentUpdates();
 		for (size_t n=0; n<m_GPU_exts.size(); ++n)
 			m_GPU_exts.at(n)->Apply2Current();
+		m_Backend->FinishCurrentPhase();
 		return;
 	}
 
@@ -382,6 +390,12 @@ void Engine_GPU::CurrentHalfStep()
 	CurrentsToHost();
 	DoPostCurrentUpdates();
 	Apply2Current();
+	if (m_Backend->HasDomainPhases())
+	{
+		VoltagesToDevice();
+		CurrentsToDevice();
+		m_Backend->FinishCurrentPhase();
+	}
 }
 
 bool Engine_GPU::CalcFastEnergy(const unsigned int numNodes[3], double& E_energy, double& H_energy) const
