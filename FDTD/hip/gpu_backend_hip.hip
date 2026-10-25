@@ -412,8 +412,12 @@ __global__ void update_currents_nodes(const float* __restrict__ curr_in, float* 
 
 // Field energy: the squared voltages and currents of the nodes below L, summed along x
 // in float, one thread per (y,z) line. The host sums the lines in double.
-__global__ void energy_lines(const float* __restrict__ volt, const float* __restrict__ curr, float2* partial,
-                             HIP_GridDim N, HIP_GridDim L)
+__global__ void energy_lines(const float* __restrict__ volt,
+    const float* __restrict__ curr,
+    float2* partial,
+    HIP_GridDim N,
+    HIP_GridDim L,
+    unsigned int first_x)
 {
 	const unsigned int z = blockIdx.x*blockDim.x + threadIdx.x;
 	const unsigned int y = blockIdx.y*blockDim.y + threadIdx.y;
@@ -423,7 +427,7 @@ __global__ void energy_lines(const float* __restrict__ volt, const float* __rest
 	float E = 0, H = 0;
 	for (unsigned int x=0; x<L.nx; ++x)
 	{
-		const size_t i = nijk(N, 0, x, y, z);
+		const size_t i = nijk(N, 0, x + first_x, y, z);
 		E += volt[i]*volt[i];
 		E += volt[sn+i]*volt[sn+i];
 		E += volt[2*sn+i]*volt[2*sn+i];
@@ -1279,8 +1283,21 @@ bool GPU_Backend_HIP::CalcFastEnergy(const unsigned int numNodes[3], double& E_e
 {
 	E_energy = H_energy = 0;
 	HIP_GridDim L = {numNodes[0], numNodes[1], numNodes[2]};
-	if ((L.nx>d->dim.nx) || (L.ny>d->dim.ny) || (L.nz>d->dim.nz))
+	unsigned int first_x = 0;
+	if (d->domain.enabled)
+	{
+		if (L.nx > d->domain.global[0] || L.ny > d->domain.global[1] || L.nz > d->domain.global[2])
+		{
+			return false;
+		}
+		const unsigned int stop = std::min(L.nx, d->domain.end);
+		L.nx = stop > d->domain.begin ? stop - d->domain.begin : 0;
+		first_x = 1; // Exclude both halo planes from the global energy sum.
+	}
+	else if ((L.nx > d->dim.nx) || (L.ny > d->dim.ny) || (L.nz > d->dim.nz))
+	{
 		return false;
+	}
 	const size_t count = (size_t)L.ny*L.nz;
 	if (L.nx==0 || count==0)
 		return true;
@@ -1290,7 +1307,18 @@ bool GPU_Backend_HIP::CalcFastEnergy(const unsigned int numNodes[3], double& E_e
 		d->energy_count = count;
 		d->energy_host.resize(count);   // small, not pinned
 	}
-	HIP_Launch(d, "energy_lines", energy_lines, L.nz, L.ny, 1, (const float*)d->volt, (const float*)d->curr, d->energy, d->dim, L);
+	HIP_Launch(d,
+	    "energy_lines",
+	    energy_lines,
+	    L.nz,
+	    L.ny,
+	    1,
+	    (const float*)d->volt,
+	    (const float*)d->curr,
+	    d->energy,
+	    d->dim,
+	    L,
+	    first_x);
 	HIP_Check(hipMemcpyAsync(d->energy_host.data(), d->energy, count*sizeof(float2), hipMemcpyDeviceToHost, d->Stream()), "energy download");
 	d->Flush();
 	for (size_t k=0; k<count; ++k)

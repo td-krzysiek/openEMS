@@ -63,11 +63,16 @@ that faster single-device baseline, not just an unfused domain executor.
 ## Processing and pauses
 
 Global host views gather owned values in original NIJK order. Existing probes,
-host DFT accumulation and energy processing therefore use their established
-reference planes and timestep schedule. Device-only DFT/energy reductions are
-not implemented in this adapter yet; no per-timestep full-field host fallback
-is allowed for real GPU extensions. The CPU reference backend deliberately
-allows host extensions for numerical testing.
+host DFT accumulation therefore use their established reference planes and
+timestep schedule. Energy reduction runs on each device over the intersection
+of the native prefix and its owned slab, excluding both halos; the host sums
+the small partial reductions. FP32 grouping changes when a line is split,
+so last-bit energy differences are possible. `test_domain_energy` checks
+nonzero fields against a host sum, including prefixes before/on/after a cut;
+`tests/manual/domain_energy.py` checks a one/two-GPU energy-selected stop.
+Device-only DFT sums are not implemented in this adapter yet. No per-timestep
+full-field host fallback is allowed for real GPU extensions. The CPU reference
+backend deliberately allows host extensions for numerical testing.
 
 All local device work and halo completions finish before a native processing
 boundary returns. The existing startup/runtime pause and decay-gate mechanisms

@@ -25,6 +25,8 @@ public:
 	void UploadVoltages(const ArrayLib::ArrayNIJK<FDTD_FLOAT>&) override;
 	void UploadCurrents(const ArrayLib::ArrayNIJK<FDTD_FLOAT>&) override;
 	bool DownloadRange(bool, size_t, size_t, FDTD_FLOAT*) override;
+	bool CalcFastEnergy(
+	    const unsigned int numNodes[3], double& electric, double& magnetic) override;
 	void Synchronize() override;
 	GPU_Extension* CreateExtension(Engine_Extension*, Engine*) override;
 	GPU_Backend* NewSubGridBackend() override;

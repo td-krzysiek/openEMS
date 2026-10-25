@@ -380,8 +380,7 @@ GPU_Extension* GPU_Backend_Domains::CreateExtension(Engine_Extension* ext, Engin
 	{
 		backend->Activate();
 		if (!dynamic_cast<GPU_Backend_Reference*>(backend.get()) &&
-		    !dynamic_cast<Engine_Ext_UPML*>(ext) &&
-		    !dynamic_cast<Engine_Ext_Excitation*>(ext) &&
+		    !dynamic_cast<Engine_Ext_UPML*>(ext) && !dynamic_cast<Engine_Ext_Excitation*>(ext) &&
 		    !dynamic_cast<Engine_Ext_LumpedRLC*>(ext) &&
 		    !dynamic_cast<Engine_Ext_OpaqueSurface*>(ext))
 		{
@@ -405,5 +404,23 @@ GPU_Extension* GPU_Backend_Domains::CreateExtension(Engine_Extension* ext, Engin
 GPU_Backend* GPU_Backend_Domains::NewSubGridBackend()
 {
 	throw std::runtime_error("cylindrical multi-grid is unsupported by the domain backend");
+}
+
+bool GPU_Backend_Domains::CalcFastEnergy(
+    const unsigned int numNodes[3], double& electric, double& magnetic)
+{
+	electric = magnetic = 0;
+	for (auto& backend : d->devices)
+	{
+		backend->Activate();
+		double e = 0, h = 0;
+		if (!backend->CalcFastEnergy(numNodes, e, h))
+		{
+			return false;
+		}
+		electric += e;
+		magnetic += h;
+	}
+	return true;
 }
 #endif
