@@ -15,6 +15,10 @@ there are unreleased changes. It becomes the next release entry.
 
 ### Added
 
+- Opt-in startup qualification pauses a live run at a processing boundary and
+  continues it after controller approval without rebuilding the operator or
+  resetting fields, material histories or accumulated DFT data.
+
 - Opt-in `--dft-snapshots` requests export accumulated E/H HDF5 data at a
   timestep boundary without stopping or resetting DFT sums. Snapshot directories
   are published atomically and labelled unconverged with sample timing. Python
