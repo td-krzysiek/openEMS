@@ -44,6 +44,13 @@ public:
 
 	virtual bool BuildExtension() {return true;}
 
+	//! Adjust physical EC elements before timestep selection and coefficient setup.
+	/*! Called on each CalcECOperator(), after Calc_EC(). Do not use a final
+	 * timestep or write engine coefficients here; BuildExtension() does that.
+	 * The default is a no-op, preserving existing extension behavior.
+	 */
+	virtual void PreprocessEC() {}
+
 	virtual Engine_Extension* CreateEngineExtention() {return 0;}
 	virtual Engine_Extension* GetEngineExtention() {return m_Eng_Ext;}
 

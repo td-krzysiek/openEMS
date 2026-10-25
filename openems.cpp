@@ -1,3 +1,4 @@
+#include "FDTD/extensions/operator_ext_opaquesurface.h"
 /*
 *	Copyright (C) 2010 Thorsten Liebig (Thorsten.Liebig@gmx.de)
 *
@@ -26,6 +27,7 @@
 #include "FDTD/operator_cylindermultigrid.h"
 #include "FDTD/engine_multithread.h"
 #include "FDTD/operator_multithread.h"
+#include "FDTD/operator_tiling.h"
 #include "FDTD/operator_gpu.h"
 #include "FDTD/extensions/operator_ext_excitation.h"
 #include "FDTD/extensions/operator_ext_tfsf.h"
@@ -92,6 +94,9 @@ openEMS::openEMS()
 	m_debugBox = m_debugPEC = m_no_simulation = false;
 	m_DumpStats = false;
 	m_exactEndCriteria = false;
+	m_dftSnapshots = false;
+	m_startupGateStep = 0;
+	m_startupGateTimeout = 300;
 
 	m_engine = EngineType_Multithreaded; //default engine type
 	m_engine_numThreads = 0;
@@ -260,6 +265,10 @@ void openEMS::collectCommandLineArguments()
 						cout << "openEMS - enabled compressed sse engine" << endl;
 						m_engine = EngineType_SSE_Compressed;
 					}
+					else if (val == "tiling")
+					{
+						m_engine = EngineType_Tiling;
+					}
 					else if (val == "multithreaded")
 					{
 						cout << "openEMS - enabled multithreading" << endl;
@@ -285,6 +294,7 @@ void openEMS::collectCommandLineArguments()
 			),
 		    "Choose engine type \n\n"
 			"  fastest: \tfastest available engine (default)\n"
+			"  tiling: \texperimental spatial/temporal tiling (Cartesian only)\n"
 			"  basic: \tbasic FDTD engine\n"
 			"  sse: \tengine using SSE vector extensions\n"
 			"  sse-compressed: \tengine using compressed "
@@ -317,7 +327,7 @@ void openEMS::collectCommandLineArguments()
 				}
 			),
 			"Force use n threads for multithreaded engine "
-			"(needs: --engine=multithreaded)"
+			"(needs: --engine=multithreaded or --engine=tiling)"
 		)
 		(
 			"no-simulation",
@@ -345,6 +355,26 @@ void openEMS::collectCommandLineArguments()
 			),
 			"dump simulation statistics to '" OPENEMS_RUN_STAT_FILE
 			"' and '" OPENEMS_STAT_FILE "'"
+		)
+		(
+			"dft-snapshots",
+			po::bool_switch(&m_dftSnapshots),
+			"accept DFT_SNAPSHOT requests and atomically export accumulated E/H sums without stopping"
+		)
+		(
+			"startup-gate",
+			po::value<unsigned int>(&m_startupGateStep),
+			"pause once at a processing boundary at/after this timestep for startup qualification"
+		)
+		(
+			"startup-gate-id",
+			po::value<std::string>(&m_startupGateID),
+			"unique startup gate ID (1-64 ASCII letters/digits/-/_)"
+		)
+		(
+			"startup-gate-timeout",
+			po::value<unsigned int>(&m_startupGateTimeout),
+			"startup qualification timeout in seconds (1-3600; default 300)"
 		)
 		(
 			"exact-endcriteria",
@@ -829,6 +859,11 @@ void openEMS::SetupCylinderMultiGrid(std::string val)
 
 bool openEMS::SetupOperator()
 {
+	if (m_engine == EngineType_Tiling && CylinderCoords)
+	{
+		cerr << "Tiling engine does not support cylindrical coordinates" << endl;
+		return false;
+	}
 	// what defaults to AvailableThreads() (GPU operator build, field dumps, SAR, nf2ff) honours numThreads
 	SetThreadLimit(m_engine_numThreads);
 
@@ -871,6 +906,10 @@ bool openEMS::SetupOperator()
 	else if (m_engine == EngineType_SSE_Compressed)
 	{
 		FDTD_Op = Operator_SSE_Compressed::New();
+	}
+	else if (m_engine == EngineType_Tiling)
+	{
+		FDTD_Op = Operator_Tiling::New(m_engine_numThreads);
 	}
 	else if (m_engine == EngineType_Multithreaded)
 	{
@@ -1272,6 +1311,7 @@ ContinuousStructure* openEMS::GetCSX() const
 
 int openEMS::SetupFDTD()
 {
+	ValidateStartupGate();
 	// of a previous setup that was not run
 	FreeSimulation();
 
@@ -1391,6 +1431,8 @@ int openEMS::SetupFDTD()
 		SetupAbsorbingSheets();
 
 
+	FDTD_Op->AddExtension(new Operator_Ext_OpaqueSurface(FDTD_Op));
+
 	//check all properties to request material storage during operator creation...
 	SetupMaterialStorages();
 
@@ -1469,6 +1511,7 @@ int openEMS::SetupFDTD()
 		// e.g. the GPU engine without a device: do not run something else instead
 		cerr << "openEMS::SetupFDTD: Error: creating the FDTD engine failed: " << e.what() << endl;
 		return 4;
+
 	}
 
 	if (Op_Ext_SSD)
@@ -1599,6 +1642,8 @@ void openEMS::RunFDTD()
 	gettimeofday(&currTime,NULL);
 	timeval startTime = currTime;
 	timeval prevTime= currTime;
+	timeval snapshotTime = currTime;
+	snapshotTime.tv_sec -= 1; // accept a request present before the first iteration
 
 	if (m_DumpStats)
 		InitRunStatistics(OPENEMS_RUN_STAT_FILE);
@@ -1608,6 +1653,8 @@ void openEMS::RunFDTD()
 	int step=PA->Process();
 	if ((step<0) || (step>(int)NrTS)) step=NrTS;
 	bool aborted = false;
+	bool startupPassed = (m_startupGateStep == 0);
+	double startupWait = 0;
 	while ((FDTD_Eng->GetNumberOfTimesteps()<NrTS) && (change>endCrit) && !(aborted = CheckAbortCond()))
 	{
 		FDTD_Eng->IterateTS(step);
@@ -1626,12 +1673,33 @@ void openEMS::RunFDTD()
 
 		currTS = FDTD_Eng->GetNumberOfTimesteps();
 		if ((step<0) || (step>(int)(NrTS - currTS))) step=NrTS - currTS;
+		if (!startupPassed && (unsigned int)currTS >= m_startupGateStep)
+		{
+			timeval gateStart, gateEnd;
+			gettimeofday(&gateStart, NULL);
+			if (!WaitStartupGate(currE, maxE, CalcDiffTime(gateStart, startTime)))
+			{
+				aborted = true;
+				break;
+			}
+			gettimeofday(&gateEnd, NULL);
+			startupWait += CalcDiffTime(gateEnd, gateStart);
+			prevTime = gateEnd;
+			prevTS = currTS;
+			startupPassed = true;
+		}
 
 		gettimeofday(&currTime,NULL);
 
+		if (m_dftSnapshots && CalcDiffTime(currTime, snapshotTime) >= 1.0)
+		{
+			CheckDFTSnapshot(currE, maxE);
+			gettimeofday(&snapshotTime, NULL);
+		}
+
 		t_diff = CalcDiffTime(currTime,prevTime);
 
-		if (exactEndCrit && !m_exactEndCriteria && (CalcDiffTime(currTime,startTime)>EXACT_ENDCRIT_TIME))
+		if (exactEndCrit && !m_exactEndCriteria && (CalcDiffTime(currTime,startTime)-startupWait>EXACT_ENDCRIT_TIME))
 		{
 			// from here on with the progress report only
 			exactEndCrit = false;
@@ -1642,7 +1710,7 @@ void openEMS::RunFDTD()
 
 		if (t_diff>4)
 		{
-			t_run = CalcDiffTime(currTime,startTime);
+			t_run = CalcDiffTime(currTime,startTime) - startupWait;
 			speed = numCells*(currTS-prevTS)/t_diff;
 			cout << "[@" <<  FormatTime(t_run) <<  "] Timestep: " << setw(12)  << currTS ;
 			cout << " || Speed: " << setw(6) << setprecision(1) << std::fixed << speed*1e-6 << " MC/s (" <<  setw(4) << setprecision(3) << std::scientific << t_diff/(currTS-prevTS) << " s/TS)" ;
@@ -1670,6 +1738,10 @@ void openEMS::RunFDTD()
 			FDTD_Eng->NextInterval(speed);
 		}
 	}
+	if (!startupPassed && !aborted)
+	{
+		throw std::runtime_error("Startup gate: simulation ended before qualification");
+	}
 	if (aborted)
 	{
 		// not the timestep limit: say so, the advice below would be wrong
@@ -1686,7 +1758,7 @@ void openEMS::RunFDTD()
 		cout << "RunFDTD: end-criteria of -" << fabs(10.0*log10(endCrit)) << "dB reached after " << FDTD_Eng->GetNumberOfTimesteps() << " timesteps (-" << fabs(10.0*log10(change)) << "dB)" << endl;
 
 	gettimeofday(&currTime,NULL);
-	t_diff = CalcDiffTime(currTime,startTime);
+	t_diff = CalcDiffTime(currTime,startTime) - startupWait;
 
 	cout << "Time for " << FDTD_Eng->GetNumberOfTimesteps() << " iterations with " << FDTD_Op->GetNumberCells() << " cells : " << t_diff << " sec" << endl;
 	cout << "Speed: " << numCells*(double)FDTD_Eng->GetNumberOfTimesteps()/t_diff*1e-6 << " MCells/s " << endl;

@@ -22,6 +22,7 @@
 Engine_Ext_Excitation::Engine_Ext_Excitation(Operator_Ext_Excitation* op_ext) : Engine_Extension(op_ext)
 {
 	m_Op_Exc = op_ext;
+	m_TilingSupported = true;
 	m_Priority = ENG_EXT_PRIO_EXCITATION;
 }
 
@@ -98,4 +99,80 @@ void Engine_Ext_Excitation::Apply2CurrentImpl(EngType* eng)
 void Engine_Ext_Excitation::Apply2Current()
 {
 	ENG_DISPATCH(Apply2CurrentImpl);
+}
+
+template <typename EngType>
+void Engine_Ext_Excitation::Apply2VoltagesTiledImpl(EngType* eng, int numTS, unsigned int start[3], unsigned int stop[3])
+{
+	//soft voltage excitation here (E-field excite)
+	int exc_pos;
+	unsigned int ny;
+	unsigned int pos[3];
+	unsigned int length = m_Op_Exc->m_Exc->GetLength();
+	FDTD_FLOAT* exc_volt =  m_Op_Exc->m_Exc->GetVoltageSignal();
+
+	int p = numTS+1;
+	if (m_Op_Exc->m_Exc->GetSignalPeriod()>0)
+		p = int(m_Op_Exc->m_Exc->GetSignalPeriod()/m_Op_Exc->m_Exc->GetTimestep());
+
+	for (unsigned int n=0; n<m_Op_Exc->Volt_Count; ++n)
+	{
+		exc_pos = numTS - (int)m_Op_Exc->Volt_delay[n];
+		if (exc_pos<0)
+		{
+			continue;
+		}
+		exc_pos %= p;
+		exc_pos *= (exc_pos<(int)length);
+		ny = m_Op_Exc->Volt_dir[n];
+		pos[0]=m_Op_Exc->Volt_index[0][n];
+		pos[1]=m_Op_Exc->Volt_index[1][n];
+		pos[2]=m_Op_Exc->Volt_index[2][n];
+		if (pos[0]<start[0] || pos[0]>stop[0] || pos[1]<start[1] || pos[1]>stop[1]
+		    || pos[2]<start[2] || pos[2]>stop[2]) continue;
+		eng->EngType::SetVolt(ny,pos, eng->EngType::GetVolt(ny,pos) + m_Op_Exc->Volt_amp[n]*exc_volt[exc_pos]);
+	}
+}
+
+void Engine_Ext_Excitation::Apply2Voltages(int timestep, unsigned int start[3], unsigned int stop[3])
+{
+	ENG_DISPATCH_ARGS(Apply2VoltagesTiledImpl, timestep, start, stop);
+}
+
+template <typename EngType>
+void Engine_Ext_Excitation::Apply2CurrentTiledImpl(EngType* eng, int numTS, unsigned int start[3], unsigned int stop[3])
+{
+	//soft current excitation here (H-field excite)
+	int exc_pos;
+	unsigned int ny;
+	unsigned int pos[3];
+	unsigned int length = m_Op_Exc->m_Exc->GetLength();
+	FDTD_FLOAT* exc_curr =  m_Op_Exc->m_Exc->GetCurrentSignal();
+
+	int p = numTS+1;
+	if (m_Op_Exc->m_Exc->GetSignalPeriod()>0)
+		p = int(m_Op_Exc->m_Exc->GetSignalPeriod()/m_Op_Exc->m_Exc->GetTimestep());
+
+	for (unsigned int n=0; n<m_Op_Exc->Curr_Count; ++n)
+	{
+		exc_pos = numTS - (int)m_Op_Exc->Curr_delay[n];
+		if (exc_pos<0)
+		{
+			continue;
+		}
+		exc_pos %= p;
+		exc_pos *= (exc_pos<(int)length);
+		ny = m_Op_Exc->Curr_dir[n];
+		pos[0]=m_Op_Exc->Curr_index[0][n];
+		pos[1]=m_Op_Exc->Curr_index[1][n];
+		pos[2]=m_Op_Exc->Curr_index[2][n];
+		if (pos[0]<start[0] || pos[0]>stop[0] || pos[1]<start[1] || pos[1]>stop[1]
+		    || pos[2]<start[2] || pos[2]>stop[2]) continue;
+		eng->EngType::SetCurr(ny,pos, eng->EngType::GetCurr(ny,pos) + m_Op_Exc->Curr_amp[n]*exc_curr[exc_pos]);
+	}
+}
+
+void Engine_Ext_Excitation::Apply2Current(int timestep, unsigned int start[3], unsigned int stop[3])
+{
+	ENG_DISPATCH_ARGS(Apply2CurrentTiledImpl, timestep, start, stop);
 }
