@@ -186,6 +186,7 @@ kernel void energy_lines(const device float* volt [[buffer(0)]],
                          device float2* partial   [[buffer(2)]],
                          constant GridDim& N      [[buffer(3)]],
                          constant GridDim& L      [[buffer(4)]],
+                         constant uint& first_x   [[buffer(5)]],
                          uint2 gid [[thread_position_in_grid]])
 {
 	const uint z = gid.x, y = gid.y;
@@ -193,7 +194,7 @@ kernel void energy_lines(const device float* volt [[buffer(0)]],
 	float E = 0, H = 0;
 	for (uint x=0; x<L.nx; ++x)
 	{
-		const uint i = nijk(N, 0, x, y, z);
+		const uint i = nijk(N, 0, first_x + x, y, z);
 		E += volt[i]*volt[i];
 		E += volt[sn+i]*volt[sn+i];
 		E += volt[2*sn+i]*volt[2*sn+i];
@@ -465,6 +466,10 @@ bool GPU_Backend_Metal::Init(const Operator* op)
 	unsigned int numLines[3];
 	for (int n=0; n<3; ++n)
 		numLines[n] = op->GetNumberOfLines(n, true);
+	if (d->domain.enabled)
+	{
+		numLines[0] = d->domain.LocalLines();
+	}
 	d->dim.nx = numLines[0];
 	d->dim.ny = numLines[1];
 	d->dim.nz = numLines[2];
@@ -491,7 +496,27 @@ bool GPU_Backend_Metal::Init(const Operator* op)
 		// the full arrays, one host copy at a time
 		d->coeff_mode = 0;
 		std::vector<float> values;
-		auto upload = [&](int c) {GPU_CoefficientArray(op, numLines, c, values); return d->NewBuffer(bytes, values.data());};
+		auto upload = [&](int c)
+		{
+			if (!d->domain.enabled)
+			{
+				GPU_CoefficientArray(op, numLines, c, values);
+			}
+			else
+			{
+				values.resize(3 * d->numCells);
+				float coefficients[12];
+				for (size_t i = 0; i < d->numCells; ++i)
+				{
+					d->domain.Coefficients(op, numLines, i, coefficients);
+					for (int n = 0; n < 3; ++n)
+					{
+						values[n * d->numCells + i] = coefficients[3 * c + n];
+					}
+				}
+			}
+			return d->NewBuffer(bytes, values.data());
+		};
 		d->vv = upload(0);
 		d->vi = upload(1);
 		d->ii = upload(2);
@@ -501,6 +526,46 @@ bool GPU_Backend_Metal::Init(const Operator* op)
 	// compile the main kernels now, not in the first timestep
 	d->Pipeline(BASE_SOURCE, "update_voltages");
 	d->Pipeline(BASE_SOURCE, "update_currents");
+	return true;
+}
+
+bool GPU_Backend_Metal::InitDomain(const Operator* op, unsigned int begin, unsigned int end)
+{
+	if (begin >= end || end > op->GetNumberOfLines(0, true))
+	{
+		throw std::invalid_argument("invalid Metal domain ownership");
+	}
+	d->domain.enabled = true;
+	d->domain.begin = begin;
+	d->domain.end = end;
+	for (int n = 0; n < 3; ++n)
+	{
+		d->domain.global[n] = op->GetNumberOfLines(n, true);
+	}
+	return Init(op);
+}
+
+bool GPU_Backend_Metal::DownloadRange(bool currents, size_t offset, size_t count, float* dst)
+{
+	if (offset > 3 * d->numCells || count > 3 * d->numCells - offset)
+	{
+		throw std::out_of_range("Metal field download range");
+	}
+	d->Flush();
+	const auto* src = static_cast<const float*>([(currents ? d->curr : d->volt) contents]);
+	std::copy(src + offset, src + offset + count, dst);
+	return true;
+}
+
+bool GPU_Backend_Metal::UploadRange(bool currents, size_t offset, size_t count, const float* src)
+{
+	if (offset > 3 * d->numCells || count > 3 * d->numCells - offset)
+	{
+		throw std::out_of_range("Metal field upload range");
+	}
+	d->Flush();
+	auto* dst = static_cast<float*>([(currents ? d->curr : d->volt) contents]);
+	std::copy(src, src + count, dst + offset);
 	return true;
 }
 
@@ -522,8 +587,16 @@ bool GPU_Backend_Metal::CompressCoefficients(const Operator* op, const unsigned 
 {
 	GPU_CoeffSets sets;
 	// the 12 coefficients of a node, in the order vv[3], vi[3], ii[3], iv[3] (see main_coeff())
-	if (!GPU_FindSets(d->numCells, 12, [&](size_t i, float* values) {GPU_NodeCoefficients(op, numLines, i, values);}, sets))
+	if (!GPU_FindSets(d->numCells,
+	        12,
+	        [&](size_t i, float* values)
+	{
+		d->domain.Coefficients(op, numLines, i, values);
+	},
+	        sets))
+	{
 		return false;
+	}
 
 	d->coeff_mode = sets.mode;
 	d->index = d->NewIndexBuffer(sets);
@@ -644,8 +717,21 @@ bool GPU_Backend_Metal::CalcFastEnergy(const unsigned int numNodes[3], double& E
 {
 	E_energy = H_energy = 0;
 	Metal_GridDim L = {numNodes[0], numNodes[1], numNodes[2]};
-	if ((L.nx>d->dim.nx) || (L.ny>d->dim.ny) || (L.nz>d->dim.nz))
+	unsigned int first_x = 0;
+	if (d->domain.enabled)
+	{
+		if (L.nx > d->domain.global[0] || L.ny > d->domain.global[1] || L.nz > d->domain.global[2])
+		{
+			return false;
+		}
+		const unsigned int stop = std::min(L.nx, d->domain.end);
+		L.nx = stop > d->domain.begin ? stop - d->domain.begin : 0;
+		first_x = 1;
+	}
+	else if ((L.nx > d->dim.nx) || (L.ny > d->dim.ny) || (L.nz > d->dim.nz))
+	{
 		return false;
+	}
 	const size_t count = (size_t)L.ny*L.nz;
 	if (L.nx==0 || count==0)
 		return true;
@@ -660,6 +746,7 @@ bool GPU_Backend_Metal::CalcFastEnergy(const unsigned int numNodes[3], double& E
 	[enc setBuffer:d->energy offset:0 atIndex:2];
 	d->SetGridDim(3);
 	[enc setBytes:&L length:sizeof(L) atIndex:4];
+	[enc setBytes:&first_x length:sizeof(first_x) atIndex:5];
 	d->Dispatch(pso, L.nz, L.ny);
 	d->Flush();
 

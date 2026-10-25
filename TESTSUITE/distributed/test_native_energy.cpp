@@ -22,9 +22,10 @@ int main(int argc, char** argv)
 {
 	try
 	{
-		if (argc != 2)
+		if (argc != 2 && argc != 3)
 		{
-			throw std::invalid_argument("usage: test_domain_energy public-fixture.xml");
+			throw std::invalid_argument(
+			    "usage: test_domain_energy public-fixture.xml [plugin-name]");
 		}
 		EnergySimulation simulation;
 		simulation.SetLibraryArguments({ "engine=basic", "numThreads=1" });
@@ -36,7 +37,8 @@ int main(int argc, char** argv)
 		const GPU_Plugin* plugin = nullptr;
 		for (const auto* candidate : GPU_LoadPlugins(messages))
 		{
-			if (std::string(candidate->name).find("hip") != std::string::npos &&
+			if (std::string(candidate->name).find(argc == 3 ? argv[2] : "hip") !=
+			        std::string::npos &&
 			    candidate->DeviceCount() >= 2)
 			{
 				plugin = candidate;
@@ -46,7 +48,7 @@ int main(int argc, char** argv)
 		if (!plugin)
 		{
 			throw std::runtime_error(
-			    "this manual test requires a matching HIP plugin and two visible devices");
+			    "this manual test requires a matching selected plugin and two visible executors");
 		}
 		const auto& op = simulation.Op();
 		unsigned int shape[3];

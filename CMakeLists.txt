@@ -443,6 +443,14 @@ if(ENABLE_DOMAIN_RUNTIME)
     target_link_libraries(test_domain_operator openEMS_domain_operator)
     add_executable(test_domain_energy TESTSUITE/distributed/test_native_energy.cpp)
     target_link_libraries(test_domain_energy openEMS)
+    if(APPLE AND ENABLE_METAL)
+      # Explicit manual-test path only: several queues on one physical GPU.
+      # Not installed, and never added to the normal plugin search directory.
+      add_library(openEMS_gpu_metal_domain_test MODULE TESTSUITE/distributed/metal_test_plugin.cpp)
+      target_link_libraries(openEMS_gpu_metal_domain_test openEMS)
+      set_target_properties(openEMS_gpu_metal_domain_test PROPERTIES
+        PREFIX "" SUFFIX ".so" LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/test-plugins")
+    endif()
     if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
       target_compile_options(test_domain_operator PRIVATE -ffp-contract=off)
     endif()

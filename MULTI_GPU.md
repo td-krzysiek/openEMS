@@ -82,8 +82,10 @@ This is an in-memory pause, not a disk restart checkpoint.
 
 ## Limits and qualification
 
-- Cartesian X slabs on one host; HIP initially. Metal domain initialization,
-  mixed CPU/GPU native execution, cylindrical grids and subgrids are unsupported.
+- Cartesian X slabs on one host. HIP targets physical devices; the Metal
+  domain executor is qualified with separate queues on one physical GPU.
+  The normal Metal plugin still exposes only its default device. Mixed
+  CPU/GPU native execution, cylindrical grids and subgrids are unsupported.
 - Only excitation, UPML, lumped RLC and opaque-surface device extensions are
   admitted. Single-device support for an extension is not domain support:
   Mur, dispersive materials, TFSF and sinusoidal steady-state detection are
@@ -111,3 +113,34 @@ array's peak must be below `1e-5`; timestep columns must match exactly.
 and manual pause/snapshot/continue, timeout, stop, abort and stale-ID rejection
 against an uninterrupted run. These tests use public small fixtures, not
 project antenna geometry or supplier data.
+
+## Local Metal qualification without multiple physical GPUs
+
+With `ENABLE_METAL=ON`, `ENABLE_DOMAIN_RUNTIME=ON` and
+`OPENEMS_DOMAIN_TESTS=ON`, the build creates a **test-only** plugin under
+`<build>/test-plugins`. It exposes three explicitly labelled logical devices
+on the same physical Metal GPU, each with its own queue, buffers and material
+histories. It is never installed or placed in the normal plugin directory.
+Set `OPENEMS_PLUGIN_PATH=<build>/test-plugins` only for these manual tests.
+Without that override, normal device discovery and duplicate-ID rejection
+remain unchanged. This exercises native GPU kernels and the shared domain
+coordinator; it does not measure physical multi-GPU speedup or PCIe transfer.
+
+Generate fixtures with matching baseline Python bindings and run the candidate
+CLI as a child process:
+
+```sh
+OPENEMS_PLUGIN_PATH=<build>/test-plugins python tests/manual/domain_backend.py \
+  --binary <build>/openEMS --engine gpu --device-counts 2,3 --output <new-output>
+OPENEMS_PLUGIN_PATH=<build>/test-plugins <build>/test_domain_energy \
+  <new-output>/pec-1/model.xml metal-domain-test
+OPENEMS_PLUGIN_PATH=<build>/test-plugins python tests/manual/runtime_gates.py \
+  --binary <build>/openEMS --engine gpu --solver-option=--gpu-devices=0,1 \
+  --output <new-runtime-output>
+```
+
+Metal clips PML and owns sources, RLC histories and opaque edges like HIP.
+Its domain energy reduction excludes halo planes; the single-device reduction
+still starts at X=0. PML fusion is disabled for domains and remains unchanged
+for ordinary single-device execution. Mur, steady-state detection and other
+unmapped extensions are rejected by the same native guard.

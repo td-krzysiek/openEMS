@@ -117,5 +117,24 @@ GPU_Extension* Metal_CreateExt_OpaqueSurface(GPU_Backend_Metal::Impl* d, Engine_
 		return NULL;
 	}
 	auto* op=dynamic_cast<Operator_Ext_OpaqueSurface*>(ext->GetOperatorExtension());
-	return op ? new Metal_Ext_OpaqueSurface(d,op) : NULL;
+	if (!op)
+	{
+		return NULL;
+	}
+	if (d->domain.enabled)
+	{
+		Operator_Ext_OpaqueSurface local(nullptr);
+		local.fits = op->fits;
+		local.dt = op->dt;
+		for (auto edge : op->edges)
+		{
+			if (d->domain.Owns(edge.pos[0]))
+			{
+				edge.pos[0] = d->domain.LocalX(edge.pos[0]);
+				local.edges.push_back(edge);
+			}
+		}
+		return new Metal_Ext_OpaqueSurface(d, &local);
+	}
+	return new Metal_Ext_OpaqueSurface(d, op);
 }

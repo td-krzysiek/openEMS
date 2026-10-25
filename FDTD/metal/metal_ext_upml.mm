@@ -120,6 +120,12 @@ class Metal_Ext_UPML : public GPU_Extension
 public:
 	Metal_Ext_UPML(GPU_Backend_Metal::Impl* impl, Operator_Ext_UPML* op_ext, Engine* eng);
 	virtual ~Metal_Ext_UPML();
+	static bool HasOwnedCells(GPU_Backend_Metal::Impl* impl, Operator_Ext_UPML* op)
+	{
+		return !impl->domain.enabled ||
+		    (op->m_StartPos[0] < impl->domain.end &&
+		        op->m_StartPos[0] + op->m_numLines[0] > impl->domain.begin);
+	}
 
 	// fused: nothing before the main update, the region update after it
 	virtual void DoPreVoltageUpdates()  {if (!Fused()) Pre(d->volt, m_VoltFlux, m_VV, m_VVFO, &UPML_GROUP[0]);}
@@ -153,11 +159,6 @@ protected:
 	id<MTLBuffer> m_SetIndex, m_Sets;
 };
 
-static id<MTLBuffer> UploadArray(GPU_Backend_Metal::Impl* d, const ArrayLib::ArrayNIJK<FDTD_FLOAT>& arr)
-{
-	return d->NewBuffer(arr.size()*sizeof(FDTD_FLOAT), arr.data());
-}
-
 Metal_Ext_UPML::Metal_Ext_UPML(GPU_Backend_Metal::Impl* impl, Operator_Ext_UPML* op_ext, Engine* eng)
 {
 	d = impl;
@@ -170,18 +171,41 @@ Metal_Ext_UPML::Metal_Ext_UPML(GPU_Backend_Metal::Impl* impl, Operator_Ext_UPML*
 	m_Region.ly = op_ext->m_numLines[1];
 	m_Region.lz = op_ext->m_numLines[2];
 
-	const size_t bytes = 3*(size_t)m_Region.lx*m_Region.ly*m_Region.lz*sizeof(FDTD_FLOAT);
+	const size_t source_cells =
+	    size_t(op_ext->m_numLines[0]) * op_ext->m_numLines[1] * op_ext->m_numLines[2];
+	unsigned int source_x = 0;
+	if (d->domain.enabled)
+	{
+		const unsigned int first = std::max(m_Region.sx, d->domain.begin);
+		const unsigned int last = std::min(m_Region.sx + m_Region.lx, d->domain.end);
+		source_x = first - m_Region.sx;
+		m_Region.sx = d->domain.LocalX(first);
+		m_Region.lx = last - first;
+	}
+	const size_t source_offset = size_t(source_x) * m_Region.ly * m_Region.lz;
+	const size_t cells = size_t(m_Region.lx) * m_Region.ly * m_Region.lz;
+	const size_t bytes = 3 * cells * sizeof(FDTD_FLOAT);
+	auto upload = [&](const ArrayLib::ArrayNIJK<FDTD_FLOAT>& source)
+	{
+		std::vector<float> values(3 * cells);
+		for (int n = 0; n < 3; ++n)
+		{
+			std::copy(source.data() + n * source_cells + source_offset,
+			    source.data() + n * source_cells + source_offset + cells,
+			    values.data() + n * cells);
+		}
+		return d->NewBuffer(bytes, values.data());
+	};
 	m_VoltFlux = d->NewBuffer(bytes);
 	m_CurrFlux = d->NewBuffer(bytes);
-	m_VV   = UploadArray(d, op_ext->vv);
-	m_VVFO = UploadArray(d, op_ext->vvfo);
-	m_VVFN = UploadArray(d, op_ext->vvfn);
-	m_II   = UploadArray(d, op_ext->ii);
-	m_IIFO = UploadArray(d, op_ext->iifo);
-	m_IIFN = UploadArray(d, op_ext->iifn);
+	m_VV = upload(op_ext->vv);
+	m_VVFO = upload(op_ext->vvfo);
+	m_VVFN = upload(op_ext->vvfn);
+	m_II = upload(op_ext->ii);
+	m_IIFO = upload(op_ext->iifo);
+	m_IIFN = upload(op_ext->iifn);
 
 	// the 18 coefficients of a cell for the fused kernels: vv[3], vvfo[3], vvfn[3], ii[3], iifo[3], iifn[3]
-	const size_t cells = (size_t)m_Region.lx*m_Region.ly*m_Region.lz;
 	const FDTD_FLOAT* src[6] = {op_ext->vv.data(), op_ext->vvfo.data(), op_ext->vvfn.data(),
 	                            op_ext->ii.data(), op_ext->iifo.data(), op_ext->iifn.data()};
 	GPU_CoeffSets sets;
@@ -190,7 +214,7 @@ Metal_Ext_UPML::Metal_Ext_UPML(GPU_Backend_Metal::Impl* impl, Operator_Ext_UPML*
 	    {
 		    for (int c=0; c<6; ++c)
 			    for (int n=0; n<3; ++n)
-				    values[3*c+n] = src[c][n*cells + l0];
+				    values[3 * c + n] = src[c][n * source_cells + source_offset + l0];
 	    }, sets))
 	{
 		m_CoeffMode = sets.mode;
@@ -236,6 +260,10 @@ bool Metal_Ext_UPML::Fused()
 // see GPU_UPMLFusionBox() for the conditions.
 bool Metal_Ext_UPML::CanFuse()
 {
+	if (d->domain.enabled)
+	{
+		return false;
+	}
 	std::vector<GPU_UPMLRegion> regions;
 	for (size_t r=0; r<d->upml.size(); ++r)
 	{
@@ -342,5 +370,9 @@ GPU_Extension* Metal_CreateExt_UPML(GPU_Backend_Metal::Impl* d, Engine_Extension
 	Operator_Ext_UPML* op_ext = dynamic_cast<Operator_Ext_UPML*>(eng_ext->GetOperatorExtension());
 	if (!op_ext)
 		return NULL;
+	if (!Metal_Ext_UPML::HasOwnedCells(d, op_ext))
+	{
+		return new GPU_Extension();
+	}
 	return new Metal_Ext_UPML(d, op_ext, eng);
 }

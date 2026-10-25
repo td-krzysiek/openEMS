@@ -49,6 +49,9 @@ public:
 	virtual std::string GetName() const;
 
 	virtual bool Init(const Operator* op);
+	bool InitDomain(const Operator* op, unsigned int begin, unsigned int end) override;
+	bool DownloadRange(bool currents, size_t offset, size_t count, FDTD_FLOAT* dst) override;
+	bool UploadRange(bool currents, size_t offset, size_t count, const FDTD_FLOAT* src) override;
 
 	virtual void UpdateVoltages();
 	virtual void UpdateCurrents();

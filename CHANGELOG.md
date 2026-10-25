@@ -21,6 +21,9 @@ there are unreleased changes. It becomes the next release entry.
   tangential halos after each half-step. Unsupported device extensions fail
   explicitly. This initial local-host path does not enable distributed MPI
   antenna execution or promise a speedup over the fused single-device engine.
+  Metal also supports the domain executor, with a non-installed test plugin
+  for two/three logical partitions on one physical GPU. Domain energy checks
+  exclude halo planes on both device backends.
 
 - Generic in-memory pause/continue/stop requests and opt-in post-pulse decay
   gates share startup qualification's native wait mechanism. Decay gates
