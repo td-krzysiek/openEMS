@@ -42,7 +42,15 @@ flowchart LR
 ```
 
 Each device uses coefficients sliced from the **same globally constructed
-operator**. Equal X slabs are a first implementation, not load balancing.
+operator**. Equal X slabs are the default. For a fixed uneven split, set
+`--gpu-domain-cuts=0,100,300` for two devices on a mesh with 300 X nodes.
+Cuts are global **node indices**, with half-open ownership `[0,100)` and
+`[100,300)`, in the order of `--gpu-devices`. Supply one more boundary than
+devices, strictly increasing, starting at zero and ending at the actual
+number of X lines. Invalid cuts fail before initializing device fields.
+This is explicit placement for qualification or heterogeneous resources,
+not adaptive load balancing; nodes in PML/material regions can cost more.
+The default equal split and all physics/timesteps remain unchanged.
 Every owned Yee location and material history has one device owner; the
 two adjacent halo planes contain field values, not duplicated evolving
 surface/PML states. True physical boundary conditions retain native behavior.
@@ -144,3 +152,10 @@ Its domain energy reduction excludes halo planes; the single-device reduction
 still starts at X=0. PML fusion is disabled for domains and remains unchanged
 for ordinary single-device execution. Mur, steady-state detection and other
 unmapped extensions are rejected by the same native guard.
+
+Python forwards `gpu_domain_cuts='0,100,300'` with `gpu_devices='0,1'`;
+Matlab passes `--gpu-domain-cuts=0,100,300` in the same `opts` string.
+`tests/manual/domain_cuts.py` compares deliberately uneven two/three-domain
+partitions with an unsplit control, including one-node outer/interior slabs
+and PML/source/material intersections. It also rejects malformed, overlapping,
+incomplete and overflowing cuts instead of silently selecting equal slabs.

@@ -310,6 +310,11 @@ void openEMS::collectCommandLineArguments()
 			"  gpu-reference: \tGPU engine with the reference backend on the CPU\n"
 		)
 		(
+			"gpu-domain-cuts",
+			po::value<std::string>(),
+			"Optional global X-node boundaries, e.g. 0,100,300; requires --gpu-devices"
+		)
+		(
 			"gpu-devices",
 			po::value<std::string>(),
 			"Experimental X-domain execution on comma-separated GPU indices, e.g. 0,1; requires ENABLE_DOMAIN_RUNTIME"

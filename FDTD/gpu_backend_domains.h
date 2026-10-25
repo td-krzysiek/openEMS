@@ -8,7 +8,8 @@
 class GPU_Backend_Domains : public GPU_Backend
 {
 public:
-	explicit GPU_Backend_Domains(std::vector<std::unique_ptr<GPU_Backend>> devices);
+	explicit GPU_Backend_Domains(
+	    std::vector<std::unique_ptr<GPU_Backend>> devices, std::vector<uint32_t> cuts = {});
 	~GPU_Backend_Domains() override;
 	std::string GetName() const override;
 	bool Init(const Operator*) override;

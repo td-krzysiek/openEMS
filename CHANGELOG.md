@@ -24,6 +24,8 @@ there are unreleased changes. It becomes the next release entry.
   Metal also supports the domain executor, with a non-installed test plugin
   for two/three logical partitions on one physical GPU. Domain energy checks
   exclude halo planes on both device backends.
+  Optional `--gpu-domain-cuts` selects fixed uneven ownership for different
+  device capacities; it does not perform adaptive balancing.
 
 - Generic in-memory pause/continue/stop requests and opt-in post-pulse decay
   gates share startup qualification's native wait mechanism. Decay gates

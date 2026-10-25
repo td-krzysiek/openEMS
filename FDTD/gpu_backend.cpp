@@ -29,6 +29,7 @@
 #endif
 #include <memory>
 #include <set>
+#include <limits>
 #ifdef OPENEMS_WITH_HIP
 #include "hip/gpu_backend_hip.h"
 #endif
@@ -70,6 +71,11 @@ std::string DeviceLine(size_t n, const GPU_Device& dev)
 GPU_Backend* GPU_Backend::New(const std::string& name)
 {
 	std::vector<size_t> selected;
+	std::vector<uint32_t> cuts;
+	if (g_settings.hasOption("gpu-domain-cuts") && !g_settings.hasOption("gpu-devices"))
+	{
+		throw std::invalid_argument("--gpu-domain-cuts requires --gpu-devices");
+	}
 	if (g_settings.hasOption("gpu-devices"))
 	{
 #ifndef OPENEMS_WITH_DOMAIN_RUNTIME
@@ -101,6 +107,31 @@ GPU_Backend* GPU_Backend::New(const std::string& name)
 		{
 			throw std::invalid_argument("--gpu-devices requires at least two indices");
 		}
+		if (g_settings.hasOption("gpu-domain-cuts"))
+		{
+			const std::string boundaries =
+			    g_settings.getOption("gpu-domain-cuts").as<std::string>();
+			std::stringstream list(boundaries);
+			while (std::getline(list, token, ','))
+			{
+				if (token.empty() || token.find_first_not_of("0123456789") != std::string::npos)
+				{
+					throw std::invalid_argument(
+					    "--gpu-domain-cuts requires nonnegative integer boundaries");
+				}
+				const auto cut = std::stoull(token);
+				if (cut > std::numeric_limits<uint32_t>::max())
+				{
+					throw std::out_of_range("--gpu-domain-cuts boundary exceeds uint32 range");
+				}
+				cuts.push_back(static_cast<uint32_t>(cut));
+			}
+			if (cuts.size() != selected.size() + 1 || boundaries.back() == ',')
+			{
+				throw std::invalid_argument(
+				    "--gpu-domain-cuts requires one more boundary than devices");
+			}
+		}
 #endif
 	}
 	if (name=="reference")
@@ -114,7 +145,7 @@ GPU_Backend* GPU_Backend::New(const std::string& name)
 				UNUSED(index);
 				domains.emplace_back(new GPU_Backend_Reference());
 			}
-			return new GPU_Backend_Domains(std::move(domains));
+			return new GPU_Backend_Domains(std::move(domains), cuts);
 		}
 #endif
 		return new GPU_Backend_Reference();
@@ -186,7 +217,7 @@ GPU_Backend* GPU_Backend::New(const std::string& name)
 			}
 			domains.push_back(std::move(backend));
 		}
-		return new GPU_Backend_Domains(std::move(domains));
+		return new GPU_Backend_Domains(std::move(domains), cuts);
 	}
 #endif
 

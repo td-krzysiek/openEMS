@@ -168,6 +168,7 @@ public:
 struct GPU_Backend_Domains::Impl
 {
 	std::vector<std::unique_ptr<GPU_Backend>> devices;
+	std::vector<uint32_t> cuts;
 	std::unique_ptr<PartitionPlan> plan;
 	LocalHaloTransport transport;
 	LocalCollectiveContext collectives;
@@ -194,13 +195,19 @@ struct GPU_Backend_Domains::Impl
 	}
 };
 
-GPU_Backend_Domains::GPU_Backend_Domains(std::vector<std::unique_ptr<GPU_Backend>> devices)
+GPU_Backend_Domains::GPU_Backend_Domains(
+    std::vector<std::unique_ptr<GPU_Backend>> devices, std::vector<uint32_t> cuts)
     : d(new Impl())
 {
 	if (devices.size() < 2)
 	{
 		throw std::invalid_argument("select at least two domain executors");
 	}
+	if (!cuts.empty() && cuts.size() != devices.size() + 1)
+	{
+		throw std::invalid_argument("domain cuts must contain one more boundary than devices");
+	}
+	d->cuts = std::move(cuts);
 	d->devices = std::move(devices);
 }
 
@@ -238,10 +245,13 @@ bool GPU_Backend_Domains::Init(const Operator* op)
 	GridShape shape = {
 		op->GetNumberOfLines(0, true), op->GetNumberOfLines(1, true), op->GetNumberOfLines(2, true)
 	};
-	std::vector<uint32_t> cuts;
-	for (size_t i = 0; i <= d->devices.size(); ++i)
+	std::vector<uint32_t> cuts = d->cuts;
+	if (cuts.empty())
 	{
-		cuts.push_back(uint32_t(uint64_t(shape.nx) * i / d->devices.size()));
+		for (size_t i = 0; i <= d->devices.size(); ++i)
+		{
+			cuts.push_back(uint32_t(uint64_t(shape.nx) * i / d->devices.size()));
+		}
 	}
 	d->plan.reset(new PartitionPlan(1, shape, cuts));
 	std::vector<DomainExecutor*> executors;
