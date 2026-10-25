@@ -1,5 +1,12 @@
 # Antenna runtime integration
 
+**Historical pre-merge snapshot below.** The Monster integration on this
+branch now combines upstream `d686f1d` with the adopted runtime. Qualified
+solver source is `2a4f5ffa70d389c1105d2bb3effe26c029f37aca`; later documentation
+commits do not change its engine code. See [fork PR 19](https://github.com/td-krzysiek/openEMS/pull/19)
+for the completed CPU/Metal/CUDA, startup, NF2FF and relocation controls.
+The fork's master remains upstream-only. Full-array equivalence is not claimed.
+
 Snapshot recorded on 25 October 2026. This branch preserves the adopted
 experimental solver changes and the qualified startup gate. It is not a merge
 of every prototype branch and is not the latest upstream solver.
