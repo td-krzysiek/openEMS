@@ -175,5 +175,35 @@ plane transfers per timestep for that boundary, retaining the synchronization
 and a staged fallback for backends without the operation. It does not remove
 inter-device halo staging. `test_domain_copy` checks queued dependent E/H
 copies, unchanged other locations, local/unsplit storage, empty/identical
-ranges and rejected overlap/overflow. Actual CUDA throughput still needs to
-be measured; fewer transfers alone is not a measured speedup.
+ranges and rejected overlap/overflow. The physical CUDA measurements below
+cover the current implementation; fewer transfers alone is not a speedup claim.
+
+## Physical CUDA qualification, 25 October 2026
+
+Native code at `30f3799` passes the four nonzero source/PML, PEC, RLC and
+opaque-conductor fixtures on two RTX3080s. Maximum field error is below
+`8.11e-7` of reference peak; the probe samples are unchanged. Owned-prefix
+energy, uneven cuts, ordered copies and automatic/manual/startup control tests
+pass. One/two-device energy-selected stopping is380steps at−50dB; the final
+complex-field difference is `7.34e-7` of reference peak, with unchanged probes.
+The cross-device comparison correction is test-only; native binaries did not
+change. This remains bounded fixture evidence, not full-antenna validation.
+
+The disclosed Gaussian derivative of `benchmark/cases.py` replaces
+`SetSinusExcite(f0)` with `SetGaussExcite(f0, f0/2)` in `_setup` and identifies
+the case version separately. A sinusoidal steady-state extension is unsupported
+in this adapter and is not counted as a successful standard benchmark. All
+other PML geometry, probes and interleaved timing follow `benchmark/bench.py`.
+Each row uses three interleaved3second samples and two native CPU threads:
+
+| Native grid | One fused RTX3080 [Mcells/s] | Two host-staged RTX3080s [Mcells/s] | Two/one |
+|---|---:|---:|---:|
+| 200³ =8M |6908.3|5476.6|0.793 |
+| 311³ =30.08M |7359.4|7336.0|0.997 |
+
+Measured on a dual Xeon Gold5218 with346GiB RAM, CUDA12.6 and two10GiB
+RTX3080s on different NUMA nodes. Probe prefixes compare identically. At30M
+the0.3% difference is within the measured spread; neither size demonstrates
+an application speedup. Larger-model, topology and material costs require
+separate measurement. Inter-device staging, synchronization, unfused domain
+updates and global host processing remain limitations.
