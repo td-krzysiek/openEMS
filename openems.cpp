@@ -20,6 +20,7 @@
 #include <iomanip>
 #include <iostream>
 #include <fstream>
+#include "CSPropExcitation.h"
 #include "tools/signal.h"
 #include "tools/useful.h"
 #include "tools/denormal.h"
@@ -95,6 +96,10 @@ openEMS::openEMS()
 	m_DumpStats = false;
 	m_exactEndCriteria = false;
 	m_dftSnapshots = false;
+	m_runtimeGateTimeout = 600;
+	m_runtimeControl = false;
+	m_runtimeExcitationEnd = 0;
+	m_runtimeGateIndex = 0;
 	m_startupGateStep = 0;
 	m_startupGateTimeout = 300;
 
@@ -362,6 +367,22 @@ void openEMS::collectCommandLineArguments()
 			"accept DFT_SNAPSHOT requests and atomically export accumulated E/H sums without stopping"
 		)
 		(
+			"runtime-control",
+			po::bool_switch(&m_runtimeControl),
+			"accept manual RUNTIME_PAUSE/CONTINUE/STOP at processing boundaries"
+		)(
+			"decay-gates",
+			po::value<std::string>(&m_runtimeGateSchedule),
+			"pause and export DFT at post-pulse energy thresholds, e.g. -10,-20,-30,-40,-50"
+		)(
+			"decay-gate-id",
+			po::value<std::string>(&m_runtimeGateID),
+			"unique controller/run token for decay gates (1-48 ASCII letters/digits/-/_)"
+		)(
+			"decay-gate-timeout",
+			po::value<unsigned int>(&m_runtimeGateTimeout),
+			"seconds to wait before resuming a decay gate without a controller (default 600)"
+		)(
 			"startup-gate",
 			po::value<unsigned int>(&m_startupGateStep),
 			"pause once at a processing boundary at/after this timestep for startup qualification"
@@ -1312,6 +1333,7 @@ ContinuousStructure* openEMS::GetCSX() const
 int openEMS::SetupFDTD()
 {
 	ValidateStartupGate();
+	ValidateRuntimeGates();
 	// of a previous setup that was not run
 	FreeSimulation();
 
@@ -1594,6 +1616,23 @@ void openEMS::RunFDTD()
 	}
 
 	cout << "Running FDTD engine... this may take a while... grab a cup of coffee?!?" << endl;
+	if (!m_runtimeGateLevels.empty() &&
+		(Eng_Ext_SSD != NULL || FDTD_Op->GetExcitationSignal()->GetExciteType() != 0))
+	{
+		throw std::runtime_error("Runtime gate: decay gates require Gaussian pulse excitation");
+	}
+	m_runtimeExcitationEnd = FDTD_Op->GetExcitationSignal()->GetLength();
+	for (CSProperties* property : m_CSX->GetPropertyByType(CSProperties::EXCITATION))
+	{
+		CSPropExcitation* excitation = property->ToExcitation();
+		if (excitation != NULL && excitation->GetEnabled())
+		{
+			double finish = FDTD_Op->GetExcitationSignal()->GetLength() +
+				std::max(0.0, excitation->GetDelay()) / FDTD_Op->GetTimestep();
+			m_runtimeExcitationEnd = std::max(m_runtimeExcitationEnd,
+				static_cast<unsigned int>(std::min(finish, static_cast<double>(NrTS))));
+		}
+	}
 
 	Signal::SetupHandlerForSIGINT(SIGNAL_EXIT_GRACEFUL);
 	RestoreSIGINT restoreSIGINT;
@@ -1687,6 +1726,33 @@ void openEMS::RunFDTD()
 			prevTime = gateEnd;
 			prevTS = currTS;
 			startupPassed = true;
+		}
+
+		bool manualPause = false;
+		if (m_runtimeControl)
+		{
+			std::ifstream request("RUNTIME_PAUSE");
+			manualPause = request.good();
+		}
+		if (manualPause || (m_runtimeGateIndex < m_runtimeGateLevels.size() && ProcField->CheckTimestep() && maxE > 0 &&
+			currE / maxE <= std::pow(10.0, m_runtimeGateLevels[m_runtimeGateIndex] / 10.0) &&
+			(unsigned int)currTS >= m_runtimeExcitationEnd &&
+			change > endCrit))
+		{
+			timeval gateStart, gateEnd;
+			gettimeofday(&gateStart, NULL);
+			bool continued = CheckRuntimeGates(currE, maxE,
+				CalcDiffTime(gateStart, startTime) - startupWait);
+			gettimeofday(&gateEnd, NULL);
+			startupWait += CalcDiffTime(gateEnd, gateStart);
+			// Exclude pause/snapshot time from the next throughput interval.
+			prevTime = gateEnd;
+			prevTS = currTS;
+			if (!continued)
+			{
+				aborted = true;
+				break;
+			}
 		}
 
 		gettimeofday(&currTime,NULL);
