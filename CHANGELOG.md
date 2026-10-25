@@ -15,6 +15,23 @@ there are unreleased changes. It becomes the next release entry.
 
 ### Added
 
+- Opt-in startup qualification pauses a live run at a processing boundary and
+  continues it after controller approval without rebuilding the operator or
+  resetting fields, material histories or accumulated DFT data.
+
+- Opt-in `--dft-snapshots` requests export accumulated E/H HDF5 data at a
+  timestep boundary without stopping or resetting DFT sums. Snapshot directories
+  are published atomically and labelled unconverged with sample timing. Python
+  and Matlab request helpers are provided; final field dumps are unchanged.
+
+- Treat touching/overlapping conforming boxes with identical experimental
+  opaque-surface fits as one conductor, excluding internal contact faces.
+  Different-fit contacts are rejected. CPU/GPU updates are unchanged.
+- Metal and HIP/CUDA device updates for the experimental opaque RF surface
+  boundary, including its passive R-L histories and HIP fused-step fixups.
+  The device boundary uses FP32; the CPU boundary keeps FP64. The existing
+  Cartesian, disjoint, conforming-box restrictions and timestep selection
+  remain unchanged. This is not a production antenna/material qualification.
 - **A GPU engine**, `--engine=gpu` (`engine='gpu'` from Python), with a Metal
   backend on macOS and a HIP backend for AMD (ROCm) and NVIDIA (CUDA) GPUs. It
   is selected like the other engines, runs Cartesian and cylindrical meshes
@@ -37,8 +54,19 @@ there are unreleased changes. It becomes the next release entry.
 
 ### Fixed
 
+- Apply the delayed-excitation correction to the experimental tiling hooks,
+  matching CPU/GPU behavior for step and custom sources.
+
 - A number of timesteps above 2^31 (about 2.1e9) made the setup fail with
   "excitation setup failed". It is now limited to that.
+- Release waiting operator setup workers when a controller-side exception
+  occurs before the EC/PEC phases finish, instead of hanging during cleanup.
+- Reject the new Debye extension with the experimental tiling engine until
+  its pre/post hooks have tiled implementations, instead of skipping them.
+- Include the experimental opaque-surface boundary's physical exterior
+  capacitance in timestep selection, preventing growth on graded meshes.
+  Extensions can prepare EC elements through a default no-op `PreprocessEC()`
+  hook before timestep selection; existing extensions keep their behavior.
 - A run switched flush-to-zero on in the calling process and left it on: in
   Python, numpy computations after `Run()` lost their denormal (subnormal)
   values, and the results of a following run with the basic engine depended
@@ -73,6 +101,16 @@ there are unreleased changes. It becomes the next release entry.
   a custom excitation whose function is not zero at t=0.
 
 ### Changed
+
+- Store uniform-order experimental opaque-surface GPU histories and scaled
+  coefficients in compact 32-edge tiles on HIP and Metal, without padding or
+  changing the per-edge FP32 arithmetic. Mixed orders keep edge-major storage.
+
+- Share experimental opaque-surface GPU `a` and memory coefficients per fit
+  instead of per edge on HIP and Metal, preserving per-edge states and scales.
+- HIP/CUDA UPML stores either exact compressed coefficient sets or full
+  arrays, rather than both. Separate pre/post updates also use compressed
+  sets, so the memory saving does not require UPML fusion.
 
 - The Python bindings need Python 3.6 or newer (was 3.4), the oldest version
   CI still tests; CentOS 7 and Ubuntu 14.04 are no longer tested.
@@ -146,6 +184,15 @@ number moved up and patch releases now have somewhere to go.
 
 ### Added
 
+- Experimental opt-in opaque RF surface boundary for grid-conforming Cartesian metal boxes; excludes interior H and uses passive implicit R-L face currents.
+
+- Experimental opt-in positive R-L sheet-admittance fit through the existing
+  CSXCAD property-attribute mechanism, for roughness-model qualification.
+
+- Experimental Cartesian spatial/temporal tiling engine (`--engine=tiling`),
+  with opt-in tile settings and regression tests. Supports UPML, excitation,
+  conducting sheets and Lorentz/Drude materials; rejects unsupported extensions.
+
 - **SAR calculation reworked**, following IEEE/IEC 62704-1: averaging is done
   once for all frequencies instead of per frequency, and is multi-threaded,
   together giving a large speedup. The new `--autorange` option restricts the
@@ -213,7 +260,20 @@ number moved up and patch releases now have somewhere to go.
   then stops at the same timestep regardless of machine speed and load, at
   the cost of performance — mainly useful for engine or code verification.
 
+- **nf2ff can run its surface integral on a GPU.** Select it with the
+  `Backend` attribute of the nf2ff XML (`'Backend', 'gpu'` in
+  `CalcNF2FF.m`) or `backend=` in `CalcNF2FF()` (Python): `auto` (default)
+  uses the GPU if the build has GPU support and a device is usable, `cpu`
+  always runs the original code, `gpu` fails instead of falling back.
+  The results agree with the CPU ones to about 1e-6 of the pattern peak.
+  Written in HIP, so it runs on AMD and on NVIDIA GPUs. Needs the new
+  `NF2FF_HIP` build option.
+
 ### Changed
+
+- Experimental combined performance build: distribute standard-engine UPML work
+  over XY rows, group disjoint UPML barriers, parallelize compatible Lorentz
+  pre-updates, and use POSIX iteration barriers on Linux, including tiling.
 
 - **The MPI engine was removed.** It had not compiled for years, as it used
   the C++ MPI bindings that MPI-3 dropped, it had no tests, and several
@@ -268,6 +328,7 @@ number moved up and patch releases now have somewhere to go.
   Drude/Lorentz branch put the update's root on -1. It now integrates the pole's
   capacitor voltage, in its own extension pair; `eps_delta` is no longer limited,
   and a pole shorter than three timesteps is refused with a warning (#229).
+
 - Python: a `ContinuousStructure` handed to `SetCSX()` is no longer destroyed
   twice. `SetCSX()` takes ownership, which the binding now states, and
   `GetCSX()` no longer leaks a fresh structure per call. Requires a CSXCAD
@@ -314,6 +375,8 @@ number moved up and patch releases now have somewhere to go.
 - Six of the nine steady-state detection probes sat on the first mesh line of
   their direction (usually a field-free boundary) instead of a quarter/three
   quarters across, due to an integer-division bug.
+- nf2ff stops with an error if a plane cannot be processed, instead of
+  printing it and continuing with a far field that is missing that plane.
 
 ### Build
 
@@ -331,6 +394,9 @@ number moved up and patch releases now have somewhere to go.
   `update_openEMS.sh` were removed.
 - CI covers Linux, macOS, FreeBSD and Windows, and compiles with warnings
   enabled.
+- New `NF2FF_HIP` CMake option (default `OFF`) builds the GPU backend of
+  nf2ff. It needs CMake 3.21 or newer (3.28 for NVIDIA GPUs) and the HIP
+  toolkit; nothing changes for builds without it.
 
 ### Upgrade notes
 

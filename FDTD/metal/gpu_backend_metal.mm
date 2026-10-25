@@ -704,6 +704,7 @@ static const Metal_ExtensionFactory METAL_EXTENSIONS[] = {
 	Metal_CreateExt_LorentzMaterial,
 	Metal_CreateExt_DebyeMaterial,
 	Metal_CreateExt_LumpedRLC,
+	Metal_CreateExt_OpaqueSurface,
 	Metal_CreateExt_TFSF,
 	Metal_CreateExt_Absorbing_BC,
 	Metal_CreateExt_SteadyState,

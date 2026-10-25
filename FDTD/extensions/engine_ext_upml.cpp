@@ -16,6 +16,8 @@
 */
 
 #include "engine_ext_upml.h"
+#include <typeinfo>
+#include <cstdint>
 #include "operator_ext_upml.h"
 #include "FDTD/engine.h"
 #include "FDTD/engine_sse.h"
@@ -24,6 +26,7 @@
 Engine_Ext_UPML::Engine_Ext_UPML(Operator_Ext_UPML* op_ext) : Engine_Extension(op_ext)
 {
 	m_Op_UPML = op_ext;
+	m_TilingSupported = true;
 
 	//this ABC extension should be executed first!
 	m_Priority = ENG_EXT_PRIO_UPML;
@@ -42,7 +45,7 @@ void Engine_Ext_UPML::SetNumberOfThreads(int nrThread)
 {
 	Engine_Extension::SetNumberOfThreads(nrThread);
 
-	m_numX = AssignJobs2Threads(m_Op_UPML->m_numLines[0],m_NrThreads,false);
+	m_numX = AssignJobs2Threads(m_Op_UPML->m_numLines[0]*m_Op_UPML->m_numLines[1],m_NrThreads,false);
 	m_start.resize(m_NrThreads,0);
 	m_start.at(0)=0;
 	for (size_t n=1; n<m_numX.size(); ++n)
@@ -62,11 +65,12 @@ void Engine_Ext_UPML::DoPreVoltageUpdatesImpl(EngType* eng, int threadID)
 	unsigned int loc_pos[3];
 	FDTD_FLOAT f_help;
 
-	for (unsigned int lineX=0; lineX<m_numX.at(threadID); ++lineX)
+	for (unsigned int row=0; row<m_numX.at(threadID); ++row)
 	{
-		loc_pos[0]=lineX+m_start.at(threadID);
+		const unsigned int xy = row + m_start.at(threadID);
+		loc_pos[0] = xy / m_Op_UPML->m_numLines[1];
+		loc_pos[1] = xy % m_Op_UPML->m_numLines[1];
 		pos[0] = loc_pos[0] + m_Op_UPML->m_StartPos[0];
-		for (loc_pos[1]=0; loc_pos[1]<m_Op_UPML->m_numLines[1]; ++loc_pos[1])
 		{
 			pos[1] = loc_pos[1] + m_Op_UPML->m_StartPos[1];
 			for (loc_pos[2]=0; loc_pos[2]<m_Op_UPML->m_numLines[2]; ++loc_pos[2])
@@ -109,11 +113,12 @@ void Engine_Ext_UPML::DoPostVoltageUpdatesImpl(EngType* eng, int threadID)
 	unsigned int loc_pos[3];
 	FDTD_FLOAT f_help;
 
-	for (unsigned int lineX=0; lineX<m_numX.at(threadID); ++lineX)
+	for (unsigned int row=0; row<m_numX.at(threadID); ++row)
 	{
-		loc_pos[0]=lineX+m_start.at(threadID);
+		const unsigned int xy = row + m_start.at(threadID);
+		loc_pos[0] = xy / m_Op_UPML->m_numLines[1];
+		loc_pos[1] = xy % m_Op_UPML->m_numLines[1];
 		pos[0] = loc_pos[0] + m_Op_UPML->m_StartPos[0];
-		for (loc_pos[1]=0; loc_pos[1]<m_Op_UPML->m_numLines[1]; ++loc_pos[1])
 		{
 			pos[1] = loc_pos[1] + m_Op_UPML->m_StartPos[1];
 			for (loc_pos[2]=0; loc_pos[2]<m_Op_UPML->m_numLines[2]; ++loc_pos[2])
@@ -153,11 +158,12 @@ void Engine_Ext_UPML::DoPreCurrentUpdatesImpl(EngType* eng, int threadID)
 	unsigned int loc_pos[3];
 	FDTD_FLOAT f_help;
 
-	for (unsigned int lineX=0; lineX<m_numX.at(threadID); ++lineX)
+	for (unsigned int row=0; row<m_numX.at(threadID); ++row)
 	{
-		loc_pos[0]=lineX+m_start.at(threadID);
+		const unsigned int xy = row + m_start.at(threadID);
+		loc_pos[0] = xy / m_Op_UPML->m_numLines[1];
+		loc_pos[1] = xy % m_Op_UPML->m_numLines[1];
 		pos[0] = loc_pos[0] + m_Op_UPML->m_StartPos[0];
-		for (loc_pos[1]=0; loc_pos[1]<m_Op_UPML->m_numLines[1]; ++loc_pos[1])
 		{
 			pos[1] = loc_pos[1] + m_Op_UPML->m_StartPos[1];
 			for (loc_pos[2]=0; loc_pos[2]<m_Op_UPML->m_numLines[2]; ++loc_pos[2])
@@ -201,11 +207,12 @@ void Engine_Ext_UPML::DoPostCurrentUpdatesImpl(EngType* eng, int threadID)
 	unsigned int loc_pos[3];
 	FDTD_FLOAT f_help;
 
-	for (unsigned int lineX=0; lineX<m_numX.at(threadID); ++lineX)
+	for (unsigned int row=0; row<m_numX.at(threadID); ++row)
 	{
-		loc_pos[0]=lineX+m_start.at(threadID);
+		const unsigned int xy = row + m_start.at(threadID);
+		loc_pos[0] = xy / m_Op_UPML->m_numLines[1];
+		loc_pos[1] = xy % m_Op_UPML->m_numLines[1];
 		pos[0] = loc_pos[0] + m_Op_UPML->m_StartPos[0];
-		for (loc_pos[1]=0; loc_pos[1]<m_Op_UPML->m_numLines[1]; ++loc_pos[1])
 		{
 			pos[1] = loc_pos[1] + m_Op_UPML->m_StartPos[1];
 			for (loc_pos[2]=0; loc_pos[2]<m_Op_UPML->m_numLines[2]; ++loc_pos[2])
@@ -231,4 +238,223 @@ void Engine_Ext_UPML::DoPostCurrentUpdatesImpl(EngType* eng, int threadID)
 void Engine_Ext_UPML::DoPostCurrentUpdates(int threadID)
 {
 	ENG_DISPATCH_ARGS(DoPostCurrentUpdatesImpl, threadID);
+}
+
+template <typename EngType>
+void Engine_Ext_UPML::DoPreVoltageUpdatesTiledImpl(EngType* eng, unsigned int start[3], unsigned int stop[3])
+{
+	if (m_Eng==NULL)
+		return;
+
+
+
+	unsigned int pos[3];
+	unsigned int loc_pos[3];
+	FDTD_FLOAT f_help;
+
+	unsigned int begin[3], end[3];
+	for (unsigned int n=0; n<3; ++n)
+	{
+		begin[n] = std::max(start[n], m_Op_UPML->m_StartPos[n]);
+		end[n] = std::min(stop[n], m_Op_UPML->m_StartPos[n] + m_Op_UPML->m_numLines[n] - 1);
+		if (begin[n] > end[n]) return;
+	}
+	for (pos[0]=begin[0]; pos[0]<=end[0]; ++pos[0])
+	{
+		loc_pos[0] = pos[0] - m_Op_UPML->m_StartPos[0];
+		for (pos[1]=begin[1]; pos[1]<=end[1]; ++pos[1])
+		{
+			loc_pos[1] = pos[1] - m_Op_UPML->m_StartPos[1];
+			for (pos[2]=begin[2]; pos[2]<=end[2]; ++pos[2])
+			{
+				loc_pos[2] = pos[2] - m_Op_UPML->m_StartPos[2];
+
+				f_help = m_Op_UPML->vv(0, loc_pos[0], loc_pos[1], loc_pos[2])   * eng->EngType::GetVolt(0,pos)
+						 - m_Op_UPML->vvfo(0, loc_pos[0], loc_pos[1], loc_pos[2]) * volt_flux(0, loc_pos[0], loc_pos[1], loc_pos[2]);
+				eng->EngType::SetVolt(0,pos, volt_flux(0, loc_pos[0], loc_pos[1], loc_pos[2]));
+				volt_flux(0, loc_pos[0], loc_pos[1], loc_pos[2]) = f_help;
+
+				f_help = m_Op_UPML->vv(1, loc_pos[0], loc_pos[1], loc_pos[2])   * eng->EngType::GetVolt(1,pos)
+						 - m_Op_UPML->vvfo(1, loc_pos[0], loc_pos[1], loc_pos[2]) * volt_flux(1, loc_pos[0], loc_pos[1], loc_pos[2]);
+				eng->EngType::SetVolt(1,pos, volt_flux(1, loc_pos[0], loc_pos[1], loc_pos[2]));
+				volt_flux(1, loc_pos[0], loc_pos[1], loc_pos[2]) = f_help;
+
+				f_help = m_Op_UPML->vv(2, loc_pos[0], loc_pos[1], loc_pos[2])   * eng->EngType::GetVolt(2,pos)
+						 - m_Op_UPML->vvfo(2, loc_pos[0], loc_pos[1], loc_pos[2]) * volt_flux(2, loc_pos[0], loc_pos[1], loc_pos[2]);
+				eng->EngType::SetVolt(2,pos, volt_flux(2, loc_pos[0], loc_pos[1], loc_pos[2]));
+				volt_flux(2, loc_pos[0], loc_pos[1], loc_pos[2]) = f_help;
+			}
+		}
+	}
+}
+
+void Engine_Ext_UPML::DoPreVoltageUpdates(int, unsigned int start[3], unsigned int stop[3])
+{
+	ENG_DISPATCH_ARGS(DoPreVoltageUpdatesTiledImpl, start, stop);
+}
+
+template <typename EngType>
+void Engine_Ext_UPML::DoPostVoltageUpdatesTiledImpl(EngType* eng, unsigned int start[3], unsigned int stop[3])
+{
+	if (m_Eng==NULL)
+		return;
+
+
+	unsigned int pos[3];
+	unsigned int loc_pos[3];
+	FDTD_FLOAT f_help;
+
+	unsigned int begin[3], end[3];
+	for (unsigned int n=0; n<3; ++n)
+	{
+		begin[n] = std::max(start[n], m_Op_UPML->m_StartPos[n]);
+		end[n] = std::min(stop[n], m_Op_UPML->m_StartPos[n] + m_Op_UPML->m_numLines[n] - 1);
+		if (begin[n] > end[n]) return;
+	}
+	for (pos[0]=begin[0]; pos[0]<=end[0]; ++pos[0])
+	{
+		loc_pos[0] = pos[0] - m_Op_UPML->m_StartPos[0];
+		for (pos[1]=begin[1]; pos[1]<=end[1]; ++pos[1])
+		{
+			loc_pos[1] = pos[1] - m_Op_UPML->m_StartPos[1];
+			for (pos[2]=begin[2]; pos[2]<=end[2]; ++pos[2])
+			{
+				loc_pos[2] = pos[2] - m_Op_UPML->m_StartPos[2];
+
+				f_help = volt_flux(0, loc_pos[0], loc_pos[1], loc_pos[2]);
+				volt_flux(0, loc_pos[0], loc_pos[1], loc_pos[2]) = eng->EngType::GetVolt(0,pos);
+				eng->EngType::SetVolt(0,pos, f_help + m_Op_UPML->vvfn(0, loc_pos[0], loc_pos[1], loc_pos[2]) * volt_flux(0, loc_pos[0], loc_pos[1], loc_pos[2]));
+
+				f_help = volt_flux(1, loc_pos[0], loc_pos[1], loc_pos[2]);
+				volt_flux(1, loc_pos[0], loc_pos[1], loc_pos[2]) = eng->EngType::GetVolt(1,pos);
+				eng->EngType::SetVolt(1,pos, f_help + m_Op_UPML->vvfn(1, loc_pos[0], loc_pos[1], loc_pos[2]) * volt_flux(1, loc_pos[0], loc_pos[1], loc_pos[2]));
+
+				f_help = volt_flux(2, loc_pos[0], loc_pos[1], loc_pos[2]);
+				volt_flux(2, loc_pos[0], loc_pos[1], loc_pos[2]) = eng->EngType::GetVolt(2,pos);
+				eng->EngType::SetVolt(2,pos, f_help + m_Op_UPML->vvfn(2, loc_pos[0], loc_pos[1], loc_pos[2]) * volt_flux(2, loc_pos[0], loc_pos[1], loc_pos[2]));
+			}
+		}
+	}
+}
+
+void Engine_Ext_UPML::DoPostVoltageUpdates(int, unsigned int start[3], unsigned int stop[3])
+{
+	ENG_DISPATCH_ARGS(DoPostVoltageUpdatesTiledImpl, start, stop);
+}
+
+template <typename EngType>
+void Engine_Ext_UPML::DoPreCurrentUpdatesTiledImpl(EngType* eng, unsigned int start[3], unsigned int stop[3])
+{
+	if (m_Eng==NULL)
+		return;
+
+
+	unsigned int pos[3];
+	unsigned int loc_pos[3];
+	FDTD_FLOAT f_help;
+
+	unsigned int begin[3], end[3];
+	for (unsigned int n=0; n<3; ++n)
+	{
+		begin[n] = std::max(start[n], m_Op_UPML->m_StartPos[n]);
+		end[n] = std::min(stop[n], m_Op_UPML->m_StartPos[n] + m_Op_UPML->m_numLines[n] - 1);
+		if (begin[n] > end[n]) return;
+	}
+	for (pos[0]=begin[0]; pos[0]<=end[0]; ++pos[0])
+	{
+		loc_pos[0] = pos[0] - m_Op_UPML->m_StartPos[0];
+		for (pos[1]=begin[1]; pos[1]<=end[1]; ++pos[1])
+		{
+			loc_pos[1] = pos[1] - m_Op_UPML->m_StartPos[1];
+			for (pos[2]=begin[2]; pos[2]<=end[2]; ++pos[2])
+			{
+				loc_pos[2] = pos[2] - m_Op_UPML->m_StartPos[2];
+
+				f_help = m_Op_UPML->ii(0, loc_pos[0], loc_pos[1], loc_pos[2])   * eng->EngType::GetCurr(0,pos)
+						 - m_Op_UPML->iifo(0, loc_pos[0], loc_pos[1], loc_pos[2]) * curr_flux(0, loc_pos[0], loc_pos[1], loc_pos[2]);
+				eng->EngType::SetCurr(0,pos, curr_flux(0, loc_pos[0], loc_pos[1], loc_pos[2]));
+				curr_flux(0, loc_pos[0], loc_pos[1], loc_pos[2]) = f_help;
+
+				f_help = m_Op_UPML->ii(1, loc_pos[0], loc_pos[1], loc_pos[2])   * eng->EngType::GetCurr(1,pos)
+						 - m_Op_UPML->iifo(1, loc_pos[0], loc_pos[1], loc_pos[2]) * curr_flux(1, loc_pos[0], loc_pos[1], loc_pos[2]);
+				eng->EngType::SetCurr(1,pos, curr_flux(1, loc_pos[0], loc_pos[1], loc_pos[2]));
+				curr_flux(1, loc_pos[0], loc_pos[1], loc_pos[2]) = f_help;
+
+				f_help = m_Op_UPML->ii(2, loc_pos[0], loc_pos[1], loc_pos[2])   * eng->EngType::GetCurr(2,pos)
+						 - m_Op_UPML->iifo(2, loc_pos[0], loc_pos[1], loc_pos[2]) * curr_flux(2, loc_pos[0], loc_pos[1], loc_pos[2]);
+				eng->EngType::SetCurr(2,pos, curr_flux(2, loc_pos[0], loc_pos[1], loc_pos[2]));
+				curr_flux(2, loc_pos[0], loc_pos[1], loc_pos[2]) = f_help;
+
+			}
+		}
+	}
+}
+
+void Engine_Ext_UPML::DoPreCurrentUpdates(int, unsigned int start[3], unsigned int stop[3])
+{
+	ENG_DISPATCH_ARGS(DoPreCurrentUpdatesTiledImpl, start, stop);
+}
+
+template <typename EngType>
+void Engine_Ext_UPML::DoPostCurrentUpdatesTiledImpl(EngType* eng, unsigned int start[3], unsigned int stop[3])
+{
+	if (m_Eng==NULL)
+		return;
+
+
+	unsigned int pos[3];
+	unsigned int loc_pos[3];
+	FDTD_FLOAT f_help;
+
+	unsigned int begin[3], end[3];
+	for (unsigned int n=0; n<3; ++n)
+	{
+		begin[n] = std::max(start[n], m_Op_UPML->m_StartPos[n]);
+		end[n] = std::min(stop[n], m_Op_UPML->m_StartPos[n] + m_Op_UPML->m_numLines[n] - 1);
+		if (begin[n] > end[n]) return;
+	}
+	for (pos[0]=begin[0]; pos[0]<=end[0]; ++pos[0])
+	{
+		loc_pos[0] = pos[0] - m_Op_UPML->m_StartPos[0];
+		for (pos[1]=begin[1]; pos[1]<=end[1]; ++pos[1])
+		{
+			loc_pos[1] = pos[1] - m_Op_UPML->m_StartPos[1];
+			for (pos[2]=begin[2]; pos[2]<=end[2]; ++pos[2])
+			{
+				loc_pos[2] = pos[2] - m_Op_UPML->m_StartPos[2];
+
+				f_help = curr_flux(0, loc_pos[0], loc_pos[1], loc_pos[2]);
+				curr_flux(0, loc_pos[0], loc_pos[1], loc_pos[2]) = eng->EngType::GetCurr(0,pos);
+				eng->EngType::SetCurr(0,pos, f_help + m_Op_UPML->iifn(0, loc_pos[0], loc_pos[1], loc_pos[2]) * curr_flux(0, loc_pos[0], loc_pos[1], loc_pos[2]));
+
+				f_help = curr_flux(1, loc_pos[0], loc_pos[1], loc_pos[2]);
+				curr_flux(1, loc_pos[0], loc_pos[1], loc_pos[2]) = eng->EngType::GetCurr(1,pos);
+				eng->EngType::SetCurr(1,pos, f_help + m_Op_UPML->iifn(1, loc_pos[0], loc_pos[1], loc_pos[2]) * curr_flux(1, loc_pos[0], loc_pos[1], loc_pos[2]));
+
+				f_help = curr_flux(2, loc_pos[0], loc_pos[1], loc_pos[2]);
+				curr_flux(2, loc_pos[0], loc_pos[1], loc_pos[2]) = eng->EngType::GetCurr(2,pos);
+				eng->EngType::SetCurr(2,pos, f_help + m_Op_UPML->iifn(2, loc_pos[0], loc_pos[1], loc_pos[2]) * curr_flux(2, loc_pos[0], loc_pos[1], loc_pos[2]));
+			}
+		}
+	}
+}
+
+void Engine_Ext_UPML::DoPostCurrentUpdates(int, unsigned int start[3], unsigned int stop[3])
+{
+	ENG_DISPATCH_ARGS(DoPostCurrentUpdatesTiledImpl, start, stop);
+}
+
+bool Engine_Ext_UPML::IsDisjoint(const Engine_Ext_UPML& other) const
+{
+	if (typeid(*this)!=typeid(Engine_Ext_UPML) || typeid(other)!=typeid(Engine_Ext_UPML))
+		return false;
+	for (unsigned int n=0; n<3; ++n)
+	{
+		const uint64_t first = m_Op_UPML->m_StartPos[n];
+		const uint64_t second = other.m_Op_UPML->m_StartPos[n];
+		if (first+m_Op_UPML->m_numLines[n]<=second ||
+		    second+other.m_Op_UPML->m_numLines[n]<=first)
+			return true;
+	}
+	return false;
 }

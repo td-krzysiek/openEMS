@@ -56,6 +56,10 @@ class Engine_Ext_DebyeMaterial : public Engine_Ext_Dispersive
 public:
 	Engine_Ext_DebyeMaterial(Operator_Ext_DebyeMaterial* op_ext_debye);
 	virtual ~Engine_Ext_DebyeMaterial();
+	// The new Debye pre/post hooks have no tiled implementation yet. Do not
+	// inherit the dispersive base's advertised support and silently skip them.
+	virtual void InitializeTiling(const std::vector<Range3D>& tiles)
+	{ UNUSED(tiles); TilingUnsupportedError(); }
 
 	virtual void DoPreVoltageUpdates();
 	virtual void DoPostVoltageUpdates();

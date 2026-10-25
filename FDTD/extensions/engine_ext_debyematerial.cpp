@@ -22,6 +22,7 @@
 Engine_Ext_DebyeMaterial::Engine_Ext_DebyeMaterial(Operator_Ext_DebyeMaterial* op_ext_debye) : Engine_Ext_Dispersive(op_ext_debye)
 {
 	m_Op_Ext_Deb = op_ext_debye;
+	m_TilingSupported = false;
 	// the base allocated volt_ADE[0], which carries the joint correction
 	size_t count = m_Op_Ext_Deb->m_LM_Count.at(0);
 

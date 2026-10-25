@@ -56,6 +56,10 @@ protected:
 	boost::barrier* m_CalcPEC_Stop;
 
 	boost::thread_group m_thread_group;
+	enum WorkerStage { NoWaiters, WaitingEC, WaitingPEC };
+	WorkerStage m_workerStage;
+	bool m_abortWorkers;
+	void FinishWorkerThreads();
 	unsigned int m_numThreads; // number of worker threads
 	unsigned int m_orig_numThreads;
 

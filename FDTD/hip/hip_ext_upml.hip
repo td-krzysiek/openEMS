@@ -229,6 +229,15 @@ HIP_Ext_UPML::HIP_Ext_UPML(GPU_Backend_HIP::Impl* impl, Operator_Ext_UPML* op_ex
 			std::cout << "GPU_Backend_HIP: UPML region of " << cells << " cells: full coefficient arrays" << std::endl;
 	}
 
+	if (g_settings.GetVerboseLevel()>1)
+	{
+		const size_t bytes = m_CoeffMode ? cells*(m_CoeffMode==1 ? 2 : 4) + sets.table.size()*sizeof(float)
+		                               : 18*cells*sizeof(float);
+		std::cout << "GPU_Backend_HIP: UPML coefficients: " << cells << " cells, "
+		          << (m_CoeffMode==1 ? "16 bit sets" : m_CoeffMode==2 ? "32 bit sets" : "full arrays")
+		          << ", " << bytes << " device bytes" << std::endl;
+	}
+
 	// the UPML extensions of a grid decide together whether they fuse (see CanFuse()); only once
 	// complete: a constructor that throws (out of device memory) must not stay in the list
 	d->upml.push_back(this);
