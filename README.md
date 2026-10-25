@@ -23,6 +23,7 @@ and is used together with [CSXCAD](https://github.com/thliebig/CSXCAD) for geome
 - Near-field to far-field (NF2FF) transformation (standalone tool + library)
 - [On-demand accumulated E/H snapshots](DFT_SNAPSHOTS.md) without stopping FDTD
 - [Startup qualification](STARTUP_GATE.md) without a second operator setup
+- [Runtime pause and automatic decay gates](RUN_CONTROL.md) for external analysis
 - SAR calculations (1g / 10g averaging)
 - HDF5 and VTK field dump output
 - Scripting via **Octave / Matlab** and **Python** (Cython bindings)

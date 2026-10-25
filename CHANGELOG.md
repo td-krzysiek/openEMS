@@ -15,6 +15,11 @@ there are unreleased changes. It becomes the next release entry.
 
 ### Added
 
+- Generic in-memory pause/continue/stop requests and opt-in post-pulse decay
+  gates share startup qualification's native wait mechanism. Decay gates
+  publish DFT snapshots for an external NF2FF controller without resetting
+  state; runtime-controller timeout resumes the simulation. Disabled by default.
+
 - Opt-in startup qualification pauses a live run at a processing boundary and
   continues it after controller approval without rebuilding the operator or
   resetting fields, material histories or accumulated DFT data.

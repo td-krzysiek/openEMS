@@ -133,7 +133,20 @@ public:
 protected:
 	void collectCommandLineArguments();
 	void CheckDFTSnapshot(double energy, double maxEnergy);
+	bool WriteDFTSnapshot(const std::string& id, double energy, double maxEnergy);
 	bool m_dftSnapshots;
+	void ValidateRuntimeGates();
+	bool CheckRuntimeGates(double energy, double maxEnergy, double iterationSeconds);
+	bool WaitRunGate(const std::string& id, const std::string& reason, int threshold,
+		double energy, double maxEnergy, double iterationSeconds);
+	bool m_runtimeControl;
+	unsigned int m_runtimeExcitationEnd;
+	void FlushProcessingForGate();
+	std::string m_runtimeGateSchedule;
+	std::string m_runtimeGateID;
+	unsigned int m_runtimeGateTimeout;
+	std::vector<int> m_runtimeGateLevels;
+	size_t m_runtimeGateIndex;
 	void ValidateStartupGate() const;
 	bool WaitStartupGate(double energy, double maxEnergy, double iterationSeconds);
 	unsigned int m_startupGateStep;

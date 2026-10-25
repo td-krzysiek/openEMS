@@ -89,6 +89,16 @@ void openEMS::CheckDFTSnapshot(double energy, double maxEnergy)
 	{
 		return;
 	}
+	WriteDFTSnapshot(id, energy, maxEnergy);
+	std::remove("DFT_SNAPSHOT.active");
+}
+
+bool openEMS::WriteDFTSnapshot(const std::string& id, double energy, double maxEnergy)
+{
+	if (!ValidID(id))
+	{
+		return false;
+	}
 	const auto started = std::chrono::steady_clock::now();
 	const std::string root = "dft-snapshots";
 	MakeDirectory(root);
@@ -150,5 +160,5 @@ void openEMS::CheckDFTSnapshot(double energy, double maxEnergy)
 		error << "DFT snapshot failed; inspect solver log and staging directory.\n";
 		std::cerr << "DFT snapshot: failed " << id << "; continuing FDTD." << std::endl;
 	}
-	std::remove("DFT_SNAPSHOT.active");
+	return ok;
 }
