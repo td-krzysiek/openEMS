@@ -671,6 +671,9 @@ cdef class openEMS:
         * engine (str) -- e.g. 'gpu' for the GPU engine
         * gpu_device (int) -- GPU device of the GPU engine, a number of the
           device list printed at verbose >= 1 (default: the best device)
+        * gpu_devices (str) -- experimental local X-domain execution, e.g.
+          '0,1'; requires ENABLE_DOMAIN_RUNTIME and qualified HIP backends.
+          Mutually exclusive with gpu_device. See MULTI_GPU.md.
         * disable_dumps (bool) -- disable all field dumps for faster simulation
         * debug_material (bool) - dump material distribution to a vtk file for
           debugging.

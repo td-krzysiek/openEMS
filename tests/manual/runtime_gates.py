@@ -23,11 +23,12 @@ def main():
     p.add_argument('--binary', required=True)
     p.add_argument('--engine', default='basic')
     p.add_argument('--output', required=True)
+    p.add_argument('--solver-option', action='append', default=[])
     a = p.parse_args()
     root = Path(a.output).resolve()
     root.mkdir(parents=True, exist_ok=False)
     command = [str(Path(a.binary).resolve()), 'model.xml', '--engine=' + a.engine,
-               '--numThreads=2', '--exact-endcriteria', '-v']
+               '--numThreads=2', '--exact-endcriteria', '-v'] + a.solver_option
     results = {}
     control = root / 'control'
     control.mkdir()

@@ -310,6 +310,11 @@ void openEMS::collectCommandLineArguments()
 			"  gpu-reference: \tGPU engine with the reference backend on the CPU\n"
 		)
 		(
+			"gpu-devices",
+			po::value<std::string>(),
+			"Experimental X-domain execution on comma-separated GPU indices, e.g. 0,1; requires ENABLE_DOMAIN_RUNTIME"
+		)
+		(
 			"gpu-device",
 			po::value<int>()->default_value(-1)->notifier(
 				[&](int val)

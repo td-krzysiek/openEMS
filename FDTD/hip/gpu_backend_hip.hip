@@ -876,6 +876,12 @@ bool GPU_Backend_HIP::Init(const Operator* op)
 	unsigned int numLines[3];
 	for (int n=0; n<3; ++n)
 		numLines[n] = op->GetNumberOfLines(n, true);
+	if (d->domain.enabled)
+	{
+		numLines[0] = d->domain.LocalLines();
+		// A corrected E halo must arrive before any H update in another domain.
+		++d->fused_blockers;
+	}
 	d->dim.nx = numLines[0];
 	d->dim.ny = numLines[1];
 	d->dim.nz = numLines[2];
@@ -922,7 +928,13 @@ bool GPU_Backend_HIP::Init(const Operator* op)
 	// Most nodes share one of a few coefficient sets (same material and mesh spacing): store
 	// every distinct set of the 12 coefficients of a node once and a set index per node
 	GPU_CoeffSets sets;
-	if (GPU_FindSets(d->numCells, 12, [&](size_t i, float* values) {GPU_NodeCoefficients(op, numLines, i, values);}, sets))
+	if (GPU_FindSets(d->numCells,
+	        12,
+	        [&](size_t i, float* values)
+	{
+		d->domain.Coefficients(op, numLines, i, values);
+	},
+	        sets))
 	{
 		d->coeff_mode = sets.mode;
 		d->index = d->AllocIndex(sets);
@@ -936,12 +948,49 @@ bool GPU_Backend_HIP::Init(const Operator* op)
 	// the full arrays, one host copy at a time
 	d->coeff_mode = 0;
 	std::vector<float> values;
-	auto upload = [&](int c) {GPU_CoefficientArray(op, numLines, c, values); return d->Alloc<float>(count, values.data());};
+	auto upload = [&](int c)
+	{
+		if (!d->domain.enabled)
+		{
+			GPU_CoefficientArray(op, numLines, c, values);
+		}
+		else
+		{
+			values.resize(count);
+			for (size_t i = 0; i < d->numCells; ++i)
+			{
+				float coefficients[12];
+				d->domain.Coefficients(op, numLines, i, coefficients);
+				for (unsigned int n = 0; n < 3; ++n)
+				{
+					values[n * d->numCells + i] = coefficients[3 * c + n];
+				}
+			}
+		}
+		return d->Alloc<float>(count, values.data());
+	};
 	d->vv = upload(0);
 	d->vi = upload(1);
 	d->ii = upload(2);
 	d->iv = upload(3);
 	return true;
+}
+
+bool GPU_Backend_HIP::InitDomain(const Operator* op, unsigned int begin, unsigned int end)
+{
+	d->domain.enabled = true;
+	d->domain.begin = begin;
+	d->domain.end = end;
+	for (int n = 0; n < 3; ++n)
+	{
+		d->domain.global[n] = op->GetNumberOfLines(n, true);
+	}
+	return Init(op);
+}
+
+void GPU_Backend_HIP::Activate()
+{
+	HIP_Check(hipSetDevice(d->ctx->device), "activate domain device");
 }
 
 void GPU_Backend_HIP::UpdateVoltages()
@@ -1053,6 +1102,19 @@ bool GPU_Backend_HIP::DownloadRange(bool currents, size_t offset, size_t count, 
 		return false;
 	const float* src = (currents ? d->curr : d->volt) + offset;
 	HIP_Check(hipMemcpyAsync(dst, src, count*sizeof(float), hipMemcpyDeviceToHost, d->Stream()), "range download");
+	d->Flush();
+	return true;
+}
+
+bool GPU_Backend_HIP::UploadRange(bool currents, size_t offset, size_t count, const FDTD_FLOAT* src)
+{
+	if (offset > 3 * d->numCells || count > 3 * d->numCells - offset)
+	{
+		return false;
+	}
+	float* dst = (currents ? d->curr : d->volt) + offset;
+	HIP_Check(hipMemcpyAsync(dst, src, count * sizeof(float), hipMemcpyHostToDevice, d->Stream()),
+	    "domain range upload");
 	d->Flush();
 	return true;
 }

@@ -24,6 +24,11 @@
 #include "gpu_backend.h"
 #include "gpu_backend_reference.h"
 #include "gpu_plugin.h"
+#ifdef OPENEMS_WITH_DOMAIN_RUNTIME
+#include "gpu_backend_domains.h"
+#endif
+#include <memory>
+#include <set>
 #ifdef OPENEMS_WITH_HIP
 #include "hip/gpu_backend_hip.h"
 #endif
@@ -64,8 +69,56 @@ std::string DeviceLine(size_t n, const GPU_Device& dev)
 
 GPU_Backend* GPU_Backend::New(const std::string& name)
 {
+	std::vector<size_t> selected;
+	if (g_settings.hasOption("gpu-devices"))
+	{
+#ifndef OPENEMS_WITH_DOMAIN_RUNTIME
+		throw std::runtime_error("--gpu-devices requires ENABLE_DOMAIN_RUNTIME");
+#else
+		if (g_settings.GetGPUDevice() >= 0)
+		{
+			throw std::invalid_argument("choose either --gpu-device or --gpu-devices");
+		}
+		const std::string value = g_settings.getOption("gpu-devices").as<std::string>();
+		std::stringstream input(value);
+		std::string token;
+		std::set<size_t> unique;
+		while (std::getline(input, token, ','))
+		{
+			if (token.empty() || token.find_first_not_of("0123456789") != std::string::npos)
+			{
+				throw std::invalid_argument(
+				    "--gpu-devices requires unique nonnegative comma-separated indices");
+			}
+			const size_t index = std::stoull(token);
+			if (!unique.insert(index).second)
+			{
+				throw std::invalid_argument("duplicate --gpu-devices index");
+			}
+			selected.push_back(index);
+		}
+		if (selected.size() < 2 || value.back() == ',')
+		{
+			throw std::invalid_argument("--gpu-devices requires at least two indices");
+		}
+#endif
+	}
 	if (name=="reference")
+	{
+#ifdef OPENEMS_WITH_DOMAIN_RUNTIME
+		if (!selected.empty())
+		{
+			std::vector<std::unique_ptr<GPU_Backend>> domains;
+			for (size_t index : selected)
+			{
+				UNUSED(index);
+				domains.emplace_back(new GPU_Backend_Reference());
+			}
+			return new GPU_Backend_Domains(std::move(domains));
+		}
+#endif
 		return new GPU_Backend_Reference();
+	}
 	if (name!="auto")
 		std::cerr << "GPU_Backend::New: Warning: unknown GPU backend \"" << name << "\", using the best available" << std::endl;
 
@@ -114,6 +167,28 @@ GPU_Backend* GPU_Backend::New(const std::string& name)
 			err << (n==0 ? ": " : ", ") << DeviceLine(n, devices.at(n));
 		throw std::runtime_error(err.str());
 	}
+
+#ifdef OPENEMS_WITH_DOMAIN_RUNTIME
+	if (!selected.empty())
+	{
+		std::vector<std::unique_ptr<GPU_Backend>> domains;
+		for (size_t index : selected)
+		{
+			if (index >= devices.size())
+			{
+				throw std::out_of_range("--gpu-devices index exceeds available device count");
+			}
+			const auto& device = devices[index];
+			std::unique_ptr<GPU_Backend> backend(device.plugin->NewBackend(device.index));
+			if (!backend)
+			{
+				throw std::runtime_error("cannot initialize requested domain device");
+			}
+			domains.push_back(std::move(backend));
+		}
+		return new GPU_Backend_Domains(std::move(domains));
+	}
+#endif
 
 	// the chosen device, else the best one that can run
 	std::vector<size_t> order;

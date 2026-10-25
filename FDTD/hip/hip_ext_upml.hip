@@ -82,6 +82,12 @@ class HIP_Ext_UPML : public GPU_Extension
 public:
 	HIP_Ext_UPML(GPU_Backend_HIP::Impl* impl, Operator_Ext_UPML* op_ext, Engine* eng);
 	virtual ~HIP_Ext_UPML();
+	static bool HasOwnedCells(GPU_Backend_HIP::Impl* impl, Operator_Ext_UPML* op)
+	{
+		return !impl->domain.enabled ||
+		    (op->m_StartPos[0] < impl->domain.end &&
+		        op->m_StartPos[0] + op->m_numLines[0] > impl->domain.begin);
+	}
 
 	// fused: nothing before the main update, the region update after it (unless done by the main kernels);
 	// fused step (see update_fused): the voltages of the region before it (the main nodes next to the
@@ -192,6 +198,18 @@ HIP_Ext_UPML::HIP_Ext_UPML(GPU_Backend_HIP::Impl* impl, Operator_Ext_UPML* op_ex
 	m_Region.ly = op_ext->m_numLines[1];
 	m_Region.lz = op_ext->m_numLines[2];
 
+	const size_t source_cells =
+	    size_t(op_ext->m_numLines[0]) * op_ext->m_numLines[1] * op_ext->m_numLines[2];
+	unsigned int source_x = 0;
+	if (d->domain.enabled)
+	{
+		const unsigned int first = std::max(m_Region.sx, d->domain.begin);
+		const unsigned int last = std::min(m_Region.sx + m_Region.lx, d->domain.end);
+		source_x = first - m_Region.sx;
+		m_Region.sx = d->domain.LocalX(first);
+		m_Region.lx = last - first;
+	}
+	const size_t source_offset = size_t(source_x) * m_Region.ly * m_Region.lz;
 	const size_t cells = (size_t)m_Region.lx*m_Region.ly*m_Region.lz;
 	m_VoltFlux = d->Alloc<float>(3*cells);
 	m_CurrFlux = d->Alloc<float>(3*cells);
@@ -210,7 +228,7 @@ HIP_Ext_UPML::HIP_Ext_UPML(GPU_Backend_HIP::Impl* impl, Operator_Ext_UPML* op_ex
 	    {
 		    for (int c=0; c<6; ++c)
 			    for (int n=0; n<3; ++n)
-				    values[3*c+n] = src[c][n*cells + l0];
+				    values[3 * c + n] = src[c][n * source_cells + source_offset + l0];
 	    }, sets))
 	{
 		m_CoeffMode = sets.mode;
@@ -219,12 +237,18 @@ HIP_Ext_UPML::HIP_Ext_UPML(GPU_Backend_HIP::Impl* impl, Operator_Ext_UPML* op_ex
 	}
 	else
 	{
-		m_VV   = Upload(op_ext->vv);
-		m_VVFO = Upload(op_ext->vvfo);
-		m_VVFN = Upload(op_ext->vvfn);
-		m_II   = Upload(op_ext->ii);
-		m_IIFO = Upload(op_ext->iifo);
-		m_IIFN = Upload(op_ext->iifn);
+		float** targets[6] = { &m_VV, &m_VVFO, &m_VVFN, &m_II, &m_IIFO, &m_IIFN };
+		std::vector<float> values(3 * cells);
+		for (int c = 0; c < 6; ++c)
+		{
+			for (int n = 0; n < 3; ++n)
+			{
+				std::copy(src[c] + n * source_cells + source_offset,
+				    src[c] + n * source_cells + source_offset + cells,
+				    values.data() + n * cells);
+			}
+			*targets[c] = d->Alloc<float>(values.size(), values.data());
+		}
 		if (g_settings.GetVerboseLevel()>1)
 			std::cout << "GPU_Backend_HIP: UPML region of " << cells << " cells: full coefficient arrays" << std::endl;
 	}
@@ -275,6 +299,10 @@ bool HIP_Ext_UPML::Fused()
 // see GPU_UPMLFusionBox() for the conditions.
 bool HIP_Ext_UPML::CanFuse()
 {
+	if (d->domain.enabled)
+	{
+		return false;
+	}
 	std::vector<GPU_UPMLRegion> regions;
 	for (size_t r=0; r<d->upml.size(); ++r)
 	{
@@ -397,5 +425,9 @@ GPU_Extension* HIP_CreateExt_UPML(GPU_Backend_HIP::Impl* d, Engine_Extension* en
 	Operator_Ext_UPML* op_ext = dynamic_cast<Operator_Ext_UPML*>(eng_ext->GetOperatorExtension());
 	if (!op_ext)
 		return NULL;
+	if (!HIP_Ext_UPML::HasOwnedCells(d, op_ext))
+	{
+		return new GPU_Extension();
+	}
 	return new HIP_Ext_UPML(d, op_ext, eng);
 }

@@ -108,5 +108,24 @@ GPU_Extension* HIP_CreateExt_OpaqueSurface(GPU_Backend_HIP::Impl* d, Engine_Exte
 		return NULL;
 	}
 	auto* op=dynamic_cast<Operator_Ext_OpaqueSurface*>(ext->GetOperatorExtension());
-	return op ? new HIP_Ext_OpaqueSurface(d,op) : NULL;
+	if (!op)
+	{
+		return NULL;
+	}
+	if (d->domain.enabled)
+	{
+		Operator_Ext_OpaqueSurface local(nullptr);
+		local.fits = op->fits;
+		local.dt = op->dt;
+		for (auto edge : op->edges)
+		{
+			if (d->domain.Owns(edge.pos[0]))
+			{
+				edge.pos[0] = d->domain.LocalX(edge.pos[0]);
+				local.edges.push_back(edge);
+			}
+		}
+		return new HIP_Ext_OpaqueSurface(d, &local);
+	}
+	return new HIP_Ext_OpaqueSurface(d, op);
 }

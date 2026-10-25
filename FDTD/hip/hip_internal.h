@@ -30,6 +30,7 @@
 
 #include "gpu_backend_hip.h"
 #include "FDTD/gpu_coeff_sets.h"
+#include "FDTD/gpu_domain_layout.h"
 
 //! Grid size (number of mesh lines) as passed to the kernels
 struct HIP_GridDim
@@ -115,6 +116,7 @@ struct HIP_Context
 struct GPU_Backend_HIP::Impl
 {
 	std::shared_ptr<HIP_Context> ctx;
+	GPU_DomainLayout domain;
 
 	HIP_GridDim dim;
 	size_t numCells;    //!< nx*ny*nz, the field buffers hold 3*numCells values

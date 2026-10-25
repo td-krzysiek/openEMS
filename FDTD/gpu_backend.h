@@ -170,6 +170,38 @@ public:
 	  */
 	virtual bool Init(const Operator* op) = 0;
 
+	//! Optional fixed X-domain adapter. Unimplemented backends fail explicitly.
+	virtual bool InitDomain(const Operator* op, unsigned int begin, unsigned int end)
+	{
+		UNUSED(op);
+		UNUSED(begin);
+		UNUSED(end);
+		return false;
+	}
+	//! Select this executor's device before work, extension hooks and destruction.
+	virtual void Activate()
+	{
+	}
+	//! Native extension hooks have completed; corrected halos may now be sent.
+	virtual void FinishVoltagePhase()
+	{
+	}
+	virtual void FinishCurrentPhase()
+	{
+	}
+	virtual bool HasDomainPhases() const
+	{
+		return false;
+	}
+	virtual bool UploadRange(bool currents, size_t offset, size_t count, const FDTD_FLOAT* src)
+	{
+		UNUSED(currents);
+		UNUSED(offset);
+		UNUSED(count);
+		UNUSED(src);
+		return false;
+	}
+
 	//! Main voltage update over the whole domain, equivalent to Engine::UpdateVoltages
 	virtual void UpdateVoltages() = 0;
 	//! Main current update over the whole domain, equivalent to Engine::UpdateCurrents

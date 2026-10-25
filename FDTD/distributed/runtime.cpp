@@ -486,27 +486,56 @@ void FDTDCoordinator::Update(FieldPhase phase)
 
 void FDTDCoordinator::Step()
 {
+	BeginPhase(FieldPhase::Voltage);
+	FinishPhase(FieldPhase::Voltage);
+	BeginPhase(FieldPhase::Current);
+	FinishPhase(FieldPhase::Current);
+}
+
+void FDTDCoordinator::BeginPhase(FieldPhase phase)
+{
 	if (!m_Bootstrapped || m_Failed || m_Step == UINT64_MAX)
 	{
 		throw std::logic_error("coordinator not bootstrapped, failed or timestep overflow");
 	}
+	if (m_PhasePending || phase != m_NextPhase)
+	{
+		throw std::logic_error("overlapping or out-of-order domain half-step");
+	}
 	try
 	{
-		Update(FieldPhase::Voltage);
-		auto v = m_Exchange.Begin({ m_Plan.Id(), m_Step + 1, FieldPhase::Voltage });
-		m_Exchange.Wait(v);
+		Update(phase);
+		m_PhasePending = true;
+	}
+	catch (const std::exception& error)
+	{
+		m_Failed = true;
+		m_Transport.Fail(error.what());
+		m_Collectives.Fail(error.what());
+		throw;
+	}
+}
+
+void FDTDCoordinator::FinishPhase(FieldPhase phase)
+{
+	if (!m_PhasePending || m_Failed || phase != m_NextPhase)
+	{
+		throw std::logic_error("no matching domain half-step to finish");
+	}
+	try
+	{
+		auto exchange = m_Exchange.Begin({ m_Plan.Id(), m_Step + 1, phase });
+		m_Exchange.Wait(exchange);
 		for (auto* executor : m_Executors)
 		{
-			executor->Observe(FieldPhase::Voltage, m_Step);
+			executor->Observe(phase, m_Step);
 		}
-		Update(FieldPhase::Current);
-		auto i = m_Exchange.Begin({ m_Plan.Id(), m_Step + 1, FieldPhase::Current });
-		m_Exchange.Wait(i);
-		for (auto* executor : m_Executors)
+		m_PhasePending = false;
+		m_NextPhase = phase == FieldPhase::Voltage ? FieldPhase::Current : FieldPhase::Voltage;
+		if (phase == FieldPhase::Current)
 		{
-			executor->Observe(FieldPhase::Current, m_Step);
+			++m_Step;
 		}
-		++m_Step;
 	}
 	catch (const std::exception& error)
 	{

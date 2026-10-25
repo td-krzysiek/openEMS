@@ -165,6 +165,10 @@ public:
 	    uint64_t initial_step = 0);
 	void Bootstrap();
 	void Step();
+	// Existing Engine extensions run between BeginPhase and FinishPhase. Halos
+	// carry corrected fields only after every post/apply hook has completed.
+	void BeginPhase(FieldPhase);
+	void FinishPhase(FieldPhase);
 
 	uint64_t NextStep() const
 	{
@@ -185,6 +189,8 @@ private:
 	HaloExchange m_Exchange;
 	uint64_t m_Step;
 	bool m_Bootstrapped, m_Failed;
+	bool m_PhasePending = false;
+	FieldPhase m_NextPhase = FieldPhase::Voltage;
 };
 
 // Lifecycle always exists, even for a single domain. It is not a field relay.

@@ -15,6 +15,13 @@ there are unreleased changes. It becomes the next release entry.
 
 ### Added
 
+- Experimental native GPU X-domain adapter behind `ENABLE_DOMAIN_RUNTIME`,
+  selected with `--gpu-devices=0,1`. HIP slices preserve native excitation,
+  UPML, lumped-RLC and opaque-surface ownership and exchange corrected
+  tangential halos after each half-step. Unsupported device extensions fail
+  explicitly. This initial local-host path does not enable distributed MPI
+  antenna execution or promise a speedup over the fused single-device engine.
+
 - Generic in-memory pause/continue/stop requests and opt-in post-pulse decay
   gates share startup qualification's native wait mechanism. Decay gates
   publish DFT snapshots for an external NF2FF controller without resetting

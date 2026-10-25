@@ -31,6 +31,10 @@ bool GPU_Backend_Reference::Init(const Operator* op)
 {
 	for (int n=0; n<3; ++n)
 		numLines[n] = op->GetNumberOfLines(n, true);
+	if (m_Domain.enabled)
+	{
+		numLines[0] = m_Domain.LocalLines();
+	}
 
 	m_volt.Init("gpu_volt", numLines);
 	m_curr.Init("gpu_curr", numLines);
@@ -46,11 +50,50 @@ bool GPU_Backend_Reference::Init(const Operator* op)
 			for (pos[1]=0; pos[1]<numLines[1]; ++pos[1])
 				for (pos[2]=0; pos[2]<numLines[2]; ++pos[2])
 				{
-					m_vv(n, pos[0], pos[1], pos[2]) = op->GetVV(n, pos[0], pos[1], pos[2]);
-					m_vi(n, pos[0], pos[1], pos[2]) = op->GetVI(n, pos[0], pos[1], pos[2]);
-					m_ii(n, pos[0], pos[1], pos[2]) = op->GetII(n, pos[0], pos[1], pos[2]);
-					m_iv(n, pos[0], pos[1], pos[2]) = op->GetIV(n, pos[0], pos[1], pos[2]);
+					float values[12];
+					const size_t node =
+					    (size_t(pos[0]) * numLines[1] + pos[1]) * numLines[2] + pos[2];
+					m_Domain.Coefficients(op, numLines, node, values);
+					m_vv(n, pos[0], pos[1], pos[2]) = values[n];
+					m_vi(n, pos[0], pos[1], pos[2]) = values[3 + n];
+					m_ii(n, pos[0], pos[1], pos[2]) = values[6 + n];
+					m_iv(n, pos[0], pos[1], pos[2]) = values[9 + n];
 				}
+	return true;
+}
+
+bool GPU_Backend_Reference::InitDomain(const Operator* op, unsigned int begin, unsigned int end)
+{
+	m_Domain.enabled = true;
+	m_Domain.begin = begin;
+	m_Domain.end = end;
+	for (int n = 0; n < 3; ++n)
+	{
+		m_Domain.global[n] = op->GetNumberOfLines(n, true);
+	}
+	return Init(op);
+}
+
+bool GPU_Backend_Reference::DownloadRange(bool currents, size_t offset, size_t count, float* dst)
+{
+	auto& field = currents ? m_curr : m_volt;
+	if (offset > field.size() || count > field.size() - offset)
+	{
+		throw std::out_of_range("reference download range");
+	}
+	std::copy(field.data() + offset, field.data() + offset + count, dst);
+	return true;
+}
+
+bool GPU_Backend_Reference::UploadRange(
+    bool currents, size_t offset, size_t count, const float* src)
+{
+	auto& field = currents ? m_curr : m_volt;
+	if (offset > field.size() || count > field.size() - offset)
+	{
+		throw std::out_of_range("reference upload range");
+	}
+	std::copy(src, src + count, field.data() + offset);
 	return true;
 }
 

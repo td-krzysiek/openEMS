@@ -423,6 +423,54 @@ static void Coordination()
 	});
 }
 
+static void ExternalHooks()
+{
+	struct HookExecutor : MockExecutor
+	{
+		bool active = false, voltage_corrected = false, current_corrected = false;
+		HookExecutor(uint32_t n, std::vector<std::string>& trace) : MockExecutor(n, trace)
+		{
+		}
+		CompletionPtr Pack(const HaloRecipe& recipe, HostBuffer values) override
+		{
+			if (active)
+			{
+				Require(recipe.phase == FieldPhase::Voltage ? voltage_corrected : current_corrected,
+				    "halo packed before native extension correction");
+			}
+			return MockExecutor::Pack(recipe, values);
+		}
+	};
+	PartitionPlan plan(2, { 9, 5, 3 }, { 0, 4, 9 });
+	LocalHaloTransport transport;
+	LocalCollectiveContext collectives;
+	std::vector<std::string> trace;
+	HookExecutor a(0, trace), b(1, trace);
+	FDTDCoordinator coordinator(plan, transport, collectives, { &a, &b });
+	coordinator.Bootstrap();
+	a.active = b.active = true;
+	Reject([&]()
+	{
+		coordinator.BeginPhase(FieldPhase::Current);
+	});
+	coordinator.BeginPhase(FieldPhase::Voltage);
+	Reject([&]()
+	{
+		coordinator.BeginPhase(FieldPhase::Voltage);
+	});
+	Require(coordinator.NextStep() == 0, "partial phase advanced a whole step");
+	a.voltage_corrected = b.voltage_corrected = true;
+	coordinator.FinishPhase(FieldPhase::Voltage);
+	Reject([&]()
+	{
+		coordinator.FinishPhase(FieldPhase::Voltage);
+	});
+	coordinator.BeginPhase(FieldPhase::Current);
+	a.current_corrected = b.current_corrected = true;
+	coordinator.FinishPhase(FieldPhase::Current);
+	Require(coordinator.NextStep() == 1, "split hooks did not finish exactly one step");
+}
+
 int main()
 {
 	try
@@ -431,6 +479,7 @@ int main()
 		Memory();
 		Transfers();
 		Coordination();
+		ExternalHooks();
 	}
 	catch (const std::exception& e)
 	{
