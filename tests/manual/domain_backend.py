@@ -22,7 +22,9 @@ from openEMS import openEMS
 def model(path, physics):
     fdtd = openEMS(NrTS=768, EndCriteria=0)
     fdtd.SetGaussExcite(3e9, 2e9)
-    fdtd.SetBoundaryCond(['PML_4']*6)
+    if physics == 'steady-state':
+        fdtd.SetSinusExcite(3e9)
+    fdtd.SetBoundaryCond(['MUR' if physics == 'mur' else 'PML_4']*6)
     csx = ContinuousStructure()
     fdtd.SetCSX(csx)
     grid = csx.GetGrid()
@@ -119,6 +121,21 @@ def main():
             results[folder.name] = record
             (root/'results.json').write_text(json.dumps(results, indent=2)+'\n')
             print(folder.name, record, flush=True)
+    if args.engine == 'gpu':
+        # Mur is supported on a single device, but has no domain remapping.
+        # A non-NULL generic HIP extension is insufficient evidence of support.
+        for physics in ['mur', 'steady-state']:
+            folder = root/('unsupported-'+physics)
+            folder.mkdir()
+            model(folder/'model.xml', physics)
+            command = [str(Path(args.binary).resolve()), 'model.xml', '--engine=gpu',
+                       '--gpu-devices=0,1', '--numThreads=2', '-vv']
+            with (folder/'solver.log').open('w') as log:
+                run = subprocess.run(command, cwd=folder, stdout=log, stderr=subprocess.STDOUT, timeout=120)
+            assert run.returncode != 0
+            assert 'unsupported extension for native device-domain execution' in (folder/'solver.log').read_text()
+            results['unsupported-'+physics] = dict(rejected=True, exit_code=run.returncode)
+        (root/'results.json').write_text(json.dumps(results, indent=2)+'\n')
 
 
 if __name__ == '__main__':

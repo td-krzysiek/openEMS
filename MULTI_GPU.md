@@ -79,6 +79,10 @@ This is an in-memory pause, not a disk restart checkpoint.
 
 - Cartesian X slabs on one host; HIP initially. Metal domain initialization,
   mixed CPU/GPU native execution, cylindrical grids and subgrids are unsupported.
+- Only excitation, UPML, lumped RLC and opaque-surface device extensions are
+  admitted. Single-device support for an extension is not domain support:
+  Mur, dispersive materials, TFSF and sinusoidal steady-state detection are
+  rejected until their indexing, ownership and reductions are integrated.
 - The neutral plan/executor/transport core remains independent of device APIs.
   Existing MPI transport tests do not qualify MPI antenna execution through
   this native adapter. Multi-host ownership of sources, processing and control

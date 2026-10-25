@@ -5,6 +5,10 @@
 #include "operator.h"
 #include "operator_cylinder.h"
 #include "gpu_backend_reference.h"
+#include "extensions/engine_ext_upml.h"
+#include "extensions/engine_ext_excitation.h"
+#include "extensions/engine_ext_lumpedRLC.h"
+#include "extensions/engine_ext_opaquesurface.h"
 #include <iostream>
 #include <stdexcept>
 
@@ -375,6 +379,14 @@ GPU_Extension* GPU_Backend_Domains::CreateExtension(Engine_Extension* ext, Engin
 	for (auto& backend : d->devices)
 	{
 		backend->Activate();
+		if (!dynamic_cast<GPU_Backend_Reference*>(backend.get()) &&
+		    !dynamic_cast<Engine_Ext_UPML*>(ext) &&
+		    !dynamic_cast<Engine_Ext_Excitation*>(ext) &&
+		    !dynamic_cast<Engine_Ext_LumpedRLC*>(ext) &&
+		    !dynamic_cast<Engine_Ext_OpaqueSurface*>(ext))
+		{
+			throw std::runtime_error("unsupported extension for native device-domain execution");
+		}
 		std::unique_ptr<GPU_Extension> child(backend->CreateExtension(ext, engine));
 		if (!child)
 		{
