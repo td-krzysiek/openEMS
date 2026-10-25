@@ -132,6 +132,11 @@ protected:
 	void collectCommandLineArguments();
 	void CheckDFTSnapshot(double energy, double maxEnergy);
 	bool m_dftSnapshots;
+	void ValidateStartupGate() const;
+	bool WaitStartupGate(double energy, double maxEnergy, double iterationSeconds);
+	unsigned int m_startupGateStep;
+	unsigned int m_startupGateTimeout;
+	std::string m_startupGateID;
 
 	bool CylinderCoords;
 	std::vector<double> m_CC_MultiGrid;
