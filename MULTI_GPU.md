@@ -117,6 +117,14 @@ PML, sources spanning a cut, physical PEC boxes, dynamic RLC and a passive
 opaque conductor. The maximum absolute error normalized by each reference
 array's peak must be below `1e-5`; timestep columns must match exactly.
 
+The one/two-device energy-stop fixture uses this same peak-normalized gate.
+It does not reuse startup qualification's stricter elementwise comparison,
+which compares repeated executions of the same kernel path. Fused and
+partitioned kernels can differ near a field null without exceeding the
+cross-device error bound. Probe timestamps and selected stop steps still
+match exactly; zero-reference arrays must remain exactly zero. Focused tests
+reject significant errors, nonfinite values and shape mismatches.
+
 `tests/manual/runtime_gates.py --solver-option=--gpu-devices=0,1` checks automatic
 and manual pause/snapshot/continue, timeout, stop, abort and stale-ID rejection
 against an uninterrupted run. These tests use public small fixtures, not
