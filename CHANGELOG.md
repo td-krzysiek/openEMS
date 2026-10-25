@@ -119,6 +119,11 @@ there are unreleased changes. It becomes the next release entry.
 
 ### Changed
 
+- Native domain execution copies the physical lower-boundary current halo
+  within the device when supported, avoiding two device-to-host and two
+  host-to-device plane transfers per timestep. Other backends retain the
+  existing staged fallback.
+
 - Store uniform-order experimental opaque-surface GPU histories and scaled
   coefficients in compact 32-edge tiles on HIP and Metal, without padding or
   changing the per-edge FP32 arithmetic. Mixed orders keep edge-major storage.

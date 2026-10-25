@@ -443,6 +443,8 @@ if(ENABLE_DOMAIN_RUNTIME)
     target_link_libraries(test_domain_operator openEMS_domain_operator)
     add_executable(test_domain_energy TESTSUITE/distributed/test_native_energy.cpp)
     target_link_libraries(test_domain_energy openEMS)
+    add_executable(test_domain_copy TESTSUITE/distributed/test_native_copy.cpp)
+    target_link_libraries(test_domain_copy openEMS)
     if(APPLE AND ENABLE_METAL)
       # Explicit manual-test path only: several queues on one physical GPU.
       # Not installed, and never added to the normal plugin search directory.

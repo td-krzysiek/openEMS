@@ -1110,6 +1110,28 @@ bool GPU_Backend_HIP::DownloadRange(bool currents, size_t offset, size_t count, 
 	return true;
 }
 
+bool GPU_Backend_HIP::CopyRange(bool currents, size_t source, size_t destination, size_t count)
+{
+	const size_t size = 3 * d->numCells;
+	if (source > size || count > size - source || destination > size || count > size - destination)
+	{
+		return false;
+	}
+	if (!count || source == destination)
+	{
+		return true;
+	}
+	if (source < destination + count && destination < source + count)
+	{
+		return false;
+	}
+	float* field = currents ? d->curr : d->volt;
+	HIP_Check(hipMemcpyAsync(field + destination, field + source, count * sizeof(float),
+	              hipMemcpyDeviceToDevice, d->Stream()),
+	    "device-local field copy");
+	return true;
+}
+
 bool GPU_Backend_HIP::UploadRange(bool currents, size_t offset, size_t count, const FDTD_FLOAT* src)
 {
 	if (offset > 3 * d->numCells || count > 3 * d->numCells - offset)

@@ -184,9 +184,14 @@ struct GPU_Backend_Domains::Impl
 		{
 			const size_t source = domain.LocalIndex(c, 1, 0, 0);
 			const size_t target = domain.LocalIndex(c, 0, 0, 0);
-			if (!backend->DownloadRange(
-			        true, source, lower_boundary.size(), lower_boundary.data()) ||
-			    !backend->UploadRange(true, target, lower_boundary.size(), lower_boundary.data()))
+			const size_t samples = domain.grid.Plane();
+			if (backend->CopyRange(true, source, target, samples))
+			{
+				continue;
+			}
+			lower_boundary.resize(samples);
+			if (!backend->DownloadRange(true, source, samples, lower_boundary.data()) ||
+			    !backend->UploadRange(true, target, samples, lower_boundary.data()))
 			{
 				throw std::runtime_error("cannot apply physical lower boundary");
 			}
@@ -269,7 +274,6 @@ bool GPU_Backend_Domains::Init(const Operator* op)
 		          << "), storage nodes " << domain.StorageNodes() << ", " << backend->GetName()
 		          << std::endl;
 	}
-	d->lower_boundary.resize(shape.Plane());
 	d->coordinator.reset(new FDTDCoordinator(*d->plan, d->transport, d->collectives, executors));
 	d->coordinator->Bootstrap();
 	d->MirrorLowerCurrent();

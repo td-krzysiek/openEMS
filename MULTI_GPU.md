@@ -159,3 +159,13 @@ Matlab passes `--gpu-domain-cuts=0,100,300` in the same `opts` string.
 partitions with an unsplit control, including one-node outer/interior slabs
 and PML/source/material intersections. It also rejects malformed, overlapping,
 incomplete and overflowing cuts instead of silently selecting equal slabs.
+
+The physical lower-X current ghost is copied within the owning device through
+an optional ordered `CopyRange` operation. HIP uses a stream-ordered D2D copy;
+Metal uses its existing command encoder. This removes two D2H and two H2D
+plane transfers per timestep for that boundary, retaining the synchronization
+and a staged fallback for backends without the operation. It does not remove
+inter-device halo staging. `test_domain_copy` checks queued dependent E/H
+copies, unchanged other locations, local/unsplit storage, empty/identical
+ranges and rejected overlap/overflow. Actual CUDA throughput still needs to
+be measured; fewer transfers alone is not a measured speedup.

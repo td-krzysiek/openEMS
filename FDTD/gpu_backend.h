@@ -193,6 +193,17 @@ public:
 	{
 		return false;
 	}
+	//! Optional ordered copy within one field. Source/destination must not overlap
+	//! unless identical. true may enqueue work; Synchronize()/ordered reads finish it.
+	virtual bool CopyRange(bool currents, size_t source, size_t destination, size_t count)
+	{
+		UNUSED(currents);
+		UNUSED(source);
+		UNUSED(destination);
+		UNUSED(count);
+		return false;
+	}
+
 	virtual bool UploadRange(bool currents, size_t offset, size_t count, const FDTD_FLOAT* src)
 	{
 		UNUSED(currents);

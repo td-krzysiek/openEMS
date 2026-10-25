@@ -52,6 +52,7 @@ public:
 	bool InitDomain(const Operator*, unsigned int, unsigned int) override;
 	bool DownloadRange(bool, size_t, size_t, FDTD_FLOAT*) override;
 	bool UploadRange(bool, size_t, size_t, const FDTD_FLOAT*) override;
+	bool CopyRange(bool currents, size_t source, size_t destination, size_t count) override;
 
 	virtual void UpdateVoltages();
 	virtual void UpdateCurrents();

@@ -85,6 +85,27 @@ bool GPU_Backend_Reference::DownloadRange(bool currents, size_t offset, size_t c
 	return true;
 }
 
+bool GPU_Backend_Reference::CopyRange(
+    bool currents, size_t source, size_t destination, size_t count)
+{
+	auto& field = currents ? m_curr : m_volt;
+	const size_t size = field.size();
+	if (source > size || count > size - source || destination > size || count > size - destination)
+	{
+		return false;
+	}
+	if (!count || source == destination)
+	{
+		return true;
+	}
+	if (source < destination + count && destination < source + count)
+	{
+		return false;
+	}
+	std::copy(field.data() + source, field.data() + source + count, field.data() + destination);
+	return true;
+}
+
 bool GPU_Backend_Reference::UploadRange(
     bool currents, size_t offset, size_t count, const float* src)
 {

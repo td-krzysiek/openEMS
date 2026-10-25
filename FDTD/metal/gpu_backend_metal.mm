@@ -179,6 +179,17 @@ kernel void copy_fields(const device float* volt [[buffer(0)]],
 	snap_curr[i] = curr[i];
 }
 
+struct FieldCopy { uint source, destination, count; };
+kernel void copy_field_range(device float* field [[buffer(0)]],
+                            constant FieldCopy& range [[buffer(1)]],
+                            uint i [[thread_position_in_grid]])
+{
+	if (i < range.count)
+	{
+		field[range.destination + i] = field[range.source + i];
+	}
+}
+
 // Field energy: the squared voltages and currents of the nodes below L, summed along x
 // in float, one thread per (y,z) line; gid = (z, y). The host sums the lines in double.
 kernel void energy_lines(const device float* volt [[buffer(0)]],
@@ -554,6 +565,36 @@ bool GPU_Backend_Metal::DownloadRange(bool currents, size_t offset, size_t count
 	d->Flush();
 	const auto* src = static_cast<const float*>([(currents ? d->curr : d->volt) contents]);
 	std::copy(src + offset, src + offset + count, dst);
+	return true;
+}
+
+bool GPU_Backend_Metal::CopyRange(bool currents, size_t source, size_t destination, size_t count)
+{
+	const size_t size = 3 * d->numCells;
+	if (source > size || count > size - source || destination > size || count > size - destination)
+	{
+		return false;
+	}
+	if (!count || source == destination)
+	{
+		return true;
+	}
+	if (source < destination + count && destination < source + count)
+	{
+		return false;
+	}
+	const struct
+	{
+		uint32_t source, destination, count;
+	} range = { static_cast<uint32_t>(source),
+		static_cast<uint32_t>(destination),
+		static_cast<uint32_t>(count) };
+	id<MTLComputePipelineState> pso = d->Pipeline(BASE_SOURCE, "copy_field_range");
+	id<MTLComputeCommandEncoder> enc = d->Encoder();
+	[enc setComputePipelineState:pso];
+	[enc setBuffer:(currents ? d->curr : d->volt) offset:0 atIndex:0];
+	[enc setBytes:&range length:sizeof(range) atIndex:1];
+	d->Dispatch(pso, count);
 	return true;
 }
 

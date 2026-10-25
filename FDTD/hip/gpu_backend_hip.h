@@ -65,6 +65,7 @@ public:
 
 	virtual bool DownloadRange(bool currents, size_t offset, size_t count, FDTD_FLOAT* dst);
 	bool UploadRange(bool currents, size_t offset, size_t count, const FDTD_FLOAT* src) override;
+	bool CopyRange(bool currents, size_t source, size_t destination, size_t count) override;
 	virtual void Synchronize();
 	virtual bool SnapshotFields(const FDTD_FLOAT* &volt, const FDTD_FLOAT* &curr);
 	virtual void WaitSnapshot();
