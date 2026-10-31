@@ -38,6 +38,7 @@ class Operator : public Operator_Base
 	friend class Operator_Ext_LorentzMaterial;
 	friend class Operator_Ext_ConductingSheet;
 	friend class Operator_Ext_OpaqueSurface;
+	friend class Operator_Ext_LossyMetal;
 	friend class Operator_Ext_PML_SF_Plane;
 	friend class Operator_Ext_Excitation;
 	friend class Operator_Ext_UPML;
