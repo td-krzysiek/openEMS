@@ -60,3 +60,27 @@ GPU states/coefficient buffers use FP32, while the CPU boundary state uses
 FP64. A successful short-line comparison is not proof of antenna-scale loss
 accuracy. Metal and HIP must be tested on their respective hardware; the
 GPU-reference backend alone does not exercise their kernels.
+
+## Shared scaled coefficients
+
+`python/Tests/test_opaque_surface_packing.py` checks exact FP32 coefficient
+rounding and independent histories when equal fit/scale pairs share constants.
+It covers mixed orders, separate coefficient/history tile tails, adjacent
+binary64 scales and the dense fallback when indices would cost more memory.
+
+For an interleaved before/after full-decay comparison on one GPU:
+
+```sh
+python3 tests/manual/opaque_coefficients.py --source . \
+  --base-bin /absolute/baseline/bin/openEMS \
+  --patched-bin /absolute/candidate/bin/openEMS \
+  --backend HIP --output /new/qualification-directory
+```
+
+Use `--backend Metal` on macOS. Both binaries must resolve their own libraries
+and matching GPU plugins; wrapper executables may set those paths. Optional
+`--trace` points to a CUDA allocation tracer, and `--large` adds a bounded
+6,000-step refined public line. The latter is a timing/indexing control, not
+full decay or antenna qualification. Raw logs, XML, traces and timing records
+are retained; the unchanged full-decay case must reach −70 dB at the same step
+with identical before/after samples.

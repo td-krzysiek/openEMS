@@ -9,10 +9,10 @@
 struct OpaqueData
 {
 	const uint64_t* index;
-	const uint32_t *offset, *fit_offset;
+	const uint32_t *offset, *fit_offset, *b_index;
 	const float *vv, *vi, *a, *b, *memory;
 	float *voltage, *state;
-	uint32_t pole_count;
+	uint32_t pole_count, coefficient_count;
 };
 
 __global__ void opaque_apply(float* volt, const float* curr, OpaqueData D, uint32_t count)
@@ -34,6 +34,18 @@ __global__ void opaque_apply(float* volt, const float* curr, OpaqueData D, uint3
 		stride = min(uint32_t(GPU_OpaqueSurfaceData::TileWidth), count - first);
 		start = first * D.pole_count + uint32_t(i) - first;
 	}
+	uint32_t b_start = start, b_stride = stride;
+	if (D.coefficient_count)
+	{
+		b_start = D.b_index[i];
+		b_stride = 1;
+		if (D.pole_count)
+		{
+			const uint32_t first = b_start - b_start % GPU_OpaqueSurfaceData::TileWidth;
+			b_stride = min(uint32_t(GPU_OpaqueSurfaceData::TileWidth), D.coefficient_count - first);
+			b_start = first * D.pole_count + b_start - first;
+		}
+	}
 	float mem=0;
 	for (uint32_t j = 0; j < poles; ++j)
 	{
@@ -44,7 +56,7 @@ __global__ void opaque_apply(float* volt, const float* curr, OpaqueData D, uint3
 	for (uint32_t j = 0; j < poles; ++j)
 	{
 		const uint32_t k = start + j * stride;
-		D.state[k] = D.a[fit+j]*D.state[k]+D.b[k]*(next+old);
+		D.state[k] = D.a[fit+j]*D.state[k]+D.b[b_start+j*b_stride]*(next+old);
 	}
 	D.voltage[i]=next;
 	volt[ix[0]]=next;
@@ -62,16 +74,18 @@ public:
 			return;
 		}
 		data.pole_count = h.pole_count;
+		data.coefficient_count = h.coefficient_count;
 		data.index=d->Alloc<uint64_t>(h.index.size(),h.index.data());
 		data.offset=d->Alloc<uint32_t>(h.offset.size(),h.offset.data());
 		data.fit_offset=d->Alloc<uint32_t>(h.fit_offset.size(),h.fit_offset.data());
+		data.b_index=h.b_index.empty() ? nullptr : d->Alloc<uint32_t>(h.b_index.size(),h.b_index.data());
 		data.vv=d->Alloc<float>(h.vv.size(),h.vv.data());
 		data.vi=d->Alloc<float>(h.vi.size(),h.vi.data());
 		data.a=d->Alloc<float>(h.a.size(),h.a.data());
 		data.b=d->Alloc<float>(h.b.size(),h.b.data());
 		data.memory=d->Alloc<float>(h.memory.size(),h.memory.data());
 		data.voltage=d->Alloc<float>(count);
-		data.state=d->Alloc<float>(h.b.size());
+		data.state=d->Alloc<float>(h.offset.back());
 		// The fused volume step speculates currents before this voltage update.
 		// Register every modified edge so it recomputes the affected currents.
 		for (size_t i=0; i<count; ++i) modified.insert(h.index[5*i]);
