@@ -9,6 +9,99 @@ import unittest
 
 
 class OpaquePackingTest(unittest.TestCase):
+    def test_shared_vectors_keep_independent_histories(self):
+        """Duplicate constants, unique scales, mixed orders and both tile tails."""
+        compiler = shutil.which(os.environ.get('CXX', 'c++'))
+        if not compiler:
+            self.skipTest('C++ compiler required for packing regression')
+        root = Path(__file__).resolve().parents[2]
+        source = r'''
+#include "FDTD/gpu_opaquesurface.h"
+#include <cassert>
+#include <cstring>
+struct Input {
+    struct Fit { std::vector<double> w, tau; };
+    struct Edge { unsigned n, pos[3], fit; double vv, vi, scale; };
+    std::vector<Fit> fits;
+    std::vector<Edge> edges;
+    double dt;
+};
+bool bits(float x, float y) { return std::memcmp(&x,&y,sizeof(float))==0; }
+int main() {
+    for (bool mixed : {false, true}) for (unsigned groups : {1u,31u,32u,33u,65u}) {
+        Input op; op.dt=1.23456789e-14;
+        for (unsigned f=0;f<2;++f) {
+            Input::Fit fit;
+            for (unsigned j=0;j<(mixed && f ? 31u:62u);++j) {
+                fit.w.push_back(.37+j*.013+f*.2);
+                fit.tau.push_back(op.dt*(.27+j*.12+f*.1));
+            }
+            op.fits.push_back(fit);
+        }
+        // Repeated fit/scale pairs differ in excitation/history. Unique vector
+        // counts 1/31/32/33/65 exercise coefficient tails separately from states.
+        for (unsigned i=0;i<groups*3+1;++i) {
+            const unsigned g=i%groups;
+            op.edges.push_back({i%3,{i%4,2,3},g%2,.75,.001,.0001+g*.00001});
+        }
+        GPU_OpaqueSurfaceData d(op,9,8,7);
+        assert(d.coefficient_count==groups);
+        assert(d.b.size()+d.b_index.size()<d.offset.back());
+        std::vector<unsigned> owners(d.offset.back(),0);
+        std::vector<float> history(d.offset.back(),0), reference(d.offset.back(),0);
+        std::vector<float> voltage(op.edges.size(),0), ref_voltage(voltage.size(),0);
+        for (unsigned i=0;i<op.edges.size();++i) {
+            const auto& e=op.edges[i]; const auto& f=op.fits[e.fit];
+            for (unsigned j=0;j<f.w.size();++j) {
+                ++owners[d.StateIndex(i,j)];
+                const float old_b=float(op.dt*f.w[j]*e.scale/(2*f.tau[j]+op.dt));
+                assert(bits(d.b[d.CoefficientIndex(i,j)],old_b));
+            }
+            assert(d.CoefficientIndex(i,0)==d.CoefficientIndex(i%groups,0));
+        }
+        for (auto n:owners) assert(n==1);
+        for (unsigned step=0;step<400;++step) for (unsigned i=0;i<op.edges.size();++i) {
+            const auto& e=op.edges[i]; const auto& f=op.fits[e.fit];
+            float memory=0, ref_memory=0;
+            for (unsigned j=0;j<f.w.size();++j) {
+                memory+=d.memory[d.fit_offset[i]+j]*history[d.StateIndex(i,j)];
+                ref_memory+=d.memory[d.fit_offset[i]+j]*reference[d.offset[i]+j];
+            }
+            const float curl=float(std::sin(.1*step+.2*i));
+            const float next=d.vv[i]*voltage[i]+d.vi[i]*(curl-memory);
+            const float ref_next=d.vv[i]*ref_voltage[i]+d.vi[i]*(curl-ref_memory);
+            assert(bits(next,ref_next) && std::isfinite(next));
+            for (unsigned j=0;j<f.w.size();++j) {
+                const auto k=d.StateIndex(i,j), r=d.offset[i]+j;
+                const float b=float(op.dt*f.w[j]*e.scale/(2*f.tau[j]+op.dt));
+                history[k]=d.a[d.fit_offset[i]+j]*history[k]+d.b[d.CoefficientIndex(i,j)]*(next+voltage[i]);
+                reference[r]=d.a[d.fit_offset[i]+j]*reference[r]+b*(ref_next+ref_voltage[i]);
+                assert(bits(history[k],reference[r]));
+            }
+            voltage[i]=next; ref_voltage[i]=ref_next;
+        }
+        assert(voltage[0]!=voltage[groups]); // sharing constants must not alias states
+        // A distinct binary64 scale must not be merged by rounding to FP32.
+        op.edges.back().scale=std::nextafter(op.edges.back().scale,1.);
+        GPU_OpaqueSurfaceData close(op,9,8,7);
+        assert(close.coefficient_count==groups+1);
+    }
+    Input low; low.dt=1e-14;
+    low.fits.push_back({{.37},{2e-14}});
+    for (unsigned i=0;i<33;++i) low.edges.push_back({0,{1,2,3},0,.75,.001,.0001});
+    GPU_OpaqueSurfaceData fallback(low,9,8,7);
+    assert(!fallback.coefficient_count && fallback.b_index.empty());
+    assert(fallback.b.size()==low.edges.size()); // IDs would cost more than saved b
+}
+'''
+        with tempfile.TemporaryDirectory() as tmp:
+            cpp = Path(tmp)/'test.cpp'
+            cpp.write_text(source)
+            binary = Path(tmp)/'test'
+            subprocess.run([compiler, '-std=c++11', '-ffp-contract=off',
+                            '-I', str(root), str(cpp), '-o', str(binary)], check=True)
+            subprocess.run([str(binary)], check=True)
+
     def test_shared_fits_independent_states_and_rounding(self):
         compiler = shutil.which(os.environ.get('CXX', 'c++'))
         if not compiler:

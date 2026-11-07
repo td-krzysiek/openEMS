@@ -5,8 +5,10 @@
 #include <cmath>
 #include <algorithm>
 #include <cstdint>
+#include <cstring>
 #include <limits>
 #include <stdexcept>
+#include <unordered_map>
 #include <vector>
 
 // Shared packing for Metal and HIP. Each edge owns its voltage history and
@@ -16,11 +18,22 @@ struct GPU_OpaqueSurfaceData
 {
 	std::vector<uint64_t> index; // voltage, Hq, Hq(low p), Hp, Hp(low q)
 	std::vector<uint32_t> offset, fit_offset; // per-edge state and shared-fit starts
+	std::vector<uint32_t> b_index; // optional shared-vector ID (or mixed-order start)
 	std::vector<float> vv, vi, a, b, memory;
 	// Uniform-order histories are pole-major within compact 32-edge tiles.
 	// A partial last tile has no padding. Mixed orders retain edge-major storage.
 	enum { TileWidth = 32 };
 	uint32_t pole_count = 0;
+	uint32_t coefficient_count = 0; // zero retains the original per-edge b layout
+
+	uint32_t CoefficientIndex(uint32_t edge, uint32_t pole) const
+	{
+		if (!coefficient_count) return StateIndex(edge, pole);
+		if (!pole_count) return b_index[edge] + pole;
+		const uint32_t id = b_index[edge], first = id - id % TileWidth;
+		const uint32_t lanes = std::min(uint32_t(TileWidth), coefficient_count - first);
+		return first * pole_count + pole * lanes + id - first;
+	}
 
 	uint32_t StateIndex(uint32_t edge, uint32_t pole) const
 	{
@@ -77,8 +90,49 @@ struct GPU_OpaqueSurfaceData
 		{
 			pole_count = 0;
 		}
-		// Pack directly: no second full-size host or device coefficient array.
-		b.resize(offset.back());
+		// Only constants may alias. Every edge retains its original history slice.
+		struct Key
+		{
+			uint64_t scale;
+			uint32_t fit;
+			bool operator==(const Key& other) const
+			{ return scale == other.scale && fit == other.fit; }
+		};
+		struct Hash
+		{
+			size_t operator()(const Key& key) const
+			{ return std::hash<uint64_t>()(key.scale) ^ (size_t(key.fit) * 0x9e3779b9u); }
+		};
+		std::vector<uint32_t> representatives, starts(1, 0);
+		{
+			std::unordered_map<Key, uint32_t, Hash> vectors;
+			b_index.reserve(op.edges.size());
+			for (uint32_t i = 0; i < op.edges.size(); ++i)
+			{
+				const auto& e = op.edges[i];
+				uint64_t scale;
+				static_assert(sizeof(scale) == sizeof(e.scale), "Opaque scale must be binary64");
+				std::memcpy(&scale, &e.scale, sizeof(scale));
+				const auto entry = vectors.emplace(Key{scale, e.fit}, uint32_t(representatives.size()));
+				if (entry.second)
+				{
+					representatives.push_back(i);
+					starts.push_back(starts.back() + uint32_t(op.fits[e.fit].w.size()));
+				}
+				b_index.push_back(pole_count ? entry.first->second : starts[entry.first->second]);
+			}
+		}
+		// Avoid extra device storage/indirection when sharing cannot save bytes.
+		if (uint64_t(starts.back()) + b_index.size() < offset.back())
+		{
+			coefficient_count = uint32_t(representatives.size());
+			b.resize(starts.back());
+		}
+		else
+		{
+			std::vector<uint32_t>().swap(b_index);
+			b.resize(offset.back());
+		}
 		vv.reserve(op.edges.size());
 		vi.reserve(op.edges.size());
 		for (const auto& e : op.edges)
@@ -106,13 +160,15 @@ struct GPU_OpaqueSurfaceData
 			vv.push_back(Coefficient(e.vv));
 			vi.push_back(Coefficient(e.vi));
 		}
-		for (uint32_t i = 0; i < op.edges.size(); ++i)
+		const size_t packed = coefficient_count ? representatives.size() : op.edges.size();
+		for (uint32_t k = 0; k < packed; ++k)
 		{
+			const uint32_t i = coefficient_count ? representatives[k] : k;
 			const auto& e = op.edges[i];
 			const auto& fit = op.fits[e.fit];
 			for (size_t j=0; j<fit.w.size(); ++j)
 			{
-				b[StateIndex(i, static_cast<uint32_t>(j))] =
+				b[CoefficientIndex(i, static_cast<uint32_t>(j))] =
 				    Coefficient(op.dt*fit.w[j]*e.scale/(2*fit.tau[j]+op.dt));
 			}
 		}

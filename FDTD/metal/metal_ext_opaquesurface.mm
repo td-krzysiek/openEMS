@@ -19,6 +19,8 @@ kernel void opaque_apply(device float* volt [[buffer(0)]],
                          constant uint& count [[buffer(11)]],
                          const device uint* fit_offset [[buffer(12)]],
                          constant uint& pole_count [[buffer(13)]],
+                         const device uint* b_index [[buffer(14)]],
+                         constant uint& coefficient_count [[buffer(15)]],
                          uint i [[thread_position_in_grid]])
 {
 	if (i>=count)
@@ -37,6 +39,18 @@ kernel void opaque_apply(device float* volt [[buffer(0)]],
 		stride = min(32u, count - first);
 		start = first * pole_count + i - first;
 	}
+	uint b_start = start, b_stride = stride;
+	if (coefficient_count)
+	{
+		b_start = b_index[i];
+		b_stride = 1;
+		if (pole_count)
+		{
+			const uint first = b_start - b_start % 32;
+			b_stride = min(32u, coefficient_count - first);
+			b_start = first * pole_count + b_start - first;
+		}
+	}
 	float mem=0;
 	for (uint j = 0; j < poles; ++j)
 	{
@@ -47,7 +61,7 @@ kernel void opaque_apply(device float* volt [[buffer(0)]],
 	for (uint j = 0; j < poles; ++j)
 	{
 		const uint k = start + j * stride;
-		state[k] = a[fit+j]*state[k]+b[k]*(next+old);
+		state[k] = a[fit+j]*state[k]+b[b_start+j*b_stride]*(next+old);
 	}
 	voltage[i]=next;
 	volt[index[k]]=next;
@@ -66,8 +80,10 @@ public:
 			return;
 		}
 		pole_count = h.pole_count;
+		coefficient_count = h.coefficient_count;
 		index=d->NewBuffer(h.index.size()*sizeof(uint64_t),h.index.data());
 		offset=d->NewBuffer(h.offset.size()*sizeof(uint32_t),h.offset.data());
+		b_index=h.b_index.empty() ? offset : d->NewBuffer(h.b_index.size()*sizeof(uint32_t),h.b_index.data());
 		fit_offset=d->NewBuffer(h.fit_offset.size()*sizeof(uint32_t),h.fit_offset.data());
 		vv=d->NewBuffer(h.vv.size()*sizeof(float),h.vv.data());
 		vi=d->NewBuffer(h.vi.size()*sizeof(float),h.vi.data());
@@ -75,7 +91,7 @@ public:
 		b=d->NewBuffer(h.b.size()*sizeof(float),h.b.data());
 		memory=d->NewBuffer(h.memory.size()*sizeof(float),h.memory.data());
 		voltage=d->NewBuffer(count*sizeof(float));
-		state=d->NewBuffer(h.b.size()*sizeof(float));
+		state=d->NewBuffer(size_t(h.offset.back())*sizeof(float));
 		d->Pipeline(OPAQUE_SOURCE,"opaque_apply");
 	}
 	virtual void Apply2Voltages()
@@ -101,12 +117,14 @@ public:
 		[enc setBytes:&count length:sizeof(count) atIndex:11];
 		[enc setBuffer:fit_offset offset:0 atIndex:12];
 		[enc setBytes:&pole_count length:sizeof(pole_count) atIndex:13];
+		[enc setBuffer:b_index offset:0 atIndex:14];
+		[enc setBytes:&coefficient_count length:sizeof(coefficient_count) atIndex:15];
 		d->Dispatch(pso,count);
 	}
 private:
 	GPU_Backend_Metal::Impl* d;
-	uint32_t count, pole_count;
-	id<MTLBuffer> index, offset, fit_offset, vv, vi, a, b, memory, voltage, state;
+	uint32_t count, pole_count, coefficient_count;
+	id<MTLBuffer> index, offset, fit_offset, b_index, vv, vi, a, b, memory, voltage, state;
 };
 
 GPU_Extension* Metal_CreateExt_OpaqueSurface(GPU_Backend_Metal::Impl* d, Engine_Extension* ext, Engine* eng)

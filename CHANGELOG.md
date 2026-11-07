@@ -119,6 +119,10 @@ there are unreleased changes. It becomes the next release entry.
 
 ### Changed
 
+- Share identical scaled constant vectors in the experimental opaque GPU
+  boundary on HIP and Metal when this saves storage. Dynamic histories,
+  coefficient rounding and update order remain per edge and unchanged.
+
 - Native domain execution copies the physical lower-boundary current halo
   within the device when supported, avoiding two device-to-host and two
   host-to-device plane transfers per timestep. Other backends retain the
