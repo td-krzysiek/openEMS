@@ -9,6 +9,7 @@
 #include "extensions/engine_ext_excitation.h"
 #include "extensions/engine_ext_lumpedRLC.h"
 #include "extensions/engine_ext_opaquesurface.h"
+#include "extensions/engine_ext_lorentzmaterial.h"
 #include <iostream>
 #include <stdexcept>
 
@@ -396,7 +397,8 @@ GPU_Extension* GPU_Backend_Domains::CreateExtension(Engine_Extension* ext, Engin
 		if (!dynamic_cast<GPU_Backend_Reference*>(backend.get()) &&
 		    !dynamic_cast<Engine_Ext_UPML*>(ext) && !dynamic_cast<Engine_Ext_Excitation*>(ext) &&
 		    !dynamic_cast<Engine_Ext_LumpedRLC*>(ext) &&
-		    !dynamic_cast<Engine_Ext_OpaqueSurface*>(ext))
+		    !dynamic_cast<Engine_Ext_OpaqueSurface*>(ext) &&
+		    !dynamic_cast<Engine_Ext_LorentzMaterial*>(ext))
 		{
 			throw std::runtime_error("unsupported extension for native device-domain execution");
 		}
