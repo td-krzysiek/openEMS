@@ -43,6 +43,19 @@ def model(path, physics):
     if physics == 'rlc':
         csx.AddLumpedElement('load', ny=2, caps=True, R=50, L=2e-9, C=2e-12).AddBox(
             [0, 7.5, 5], [0, 7.5, 10])
+    if physics == 'lossy-metal':
+        csx.AddLossyMetal('smooth', conductivity=5.8e7).AddBox(
+            [-10, -7.5, -10], [7.5, 10, -5], priority=10)
+    if physics == 'lorentz':
+        from CSXCAD.CSProperties import CSPropLorentzMaterial
+        material = CSPropLorentzMaterial(csx.GetParameterSet(), order=2)
+        material.SetName('electric-magnetic')
+        material.SetDispersiveMaterialProperty(0, eps_plasma=4e9,
+            eps_pole_freq=3e9, eps_relax=1e-9, mue_plasma=2e9, mue_relax=1e-9)
+        material.SetDispersiveMaterialProperty(1, eps_plasma=2e9,
+            eps_relax=1e-9)
+        csx.AddProperty(material)
+        material.AddBox([-7.5]*3, [7.5]*3, priority=10)
     for field, kind in [('E', 10), ('H', 11)]:
         csx.AddDump('field_'+field, dump_type=kind, dump_mode=1,
                     file_type=1, frequency=[3e9, 5e9]).AddBox([-20]*3, [20]*3)
@@ -90,7 +103,7 @@ def main():
     root.mkdir(parents=True, exist_ok=False)
     results = {}
     counts = [int(value) for value in args.device_counts.split(',')]
-    for physics in ['vacuum', 'pec', 'rlc', 'opaque']:
+    for physics in ['vacuum', 'pec', 'rlc', 'opaque', 'lorentz', 'lossy-metal']:
         for count in [1, *counts]:
             folder = root/(physics+'-'+str(count))
             folder.mkdir()
@@ -111,6 +124,9 @@ def main():
                 assert int(re.search(r'Number of PEC edges\s*:\s*(\d+)', text)[1]) > 0
             if physics == 'opaque':
                 assert int(re.search(r'EXPERIMENTAL_OPAQUE_SURFACE_V1 active: (\d+)', text)[1]) > 0
+            if physics == 'lossy-metal':
+                assert 'Operator_Ext_LossyMetal:' in text
+                assert 'Unused primitive' not in text and 'fallback to PEC' not in text
             if physics == 'rlc':
                 assert int(re.search(r'Active cells\s*:\s*(\d+)', text)[1]) > 0
             if args.engine == 'gpu':

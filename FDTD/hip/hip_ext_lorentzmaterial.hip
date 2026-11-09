@@ -18,6 +18,7 @@
 #include "hip/hip_runtime.h"
 #include "hip_internal.h"
 #include "FDTD/engine.h"
+#include "FDTD/gpu_dispersive_domain.h"
 #include "FDTD/extensions/operator_ext_lorentzmaterial.h"
 #include "FDTD/extensions/engine_ext_lorentzmaterial.h"
 
@@ -87,7 +88,6 @@ protected:
 
 	void Setup(std::vector<Order>& orders, size_t count, unsigned int** pos,
 	           bool lorentz, FDTD_FLOAT** c_int, FDTD_FLOAT** c_ext, FDTD_FLOAT** c_lor);
-	float* Coefficients(size_t count, FDTD_FLOAT** c);
 	void Pre(Order& o, float* field)
 	{
 		HIP_Launch(d, "lorentz_pre", lorentz_pre, o.param.count, 1, 1, (const float*)field, o.ade, o.lor,
@@ -118,36 +118,32 @@ HIP_Ext_LorentzMaterial::HIP_Ext_LorentzMaterial(GPU_Backend_HIP::Impl* impl, Op
 	}
 }
 
-float* HIP_Ext_LorentzMaterial::Coefficients(size_t count, FDTD_FLOAT** c)
-{
-	std::vector<float> data(3*(size_t)count, 0);
-	if (c)
-		for (int n=0; n<3; ++n)
-			for (size_t i=0; i<count; ++i)
-				data[n*count + i] = c[n][i];
-	return d->Alloc<float>(data.size(), data.data());
-}
-
 void HIP_Ext_LorentzMaterial::Setup(std::vector<Order>& orders, size_t count, unsigned int** pos,
                                      bool lorentz, FDTD_FLOAT** c_int, FDTD_FLOAT** c_ext, FDTD_FLOAT** c_lor)
 {
-	if (count==0)
+	GPU_DispersiveDomain local(d->domain, count, pos, d->dim.ny, d->dim.nz);
+	count = local.source.size();
+	if (count == 0)
+	{
 		return;
+	}
 	Order ord;
 	ord.param.count = count;
 	ord.param.lorentz = lorentz;
 	ord.param.sn = d->numCells;
 
-	std::vector<size_t> flat(count);
-	for (size_t i=0; i<count; ++i)
-		flat[i] = ((size_t)pos[0][i]*d->dim.ny + pos[1][i])*d->dim.nz + pos[2][i];
-	ord.pos = d->Alloc<size_t>(count, flat.data());
+	ord.pos = d->Alloc<size_t>(count, local.position.data());
 
 	ord.ade = d->Alloc<float>(3*(size_t)count);
 	ord.lor = d->Alloc<float>(3*(size_t)count);
-	ord.c_int = Coefficients(count, c_int);
-	ord.c_ext = Coefficients(count, c_ext);
-	ord.c_lor = Coefficients(count, c_lor);
+	auto upload = [&](FDTD_FLOAT** values)
+	{
+		const auto data = local.Coefficients(values);
+		return d->Alloc<float>(data.size(), data.data());
+	};
+	ord.c_int = upload(c_int);
+	ord.c_ext = upload(c_ext);
+	ord.c_lor = upload(c_lor);
 	orders.push_back(ord);
 }
 

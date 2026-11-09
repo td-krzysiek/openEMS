@@ -15,6 +15,10 @@ there are unreleased changes. It becomes the next release entry.
 
 ### Added
 
+- Native GPU domains support Drude/Lorentz materials and PR242 LossyMetal
+  on HIP and Metal. Each domain keeps only its owned material histories;
+  single-device update equations are unchanged.
+
 - Experimental native GPU X-domain adapter behind `ENABLE_DOMAIN_RUNTIME`,
   selected with `--gpu-devices=0,1`. HIP slices preserve native excitation,
   UPML, lumped-RLC and opaque-surface ownership and exchange corrected
