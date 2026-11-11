@@ -83,6 +83,9 @@ there are unreleased changes. It becomes the next release entry.
 
 ### Fixed
 
+- The non-installed Metal logical-domain test plugin reuses the loaded solver
+  library, avoiding duplicate globals when testing an installed macOS build.
+
 - Apply the delayed-excitation correction to the experimental tiling hooks,
   matching CPU/GPU behavior for step and custom sources.
 
