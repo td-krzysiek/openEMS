@@ -452,7 +452,11 @@ if(ENABLE_DOMAIN_RUNTIME)
       # Explicit manual-test path only: several queues on one physical GPU.
       # Not installed, and never added to the normal plugin search directory.
       add_library(openEMS_gpu_metal_domain_test MODULE TESTSUITE/distributed/metal_test_plugin.cpp)
-      target_link_libraries(openEMS_gpu_metal_domain_test openEMS)
+      # Resolve against the solver already loaded by the executable/bindings.
+      # Linking the build-tree dylib loads a second copy beside an installed
+      # libopenEMS on macOS, duplicating global settings and thread limits.
+      target_link_options(openEMS_gpu_metal_domain_test PRIVATE "LINKER:-undefined,dynamic_lookup")
+      add_dependencies(openEMS_gpu_metal_domain_test openEMS)
       set_target_properties(openEMS_gpu_metal_domain_test PROPERTIES
         PREFIX "" SUFFIX ".so" LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/test-plugins")
     endif()
