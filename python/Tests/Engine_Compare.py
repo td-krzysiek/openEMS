@@ -313,6 +313,20 @@ def case_materials():
     return FDTD, CSX
 
 
+def case_lossy_metal():
+    """ lossy metal in a PML channel: a smooth sheet (2D primitive) and a rough body behind the probe,
+        surface impedance branches on the Lorentz extension """
+    FDTD = openEMS(NrTS=3000, EndCriteria=0)
+    CSX = ContinuousStructure()
+    FDTD.SetCSX(CSX)
+    CSX.GetGrid().SetDeltaUnit(unit)
+    channel_1d(FDTD, CSX)
+    CSX.AddLossyMetal('lm_sheet', conductivity=1e4, thickness=10e-6).AddBox([0, 0, 40], [1, 1, 40], priority=10)
+    rough = CSX.AddLossyMetal('lm_body', conductivity=5.8e7, roughness_model='gradient', rq=1e-6)
+    rough.AddBox([0, 0, 85], [1, 1, 87], priority=10)
+    return FDTD, CSX
+
+
 def case_lumped(bc='MUR', size=10):
     """ lumped port with series and parallel RLC elements in a Mur box: excitation, lumped RLC and Mur extensions """
     FDTD = openEMS(NrTS=1500, EndCriteria=0)
@@ -529,11 +543,31 @@ def case_coeff_full():
 
 
 def case_pml_graded():
-    """ PML around a graded permittivity: nearly a UPML coefficient set per cell, the full arrays """
+    """ PML around graded permittivity: upstream full-array control """
     FDTD, CSX = case_pml()
     mat = CSX.AddMaterial('graded_eps', epsilon=2)
     mat.SetMaterialWeight(epsilon='1+0.02*sin(x)+0.03*cos(y)+0.04*sin(z)')
     mat.AddBox([-1000]*3, [1000]*3)
+    return FDTD, CSX
+
+
+def case_pml_coeff_full():
+    """ spatially varying permittivity: too many UPML sets to compress """
+    FDTD, CSX = coeff_case([graded(30), graded(30), graded(30)])
+    mat = CSX.AddMaterial('graded_eps', epsilon=2)
+    mat.SetMaterialWeight(epsilon='1+0.02*sin(x)+0.03*cos(y)+0.04*sin(z)')
+    mat.AddBox([-1000]*3, [1000]*3)
+    return FDTD, CSX
+
+
+def case_pml_coeff_index32():
+    """ more than 65536 UPML sets, with a periodic transverse permittivity """
+    FDTD, CSX = coeff_case([np.arange(-10, 11), np.arange(-500, 500), np.arange(-40, 41)])
+    FDTD.SetBoundaryCond(['PML_8', 'PEC', 'PEC', 'PEC', 'PEC', 'PEC'])
+    FDTD.SetCellConstantMaterial(1)
+    mat = CSX.AddMaterial('graded_eps', epsilon=2)
+    mat.SetMaterialWeight(epsilon='1+0.0001*y+0.05*sin(pi*z/8)')
+    mat.AddBox([-10000]*3, [10000]*3)
     return FDTD, CSX
 
 
@@ -624,9 +658,10 @@ cases = [('excitation',     case_excitation,     True),
          ('pml_upml_regions', case_pml,          True),
          ('pml_upml_separate', case_pml,         True),
          ('pml_index32',    case_pml,            True),
-         ('pml_full_separate', case_pml_graded,  True),
+         ('pml_graded_separate', case_pml_graded, True),
          ('mur',            case_mur,            True),
          ('materials',      case_materials,      True),
+         ('lossy_metal',    case_lossy_metal,    True),
          ('lumped',         case_lumped,         True),
          ('lumped_pml',     case_lumped_pml,     True),
          ('tfsf',           case_tfsf,           True),
@@ -645,6 +680,10 @@ cases = [('excitation',     case_excitation,     True),
          ('coax_resonator', case_coax_resonator, True),
          ('coeff_index32',  case_coeff_index32,  True),
          ('coeff_full',     case_coeff_full,     True),
+         ('pml_full',       case_pml_coeff_full, True),
+         ('pml_full_separate', case_pml_coeff_full, True),
+         ('pml_coeff_index32', case_pml_coeff_index32, True),
+         ('pml_coeff_index32_separate', case_pml_coeff_index32, True),
          ('dumps_snapshot_host_dft', case_dumps_snapshot, True),
          ('sar',            case_sar,            True)]
 
@@ -655,13 +694,16 @@ CASE_ENV = {'dumps_snapshot_host_dft': {'OPENEMS_GPU_DUMPS': 'snapshot'},
             'pml_upml_regions': {'OPENEMS_HIP_FUSED_STEP': '0'},
             'pml_upml_separate': {'OPENEMS_HIP_UPML_FUSION': '0'},
             'pml_index32': {'OPENEMS_HIP_INDEX': '32'},
-            'pml_full_separate': {'OPENEMS_HIP_UPML_FUSION': '0'}}
+            'pml_graded_separate': {'OPENEMS_HIP_UPML_FUSION': '0'},
+            'pml_full_separate': {'OPENEMS_HIP_UPML_FUSION': '0'},
+            'pml_coeff_index32_separate': {'OPENEMS_HIP_UPML_FUSION': '0'}}
 # the messages of the HIP backend for these UPML updates: (expected, not expected)
 UPML_MODES = {'pml': ('UPML regions in the kernel', None),
               'pml_index32': ('fused voltage and current updates, 32 bit indices', None),
               'pml_upml_regions': ('UPML regions fused with the main updates', 'UPML regions in the kernel'),
               'pml_upml_separate': (None, 'UPML regions fused with the main updates'),
-              'pml_full_separate': ('full coefficient arrays', 'UPML regions fused with the main updates')}
+              'pml_full_separate': ('full coefficient arrays', 'UPML regions fused with the main updates'),
+              'pml_graded_separate': ('full coefficient arrays', 'UPML regions fused with the main updates')}
 
 DEVICE_RTOL = 1e-4
 # device backends with a device implementation of every extension

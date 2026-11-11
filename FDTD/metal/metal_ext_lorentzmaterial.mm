@@ -17,6 +17,7 @@
 
 #include "metal_internal.h"
 #include "FDTD/engine.h"
+#include "FDTD/gpu_dispersive_domain.h"
 #include "FDTD/extensions/operator_ext_lorentzmaterial.h"
 #include "FDTD/extensions/engine_ext_lorentzmaterial.h"
 
@@ -97,7 +98,6 @@ protected:
 
 	void Setup(std::vector<Order>& orders, int o, unsigned int count, unsigned int** pos,
 	           bool lorentz, FDTD_FLOAT** c_int, FDTD_FLOAT** c_ext, FDTD_FLOAT** c_lor);
-	id<MTLBuffer> Coefficients(unsigned int count, FDTD_FLOAT** c);
 	void Pre(Order& o, id<MTLBuffer> field);
 	void Apply(Order& o, id<MTLBuffer> field);
 
@@ -123,37 +123,34 @@ Metal_Ext_LorentzMaterial::Metal_Ext_LorentzMaterial(GPU_Backend_Metal::Impl* im
 	d->Pipeline(LORENTZ_SOURCE, "dispersive_apply");
 }
 
-id<MTLBuffer> Metal_Ext_LorentzMaterial::Coefficients(unsigned int count, FDTD_FLOAT** c)
-{
-	std::vector<float> data(3*(size_t)count, 0);
-	if (c)
-		for (int n=0; n<3; ++n)
-			for (unsigned int i=0; i<count; ++i)
-				data[n*count + i] = c[n][i];
-	return d->NewBuffer(data.size()*sizeof(float), data.data());
-}
-
 void Metal_Ext_LorentzMaterial::Setup(std::vector<Order>& orders, int o, unsigned int count, unsigned int** pos,
                                       bool lorentz, FDTD_FLOAT** c_int, FDTD_FLOAT** c_ext, FDTD_FLOAT** c_lor)
 {
 	UNUSED(o);
-	if (count==0)
+	GPU_DispersiveDomain local(d->domain, count, pos, d->dim.ny, d->dim.nz);
+	count = static_cast<unsigned int>(local.source.size());
+	if (count == 0)
+	{
 		return;
+	}
 	Order ord;
 	ord.param.count = count;
 	ord.param.lorentz = lorentz;
 	ord.param.sn = d->numCells;
 
-	std::vector<uint32_t> flat(count);
-	for (unsigned int i=0; i<count; ++i)
-		flat[i] = (pos[0][i]*d->dim.ny + pos[1][i])*d->dim.nz + pos[2][i];
+	const std::vector<uint32_t> flat(local.position.begin(), local.position.end());
 	ord.pos = d->NewBuffer(count*sizeof(uint32_t), flat.data());
 
 	ord.ade = d->NewBuffer(3*(size_t)count*sizeof(float));
 	ord.lor = d->NewBuffer(3*(size_t)count*sizeof(float));
-	ord.c_int = Coefficients(count, c_int);
-	ord.c_ext = Coefficients(count, c_ext);
-	ord.c_lor = Coefficients(count, c_lor);
+	auto upload = [&](FDTD_FLOAT** values)
+	{
+		const auto data = local.Coefficients(values);
+		return d->NewBuffer(data.size()*sizeof(float), data.data());
+	};
+	ord.c_int = upload(c_int);
+	ord.c_ext = upload(c_ext);
+	ord.c_lor = upload(c_lor);
 	orders.push_back(ord);
 }
 

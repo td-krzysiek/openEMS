@@ -109,22 +109,37 @@ Metal_Ext_Excitation::Metal_Ext_Excitation(GPU_Backend_Metal::Impl* impl, Operat
 void Metal_Ext_Excitation::Setup(Sources& s, unsigned int count, unsigned int* const index[3], const unsigned short* dir,
                                  const FDTD_FLOAT* amp, const unsigned int* delay, const FDTD_FLOAT* signal)
 {
-	s.count = count;
+	s.count = 0;
 	s.serial = false;
-	if (count==0)
-		return;
-
-	std::vector<uint32_t> flat(count);
+	std::vector<uint32_t> flat, delays;
+	std::vector<float> amplitudes;
 	std::set<uint32_t> edges;
-	for (unsigned int n=0; n<count; ++n)
+	for (unsigned int n = 0; n < count; ++n)
 	{
-		flat[n] = ((dir[n]*d->dim.nx + index[0][n])*d->dim.ny + index[1][n])*d->dim.nz + index[2][n];
-		if (!edges.insert(flat[n]).second)
+		if (!d->domain.Owns(index[0][n]))
+		{
+			continue;
+		}
+		const uint32_t edge =
+		    ((dir[n] * d->dim.nx + d->domain.LocalX(index[0][n])) * d->dim.ny + index[1][n]) *
+		        d->dim.nz +
+		    index[2][n];
+		flat.push_back(edge);
+		amplitudes.push_back(amp[n]);
+		delays.push_back(delay[n]);
+		if (!edges.insert(edge).second)
+		{
 			s.serial = true;
+		}
 	}
-	s.index = d->NewBuffer(count*sizeof(uint32_t), flat.data());
-	s.amp = d->NewBuffer(count*sizeof(float), amp);
-	s.delay = d->NewBuffer(count*sizeof(uint32_t), delay);
+	s.count = static_cast<unsigned int>(flat.size());
+	if (!s.count)
+	{
+		return;
+	}
+	s.index = d->NewBuffer(s.count * sizeof(uint32_t), flat.data());
+	s.amp = d->NewBuffer(s.count * sizeof(float), amplitudes.data());
+	s.delay = d->NewBuffer(s.count * sizeof(uint32_t), delays.data());
 	s.signal = d->NewBuffer(m_Op_Exc->m_Exc->GetLength()*sizeof(float), signal);
 }
 

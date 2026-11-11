@@ -19,6 +19,7 @@
 #define GPU_BACKEND_REFERENCE_H
 
 #include "gpu_backend.h"
+#include "gpu_domain_layout.h"
 
 //! Reference GPU backend running on the CPU
 /*!
@@ -48,6 +49,10 @@ public:
 	virtual std::string GetName() const {return "reference (CPU)";}
 
 	virtual bool Init(const Operator* op);
+	bool InitDomain(const Operator*, unsigned int, unsigned int) override;
+	bool DownloadRange(bool, size_t, size_t, FDTD_FLOAT*) override;
+	bool UploadRange(bool, size_t, size_t, const FDTD_FLOAT*) override;
+	bool CopyRange(bool currents, size_t source, size_t destination, size_t count) override;
 
 	virtual void UpdateVoltages();
 	virtual void UpdateCurrents();
@@ -61,6 +66,7 @@ public:
 	virtual GPU_Backend* NewSubGridBackend() {return new GPU_Backend_Reference();}
 
 protected:
+	GPU_DomainLayout m_Domain;
 	unsigned int numLines[3];
 
 	// "device" memory, never handed to the engine (no GetSharedVoltages())

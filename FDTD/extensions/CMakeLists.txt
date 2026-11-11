@@ -5,10 +5,14 @@
 set(SOURCES
   ${SOURCES}
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_extension.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/engine_ext_opaquesurface.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/operator_ext_opaquesurface.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/operator_ext_dispersive.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/operator_ext_lorentzmaterial.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/operator_ext_debyematerial.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/operator_ext_conductingsheet.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/operator_ext_lossymetal.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/surface_impedance.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_ext_dispersive.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_ext_lorentzmaterial.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_ext_debyematerial.cpp

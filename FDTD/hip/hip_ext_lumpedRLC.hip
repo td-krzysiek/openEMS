@@ -103,7 +103,15 @@ protected:
 HIP_Ext_LumpedRLC::HIP_Ext_LumpedRLC(GPU_Backend_HIP::Impl* impl, Operator_Ext_LumpedRLC* op_ext)
 {
 	d = impl;
-	const unsigned int count = op_ext->RLC_count;
+	std::vector<unsigned int> owned;
+	for (unsigned int p = 0; p < op_ext->RLC_count; ++p)
+	{
+		if (d->domain.Owns(op_ext->v_RLC_pos[0][p]))
+		{
+			owned.push_back(p);
+		}
+	}
+	const unsigned int count = static_cast<unsigned int>(owned.size());
 	m_Param.count = count;
 	// slot order as initialized by the host: v_Vdn[k] and v_Jn[k] in slot k
 	m_Param.vd0 = 0; m_Param.vd1 = 1; m_Param.vd2 = 2;
@@ -114,11 +122,19 @@ HIP_Ext_LumpedRLC::HIP_Ext_LumpedRLC(GPU_Backend_HIP::Impl* impl, Operator_Ext_L
 
 	std::vector<size_t> index(count);
 	std::set<size_t> edges;
-	for (unsigned int p=0; p<count; ++p)
+	for (unsigned int q = 0; q < count; ++q)
 	{
-		index[p] = (((size_t)op_ext->v_RLC_dir[p]*d->dim.nx + op_ext->v_RLC_pos[0][p])*d->dim.ny + op_ext->v_RLC_pos[1][p])*d->dim.nz + op_ext->v_RLC_pos[2][p];
-		if (!edges.insert(index[p]).second)
+		const unsigned int p = owned[q];
+		index[q] = (((size_t)op_ext->v_RLC_dir[p] * d->dim.nx +
+		                d->domain.LocalX(op_ext->v_RLC_pos[0][p])) *
+		                   d->dim.ny +
+		               op_ext->v_RLC_pos[1][p]) *
+		        d->dim.nz +
+		    op_ext->v_RLC_pos[2][p];
+		if (!edges.insert(index[q]).second)
+		{
 			m_Serial = true;
+		}
 	}
 	// fused step (see update_fused): Apply2Voltages() changes these voltages after the voltage
 	// update, the currents next to them are recomputed
@@ -127,15 +143,24 @@ HIP_Ext_LumpedRLC::HIP_Ext_LumpedRLC(GPU_Backend_HIP::Impl* impl, Operator_Ext_L
 	m_Data.il = d->Alloc<float>(count);
 	m_Data.vd = d->Alloc<float>(3*(size_t)count);
 	m_Data.j  = d->Alloc<float>(3*(size_t)count);
-	m_Data.ilv = d->Alloc<float>(count, op_ext->v_RLC_ilv);
-	m_Data.i2v = d->Alloc<float>(count, op_ext->v_RLC_i2v);
-	m_Data.vv2 = d->Alloc<float>(count, op_ext->v_RLC_vv2);
-	m_Data.vj1 = d->Alloc<float>(count, op_ext->v_RLC_vj1);
-	m_Data.vj2 = d->Alloc<float>(count, op_ext->v_RLC_vj2);
-	m_Data.vvd = d->Alloc<float>(count, op_ext->v_RLC_vvd);
-	m_Data.ib0 = d->Alloc<float>(count, op_ext->v_RLC_ib0);
-	m_Data.b1  = d->Alloc<float>(count, op_ext->v_RLC_b1);
-	m_Data.b2  = d->Alloc<float>(count, op_ext->v_RLC_b2);
+	auto upload = [&](const FDTD_FLOAT* source)
+	{
+		std::vector<float> values;
+		for (unsigned int p : owned)
+		{
+			values.push_back(source[p]);
+		}
+		return d->Alloc<float>(count, values.data());
+	};
+	m_Data.ilv = upload(op_ext->v_RLC_ilv);
+	m_Data.i2v = upload(op_ext->v_RLC_i2v);
+	m_Data.vv2 = upload(op_ext->v_RLC_vv2);
+	m_Data.vj1 = upload(op_ext->v_RLC_vj1);
+	m_Data.vj2 = upload(op_ext->v_RLC_vj2);
+	m_Data.vvd = upload(op_ext->v_RLC_vvd);
+	m_Data.ib0 = upload(op_ext->v_RLC_ib0);
+	m_Data.b1 = upload(op_ext->v_RLC_b1);
+	m_Data.b2 = upload(op_ext->v_RLC_b2);
 }
 
 void HIP_Ext_LumpedRLC::DoPreVoltageUpdates()

@@ -52,6 +52,8 @@ public:
 	virtual std::string GetName() const;
 
 	virtual bool Init(const Operator* op);
+	bool InitDomain(const Operator* op, unsigned int begin, unsigned int end) override;
+	void Activate() override;
 
 	virtual void UpdateVoltages();
 	virtual void UpdateCurrents();
@@ -62,6 +64,8 @@ public:
 	virtual void UploadCurrents(const ArrayLib::ArrayNIJK<FDTD_FLOAT>& curr);
 
 	virtual bool DownloadRange(bool currents, size_t offset, size_t count, FDTD_FLOAT* dst);
+	bool UploadRange(bool currents, size_t offset, size_t count, const FDTD_FLOAT* src) override;
+	bool CopyRange(bool currents, size_t source, size_t destination, size_t count) override;
 	virtual void Synchronize();
 	virtual bool SnapshotFields(const FDTD_FLOAT* &volt, const FDTD_FLOAT* &curr);
 	virtual void WaitSnapshot();

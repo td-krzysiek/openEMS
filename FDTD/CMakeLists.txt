@@ -8,6 +8,7 @@ if(ENABLE_HIP)
     ${CMAKE_CURRENT_SOURCE_DIR}/hip/hip_ext_lorentzmaterial.hip
     ${CMAKE_CURRENT_SOURCE_DIR}/hip/hip_ext_debyematerial.hip
     ${CMAKE_CURRENT_SOURCE_DIR}/hip/hip_ext_lumpedRLC.hip
+    ${CMAKE_CURRENT_SOURCE_DIR}/hip/hip_ext_opaquesurface.hip
     ${CMAKE_CURRENT_SOURCE_DIR}/hip/hip_ext_tfsf.hip
     ${CMAKE_CURRENT_SOURCE_DIR}/hip/hip_ext_absorbing_bc.hip
     ${CMAKE_CURRENT_SOURCE_DIR}/hip/hip_ext_steadystate.hip
@@ -34,6 +35,7 @@ if(APPLE AND ENABLE_METAL)
     ${CMAKE_CURRENT_SOURCE_DIR}/metal/metal_ext_lorentzmaterial.mm
     ${CMAKE_CURRENT_SOURCE_DIR}/metal/metal_ext_debyematerial.mm
     ${CMAKE_CURRENT_SOURCE_DIR}/metal/metal_ext_lumpedRLC.mm
+    ${CMAKE_CURRENT_SOURCE_DIR}/metal/metal_ext_opaquesurface.mm
     ${CMAKE_CURRENT_SOURCE_DIR}/metal/metal_ext_tfsf.mm
     ${CMAKE_CURRENT_SOURCE_DIR}/metal/metal_ext_absorbing_bc.mm
     ${CMAKE_CURRENT_SOURCE_DIR}/metal/metal_ext_steadystate.mm
@@ -65,6 +67,7 @@ set(SOURCES
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_field_gather.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_gpu.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/gpu_backend.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/gpu_backend_domains.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/gpu_plugins.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/gpu_coeff_sets.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/gpu_backend_reference.cpp

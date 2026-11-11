@@ -128,3 +128,7 @@ with the basic engine: bit-identical where the arithmetic is the same, within
 1e-4 of the peak value where it is not. With `--engine` it compares only that
 engine with basic (nothing for `--engine=basic`). Its docstring lists the cases
 and what each must show; `CPU_CellModel.py` checks the CPU engine's cell model on top.
+
+Opt-in native snapshot, runtime-gate and domain controls are in `tests/manual/`.
+They require an explicit binary/device and output directory; see
+`DFT_SNAPSHOTS.md`, `RUN_CONTROL.md` and `MULTI_GPU.md`.

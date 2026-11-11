@@ -30,6 +30,7 @@
 
 #include "gpu_backend_metal.h"
 #include "FDTD/gpu_coeff_sets.h"
+#include "FDTD/gpu_domain_layout.h"
 
 //! Grid size as passed to the kernels (number of mesh lines), see METAL_COMMON_SOURCE
 struct Metal_GridDim
@@ -229,6 +230,7 @@ struct GPU_Backend_Metal::Impl
 	std::shared_ptr<Metal_Context> ctx;   //!< shared with the sub-grid backends: one queue, so all grids run in order
 	id<MTLDevice> device;
 
+	GPU_DomainLayout domain;
 	Metal_GridDim dim;
 	size_t numCells;    //!< nx*ny*nz, the field buffers hold 3*numCells values
 
@@ -297,6 +299,7 @@ GPU_Extension* Metal_CreateExt_Mur_ABC(GPU_Backend_Metal::Impl* d, Engine_Extens
 GPU_Extension* Metal_CreateExt_LorentzMaterial(GPU_Backend_Metal::Impl* d, Engine_Extension* eng_ext, Engine* eng);
 GPU_Extension* Metal_CreateExt_DebyeMaterial(GPU_Backend_Metal::Impl* d, Engine_Extension* eng_ext, Engine* eng);
 GPU_Extension* Metal_CreateExt_LumpedRLC(GPU_Backend_Metal::Impl* d, Engine_Extension* eng_ext, Engine* eng);
+GPU_Extension* Metal_CreateExt_OpaqueSurface(GPU_Backend_Metal::Impl* d, Engine_Extension* eng_ext, Engine* eng);
 GPU_Extension* Metal_CreateExt_TFSF(GPU_Backend_Metal::Impl* d, Engine_Extension* eng_ext, Engine* eng);
 GPU_Extension* Metal_CreateExt_Absorbing_BC(GPU_Backend_Metal::Impl* d, Engine_Extension* eng_ext, Engine* eng);
 GPU_Extension* Metal_CreateExt_SteadyState(GPU_Backend_Metal::Impl* d, Engine_Extension* eng_ext, Engine* eng);

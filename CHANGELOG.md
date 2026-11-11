@@ -16,6 +16,16 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Added
 
+- Experimental local GPU domain execution (`ENABLE_DOMAIN_RUNTIME`,
+  `--gpu-devices`, optional fixed `--gpu-domain-cuts`) supports PEC, PML,
+  excitation, lumped elements and owned dispersive histories on HIP and Metal.
+  Unsupported extensions fail explicitly; MPI antenna execution is not enabled.
+- Optional startup/runtime pause gates and DFT snapshots preserve fields and
+  material histories for external qualification and NF2FF processing.
+- PR242 LossyMetal surface impedance and the experimental opaque conductor
+  extension, including HIP/Metal device execution, remain available.
+- Optional HIP/CUDA NF2FF integration and Python/Matlab control helpers.
+
 - **A GPU engine**, `--engine=gpu` (`engine='gpu'` from Python), for AMD and
   NVIDIA GPUs (HIP/CUDA) and on macOS (Metal), with Cartesian and cylindrical
   meshes and the usual extensions. `--gpu-device=N` picks one of the GPUs
@@ -87,6 +97,10 @@ to what a user notices, in a few lines; the details belong in the commit.
   along.
 
 ### Upgrade notes
+
+The old experimental `--engine=tiling` is retired on this integration branch.
+Use the upstream experimental `--engine=cpu` for temporal blocking. Rebuild all
+GPU plugins and Python bindings together with the solver.
 
 - **Rebuild the Python bindings** together with openEMS.
 - `basic`, `sse` and `sse-compressed` use all threads now; for one thread

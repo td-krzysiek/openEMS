@@ -30,6 +30,7 @@
 
 #include "gpu_backend_hip.h"
 #include "FDTD/gpu_coeff_sets.h"
+#include "FDTD/gpu_domain_layout.h"
 
 //! Grid size (number of mesh lines) as passed to the kernels
 struct HIP_GridDim
@@ -115,6 +116,7 @@ struct HIP_Context
 struct GPU_Backend_HIP::Impl
 {
 	std::shared_ptr<HIP_Context> ctx;
+	GPU_DomainLayout domain;
 
 	HIP_GridDim dim;
 	size_t numCells;    //!< nx*ny*nz, the field buffers hold 3*numCells values
@@ -288,6 +290,7 @@ GPU_Extension* HIP_CreateExt_Mur_ABC(GPU_Backend_HIP::Impl* d, Engine_Extension*
 GPU_Extension* HIP_CreateExt_LorentzMaterial(GPU_Backend_HIP::Impl* d, Engine_Extension* eng_ext, Engine* eng);
 GPU_Extension* HIP_CreateExt_DebyeMaterial(GPU_Backend_HIP::Impl* d, Engine_Extension* eng_ext, Engine* eng);
 GPU_Extension* HIP_CreateExt_LumpedRLC(GPU_Backend_HIP::Impl* d, Engine_Extension* eng_ext, Engine* eng);
+GPU_Extension* HIP_CreateExt_OpaqueSurface(GPU_Backend_HIP::Impl* d, Engine_Extension* eng_ext, Engine* eng);
 GPU_Extension* HIP_CreateExt_TFSF(GPU_Backend_HIP::Impl* d, Engine_Extension* eng_ext, Engine* eng);
 GPU_Extension* HIP_CreateExt_Absorbing_BC(GPU_Backend_HIP::Impl* d, Engine_Extension* eng_ext, Engine* eng);
 GPU_Extension* HIP_CreateExt_SteadyState(GPU_Backend_HIP::Impl* d, Engine_Extension* eng_ext, Engine* eng);

@@ -360,6 +360,7 @@ void Engine_GPU::VoltageHalfStep()
 			m_GPU_exts.at(n)->DoPostVoltageUpdates();
 		for (size_t n=0; n<m_GPU_exts.size(); ++n)
 			m_GPU_exts.at(n)->Apply2Voltages();
+		m_Backend->FinishVoltagePhase();
 	}
 	else
 	{
@@ -370,6 +371,12 @@ void Engine_GPU::VoltageHalfStep()
 		VoltagesToHost();
 		DoPostVoltageUpdates();
 		Apply2Voltages();
+		if (m_Backend->HasDomainPhases())
+		{
+			VoltagesToDevice();
+			CurrentsToDevice();
+			m_Backend->FinishVoltagePhase();
+		}
 	}
 
 	if (m_SubGrid)
@@ -390,6 +397,7 @@ void Engine_GPU::CurrentHalfStep()
 			m_GPU_exts.at(n)->DoPostCurrentUpdates();
 		for (size_t n=0; n<m_GPU_exts.size(); ++n)
 			m_GPU_exts.at(n)->Apply2Current();
+		m_Backend->FinishCurrentPhase();
 	}
 	else
 	{
@@ -400,6 +408,12 @@ void Engine_GPU::CurrentHalfStep()
 		CurrentsToHost();
 		DoPostCurrentUpdates();
 		Apply2Current();
+		if (m_Backend->HasDomainPhases())
+		{
+			VoltagesToDevice();
+			CurrentsToDevice();
+			m_Backend->FinishCurrentPhase();
+		}
 	}
 
 	if (m_SubGrid)

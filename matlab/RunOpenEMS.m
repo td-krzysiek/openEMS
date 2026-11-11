@@ -24,7 +24,9 @@ function RunOpenEMS(Sim_Path, Sim_File, opts, Settings)
 %          --engine=multithreaded   engine using compressed operator + sse vector extensions + multithreading
 %          --engine=sse, --engine=sse-compressed   other names of multithreaded
 %      --numThreads=<n>     Force use n threads (basic and multithreaded engine)
+%      --gpu-devices=0,1    Experimental local X-domain GPU execution; see MULTI_GPU.md.
 %      --no-simulation      only run preprocessing; do not simulate
+%      --dft-snapshots     Accept RequestDFTSnapshot requests without stopping
 %      --dump-statistics    dump simulation statistics to 'openEMS_run_stats.txt' and 'openEMS_stats.txt'
 %
 %       Additional global arguments
