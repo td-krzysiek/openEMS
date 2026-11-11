@@ -67,6 +67,9 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Fixed
 
+- The non-installed Metal logical-domain test plugin reuses the loaded solver
+  library, avoiding duplicate globals when testing an installed macOS build.
+
 - More than 2^31 timesteps made the setup fail; the number is now limited to
   that.
 - Python: numpy lost denormal values after `Run()`.
