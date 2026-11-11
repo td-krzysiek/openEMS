@@ -16,6 +16,10 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Added
 
+- Experimental HIP domain halo modes (`OPENEMS_DOMAIN_HALOS=async|overlap`)
+  use pinned host staging and optionally overlap E exchange with the H interior.
+  Default execution remains serial; rebuild core and plugins together.
+
 - Optional sampled multi-GPU timing records for external planning of subsequent
   runs (`OPENEMS_DOMAIN_PROFILE`); a running simulation keeps its fixed partition.
 - Experimental local GPU domain execution (`ENABLE_DOMAIN_RUNTIME`,

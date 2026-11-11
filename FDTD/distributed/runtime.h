@@ -6,6 +6,7 @@
 #include <functional>
 #include <map>
 #include <memory>
+#include <stdexcept>
 #include <vector>
 
 namespace openems
@@ -98,6 +99,14 @@ public:
 	virtual CompletionPtr Update(FieldPhase phase, uint64_t step) = 0;
 	virtual CompletionPtr Pack(const HaloRecipe&, HostBuffer) = 0;
 	virtual CompletionPtr Unpack(const HaloRecipe&, HostBuffer) = 0;
+	virtual bool CanOverlapCurrentInterior() const
+	{
+		return false;
+	}
+	virtual CompletionPtr UpdateCurrentRegion(bool, uint64_t)
+	{
+		throw std::logic_error("executor cannot overlap the current interior");
+	}
 
 	virtual void Observe(FieldPhase phase, uint64_t step)
 	{
@@ -162,7 +171,7 @@ public:
 	    HaloTransport&,
 	    CollectiveContext&,
 	    const std::vector<DomainExecutor*>&,
-	    uint64_t initial_step = 0);
+	    uint64_t initial_step = 0, bool overlap_voltage = false);
 	void Bootstrap();
 	void Step();
 	// Existing Engine extensions run between BeginPhase and FinishPhase. Halos
@@ -173,6 +182,11 @@ public:
 	uint64_t NextStep() const
 	{
 		return m_Step;
+	}
+
+	double LastDeferredExchangeSeconds() const
+	{
+		return m_DeferredExchangeSeconds;
 	}
 
 	bool Failed() const
@@ -191,6 +205,9 @@ private:
 	bool m_Bootstrapped, m_Failed;
 	bool m_PhasePending = false;
 	FieldPhase m_NextPhase = FieldPhase::Voltage;
+	bool m_OverlapVoltage;
+	double m_DeferredExchangeSeconds = 0;
+	std::unique_ptr<ExchangeResult> m_PendingVoltage;
 };
 
 // Lifecycle always exists, even for a single domain. It is not a field relay.

@@ -12,6 +12,8 @@
 #include "operator.h"
 #include "operator_cylinder.h"
 #include <iostream>
+#include <cstdlib>
+#include <cstring>
 #include <stdexcept>
 
 using namespace openems::distributed;
@@ -54,13 +56,80 @@ private:
 	bool m_Done;
 };
 
+// Buffer ownership remains with the executor until the last operation drains.
+class HaloCompletion : public Completion
+{
+public:
+	HaloCompletion(GPU_HaloBuffer* native, HostBuffer host, bool download)
+	    : m_Native(native), m_Host(host), m_Download(download)
+	{
+	}
+	bool Ready() override
+	{
+		if (!m_Native->Ready())
+		{
+			return false;
+		}
+		Finish();
+		return true;
+	}
+	void Wait() override
+	{
+		m_Native->Wait();
+		Finish();
+	}
+private:
+	void Finish()
+	{
+		if (!m_Done && m_Download)
+		{
+			std::copy(m_Native->Data(), m_Native->Data() + m_Host->size(), m_Host->begin());
+		}
+		m_Done = true;
+	}
+	GPU_HaloBuffer* m_Native;
+	HostBuffer m_Host;
+	bool m_Download, m_Done = false;
+};
+
 class BackendExecutor : public DomainExecutor
 {
 public:
 	BackendExecutor(
-		Domain domain, GPU_Backend* backend, double timestep, DomainPerformance* profile)
+		Domain domain, GPU_Backend* backend, double timestep, DomainPerformance* profile,
+		const std::vector<HaloRecipe>& recipes, bool async)
 		: m_Domain(domain), m_Backend(backend), m_Profile(profile), m_Timestep(timestep)
 	{
+		if (async)
+		{
+			for (const auto& recipe : recipes)
+			{
+				if (recipe.source == Id() || recipe.destination == Id())
+				{
+					std::unique_ptr<GPU_HaloBuffer> buffer(backend->NewHaloBuffer(recipe.Samples()));
+					if (!buffer)
+					{
+						throw std::runtime_error("selected backend has no asynchronous halo adapter");
+					}
+					m_Buffers.emplace(recipe.channel, std::move(buffer));
+				}
+			}
+		}
+	}
+	bool CanOverlapCurrentInterior() const override
+	{
+		return !m_Buffers.empty() && m_Backend->CanOverlapCurrentInterior();
+	}
+	CompletionPtr UpdateCurrentRegion(bool interior, uint64_t) override
+	{
+		m_Backend->Activate();
+		auto* timer = m_Profile ? m_Profile->Begin(Id(), false) : nullptr;
+		m_Backend->UpdateCurrentRegion(interior);
+		if (m_Profile)
+		{
+			m_Profile->End(Id(), timer);
+		}
+		return std::make_shared<BackendCompletion>(m_Backend, m_Profile, Id());
 	}
 	uint32_t Id() const override
 	{
@@ -93,6 +162,18 @@ public:
 		const bool sampled = m_Profile && m_Profile->Active();
 		const auto started = sampled ? DomainPerformance::Now() : DomainPerformance::Time();
 		m_Backend->Activate();
+		if (!m_Buffers.empty())
+		{
+			auto* buffer = m_Buffers.at(recipe.channel).get();
+			const size_t offsets[2] = { m_Domain.LocalIndex(1, recipe.source_x, 0, 0),
+				m_Domain.LocalIndex(2, recipe.source_x, 0, 0) };
+			buffer->Download(recipe.phase == FieldPhase::Current, offsets, recipe.plane_samples);
+			if (sampled)
+			{
+				m_Profile->Host(Id(), DomainPerformance::Pack, started, values->size() * sizeof(float));
+			}
+			return std::make_shared<HaloCompletion>(buffer, values, true);
+		}
 		for (unsigned int c = 1; c < 3; ++c)
 		{
 			const size_t offset = m_Domain.LocalIndex(c, recipe.source_x, 0, 0);
@@ -115,6 +196,19 @@ public:
 		const bool sampled = m_Profile && m_Profile->Active();
 		const auto started = sampled ? DomainPerformance::Now() : DomainPerformance::Time();
 		m_Backend->Activate();
+		if (!m_Buffers.empty())
+		{
+			auto* buffer = m_Buffers.at(recipe.channel).get();
+			std::copy(values->begin(), values->end(), buffer->Data());
+			const size_t offsets[2] = { m_Domain.LocalIndex(1, recipe.destination_x, 0, 0),
+				m_Domain.LocalIndex(2, recipe.destination_x, 0, 0) };
+			buffer->Upload(recipe.phase == FieldPhase::Current, offsets, recipe.plane_samples);
+			if (sampled)
+			{
+				m_Profile->Host(Id(), DomainPerformance::Unpack, started, values->size() * sizeof(float));
+			}
+			return std::make_shared<HaloCompletion>(buffer, values, false);
+		}
 		for (unsigned int c = 1; c < 3; ++c)
 		{
 			const size_t offset = m_Domain.LocalIndex(c, recipe.destination_x, 0, 0);
@@ -140,6 +234,7 @@ private:
 	GPU_Backend* m_Backend;
 	DomainPerformance* m_Profile;
 	double m_Timestep;
+	std::map<uint32_t, std::unique_ptr<GPU_HaloBuffer>> m_Buffers;
 };
 
 class DomainExtension : public GPU_Extension
@@ -264,6 +359,8 @@ GPU_Backend_Domains::GPU_Backend_Domains(
 GPU_Backend_Domains::~GPU_Backend_Domains()
 {
 	// Timers belong to child contexts and must be destroyed before those contexts.
+	d->coordinator.reset();
+	d->executors.clear();
 	d->profile.reset();
 	for (auto& backend : d->devices)
 	{
@@ -305,6 +402,14 @@ bool GPU_Backend_Domains::Init(const Operator* op)
 			cuts.push_back(uint32_t(uint64_t(shape.nx) * i / d->devices.size()));
 		}
 	}
+	const char* setting = std::getenv("OPENEMS_DOMAIN_HALOS");
+	const std::string mode = setting ? setting : "serial";
+	if (mode != "serial" && mode != "async" && mode != "overlap")
+	{
+		throw std::invalid_argument("OPENEMS_DOMAIN_HALOS must be serial, async or overlap");
+	}
+	const bool async = mode != "serial";
+	std::cout << "Domain halo mode: " << mode << std::endl;
 	d->plan.reset(new PartitionPlan(1, shape, cuts));
 	std::vector<GPU_Backend*> profile_devices;
 	for (const auto& device : d->devices)
@@ -322,13 +427,15 @@ bool GPU_Backend_Domains::Init(const Operator* op)
 			throw std::runtime_error("selected executor does not support domain initialization");
 		}
 		d->executors.emplace_back(
-			new BackendExecutor(domain, backend, op->GetTimestep(), d->profile.get()));
+			new BackendExecutor(domain, backend, op->GetTimestep(), d->profile.get(),
+		        d->plan->Halos(), async));
 		executors.push_back(d->executors.back().get());
 		std::cout << "Domain " << domain.id << ": owns X[" << domain.begin << "," << domain.end
 		          << "), storage nodes " << domain.StorageNodes() << ", " << backend->GetName()
 		          << std::endl;
 	}
-	d->coordinator.reset(new FDTDCoordinator(*d->plan, d->transport, d->collectives, executors));
+	d->coordinator.reset(new FDTDCoordinator(*d->plan, d->transport, d->collectives, executors, 0,
+	        mode == "overlap"));
 	d->coordinator->Bootstrap();
 	d->MirrorLowerCurrent();
 	if (d->profile)
@@ -345,6 +452,10 @@ void GPU_Backend_Domains::UpdateVoltages()
 void GPU_Backend_Domains::UpdateCurrents()
 {
 	d->coordinator->BeginPhase(FieldPhase::Current);
+	if (d->profile)
+	{
+		d->profile->ExchangeSeconds(d->coordinator->LastDeferredExchangeSeconds());
+	}
 }
 void GPU_Backend_Domains::FinishVoltagePhase()
 {

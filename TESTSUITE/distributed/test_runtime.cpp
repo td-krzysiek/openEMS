@@ -471,6 +471,86 @@ static void ExternalHooks()
 	Require(coordinator.NextStep() == 1, "split hooks did not finish exactly one step");
 }
 
+// A fake device producer refuses completion until every download was queued.
+// This detects an accidental return to pack/wait/pack serialization.
+static void AsyncPipeline()
+{
+	struct PipelineExecutor : MockExecutor
+	{
+		unsigned int& submitted;
+		bool armed = false, fail_interior = false;
+		PipelineExecutor(uint32_t id, std::vector<std::string>& trace, unsigned int& count)
+		    : MockExecutor(id, trace), submitted(count)
+		{
+		}
+		bool CanOverlapCurrentInterior() const override
+		{
+			return true;
+		}
+		CompletionPtr Pack(const HaloRecipe& recipe, HostBuffer values) override
+		{
+			++submitted;
+			return std::make_shared<DelayedUnpack>([this, recipe, values]()
+			{
+				Require(submitted == 2, "pack waited before all producer downloads were queued");
+				std::fill(values->begin(), values->end(), float(recipe.source));
+			});
+		}
+		CompletionPtr UpdateCurrentRegion(bool interior, uint64_t) override
+		{
+			if (interior && fail_interior)
+			{
+				throw std::runtime_error("injected interior failure");
+			}
+			trace.push_back(interior ? "interior" : "boundary");
+			return Completed();
+		}
+	};
+	PartitionPlan plan(4, { 7, 5, 3 }, { 0, 1, 4, 7 });
+	LocalHaloTransport transport(5);
+	LocalCollectiveContext collectives;
+	std::vector<std::string> trace;
+	unsigned int submitted = 0;
+	PipelineExecutor a(0, trace, submitted), b(1, trace, submitted), c(2, trace, submitted);
+	FDTDCoordinator coordinator(plan, transport, collectives, { &a, &b, &c }, 0, true);
+	coordinator.Bootstrap();
+	for (unsigned int step = 0; step < 3; ++step)
+	{
+		trace.clear();
+		submitted = 0;
+		coordinator.BeginPhase(FieldPhase::Voltage);
+		coordinator.FinishPhase(FieldPhase::Voltage);
+		Require(std::find(trace.begin(), trace.end(), "unpack") == trace.end(),
+		    "E exchange completed before interior work could overlap it");
+		coordinator.BeginPhase(FieldPhase::Current);
+		auto interior = std::find(trace.begin(), trace.end(), "interior");
+		auto unpack = std::find(trace.begin(), trace.end(), "unpack");
+		auto boundary = std::find(trace.begin(), trace.end(), "boundary");
+		Require(interior < unpack && unpack < boundary && boundary != trace.end(),
+		    "H interior/arrival/boundary order is unsafe");
+		submitted = 0;
+		coordinator.FinishPhase(FieldPhase::Current);
+		Require(coordinator.NextStep() == step + 1, "pipeline advanced at a partial step");
+		Require(trace.back() == "observeI", "full-step observation preceded halo completion");
+	}
+	submitted = 0;
+	coordinator.BeginPhase(FieldPhase::Voltage);
+	coordinator.FinishPhase(FieldPhase::Voltage);
+	a.fail_interior = true;
+	Reject([&]()
+	{
+		coordinator.BeginPhase(FieldPhase::Current);
+	});
+	Require(coordinator.Failed() && coordinator.NextStep() == 3,
+	    "failed interior advanced the timestep");
+	LocalHaloTransport unsupported_transport;
+	MockExecutor unsupported(0, trace);
+	Reject([&]()
+	{
+		FDTDCoordinator invalid(plan, unsupported_transport, collectives, { &unsupported }, 0, true);
+	});
+}
+
 int main()
 {
 	try
@@ -480,6 +560,7 @@ int main()
 		Transfers();
 		Coordination();
 		ExternalHooks();
+		AsyncPipeline();
 	}
 	catch (const std::exception& e)
 	{

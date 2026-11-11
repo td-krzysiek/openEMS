@@ -15,7 +15,7 @@ public:
 	}
 };
 
-static double Solve(GridShape shape, std::vector<uint32_t> cuts, bool negative)
+static double Solve(GridShape shape, std::vector<uint32_t> cuts, bool negative, bool overlap = false)
 {
 	PartitionPlan single(1, shape, { 0, shape.nx }), split(2, shape, cuts);
 	CPUDomainExecutor reference(test_fixture::Data(single.Domains()[0]));
@@ -31,7 +31,8 @@ static double Solve(GridShape shape, std::vector<uint32_t> cuts, bool negative)
 	LocalCollectiveContext collectives;
 	FDTDCoordinator full(single, reference_transport, collectives, { &reference });
 	FDTDCoordinator divided(
-	    split, negative ? static_cast<HaloTransport&>(broken) : transport, collectives, executors);
+	    split, negative ? static_cast<HaloTransport&>(broken) : transport, collectives, executors,
+	    0, overlap);
 	RunManager a(single, test_fixture::Placements(single), full),
 	    b(split, test_fixture::Placements(split), divided);
 	a.Run(120);
@@ -65,6 +66,18 @@ int main()
 		if (Solve({ 37, 21, 14 }, { 0, 1, 8, 23, 36, 37 }, false) != 0)
 		{
 			throw std::runtime_error("five-domain fields differ");
+		}
+		for (const auto& cuts : std::vector<std::vector<uint32_t>>{
+		         { 0, 1, 35 }, { 0, 17, 35 }, { 0, 34, 35 }, { 0, 1, 8, 23, 34, 35 } })
+		{
+			if (Solve({ 35, 19, 13 }, cuts, false, true) != 0)
+			{
+				throw std::runtime_error("overlapped CPU fields differ");
+			}
+		}
+		if (Solve({ 35, 19, 13 }, { 0, 17, 35 }, true, true) < 1e-3)
+		{
+			throw std::runtime_error("overlapped missing-halo control was not detected");
 		}
 		const double negative = Solve({ 35, 19, 13 }, { 0, 17, 35 }, true);
 		if (negative < 1e-3)

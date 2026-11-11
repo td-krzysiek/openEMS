@@ -111,14 +111,14 @@ void CPUDomainExecutor::Voltage()
 	}
 }
 
-void CPUDomainExecutor::Current()
+void CPUDomainExecutor::Current(uint32_t begin, uint32_t end)
 {
 	const auto& d = m_Data.domain;
 	const auto& g = d.grid;
 	const size_t s = d.StorageNodes(), p = g.Plane(), o = d.OwnedNodes();
 	const auto& ii = m_Data.coefficients[2];
 	const auto& iv = m_Data.coefficients[3];
-	for (uint32_t x = 1; x <= d.end - d.begin; ++x)
+	for (uint32_t x = begin; x < end; ++x)
 	{
 		if (d.begin + x - 1 == g.nx - 1)
 		{
@@ -153,12 +153,19 @@ CompletionPtr CPUDomainExecutor::Update(FieldPhase phase, uint64_t)
 	}
 	else if (phase == FieldPhase::Current)
 	{
-		Current();
+		Current(1, m_Data.domain.end - m_Data.domain.begin + 1);
 	}
 	else
 	{
 		throw std::invalid_argument("invalid field phase");
 	}
+	return Completed();
+}
+
+CompletionPtr CPUDomainExecutor::UpdateCurrentRegion(bool interior, uint64_t)
+{
+	const uint32_t last = m_Data.domain.end - m_Data.domain.begin;
+	Current(interior ? 1 : last, interior ? last : last + 1);
 	return Completed();
 }
 
