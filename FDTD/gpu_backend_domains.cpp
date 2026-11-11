@@ -2,14 +2,15 @@
 #ifdef OPENEMS_WITH_DOMAIN_RUNTIME
 #include "gpu_backend_domains.h"
 #include "distributed/runtime.h"
-#include "operator.h"
-#include "operator_cylinder.h"
-#include "gpu_backend_reference.h"
-#include "extensions/engine_ext_upml.h"
+#include "domain_performance.h"
 #include "extensions/engine_ext_excitation.h"
+#include "extensions/engine_ext_lorentzmaterial.h"
 #include "extensions/engine_ext_lumpedRLC.h"
 #include "extensions/engine_ext_opaquesurface.h"
-#include "extensions/engine_ext_lorentzmaterial.h"
+#include "extensions/engine_ext_upml.h"
+#include "gpu_backend_reference.h"
+#include "operator.h"
+#include "operator_cylinder.h"
 #include <iostream>
 #include <stdexcept>
 
@@ -20,7 +21,9 @@ namespace
 class BackendCompletion : public Completion
 {
 public:
-	explicit BackendCompletion(GPU_Backend* backend) : m_Backend(backend), m_Done(false)
+	BackendCompletion(GPU_Backend* backend, DomainPerformance* profile, size_t domain,
+		DomainPerformance::HostMetric metric = DomainPerformance::UpdateWait)
+		: m_Backend(backend), m_Profile(profile), m_Domain(domain), m_Metric(metric), m_Done(false)
 	{
 	}
 	bool Ready() override
@@ -32,21 +35,31 @@ public:
 		if (!m_Done)
 		{
 			m_Backend->Activate();
+			const bool sampled = m_Profile && m_Profile->Active();
+			const auto started = sampled ? DomainPerformance::Now() : DomainPerformance::Time();
 			m_Backend->Synchronize();
+			if (sampled)
+			{
+				m_Profile->Host(m_Domain, m_Metric, started);
+			}
 			m_Done = true;
 		}
 	}
 
 private:
 	GPU_Backend* m_Backend;
+	DomainPerformance* m_Profile;
+	size_t m_Domain;
+	DomainPerformance::HostMetric m_Metric;
 	bool m_Done;
 };
 
 class BackendExecutor : public DomainExecutor
 {
 public:
-	BackendExecutor(Domain domain, GPU_Backend* backend, double timestep)
-	    : m_Domain(domain), m_Backend(backend), m_Timestep(timestep)
+	BackendExecutor(
+		Domain domain, GPU_Backend* backend, double timestep, DomainPerformance* profile)
+		: m_Domain(domain), m_Backend(backend), m_Profile(profile), m_Timestep(timestep)
 	{
 	}
 	uint32_t Id() const override
@@ -60,6 +73,7 @@ public:
 	CompletionPtr Update(FieldPhase phase, uint64_t) override
 	{
 		m_Backend->Activate();
+		auto* timing = m_Profile ? m_Profile->Begin(Id(), false) : nullptr;
 		if (phase == FieldPhase::Voltage)
 		{
 			m_Backend->UpdateVoltages();
@@ -68,10 +82,16 @@ public:
 		{
 			m_Backend->UpdateCurrents();
 		}
-		return std::make_shared<BackendCompletion>(m_Backend);
+		if (m_Profile)
+		{
+			m_Profile->End(Id(), timing);
+		}
+		return std::make_shared<BackendCompletion>(m_Backend, m_Profile, Id());
 	}
 	CompletionPtr Pack(const HaloRecipe& recipe, HostBuffer values) override
 	{
+		const bool sampled = m_Profile && m_Profile->Active();
+		const auto started = sampled ? DomainPerformance::Now() : DomainPerformance::Time();
 		m_Backend->Activate();
 		for (unsigned int c = 1; c < 3; ++c)
 		{
@@ -84,10 +104,16 @@ public:
 				throw std::runtime_error("domain executor cannot pack a halo");
 			}
 		}
+		if (sampled)
+		{
+			m_Profile->Host(Id(), DomainPerformance::Pack, started, values->size() * sizeof(float));
+		}
 		return Completed();
 	}
 	CompletionPtr Unpack(const HaloRecipe& recipe, HostBuffer values) override
 	{
+		const bool sampled = m_Profile && m_Profile->Active();
+		const auto started = sampled ? DomainPerformance::Now() : DomainPerformance::Time();
 		m_Backend->Activate();
 		for (unsigned int c = 1; c < 3; ++c)
 		{
@@ -100,18 +126,29 @@ public:
 				throw std::runtime_error("domain executor cannot unpack a halo");
 			}
 		}
-		return std::make_shared<BackendCompletion>(m_Backend);
+		if (sampled)
+		{
+			m_Profile->Host(
+				Id(), DomainPerformance::Unpack, started, values->size() * sizeof(float));
+		}
+		return std::make_shared<BackendCompletion>(
+			m_Backend, m_Profile, Id(), DomainPerformance::UnpackWait);
 	}
 
 private:
 	Domain m_Domain;
 	GPU_Backend* m_Backend;
+	DomainPerformance* m_Profile;
 	double m_Timestep;
 };
 
 class DomainExtension : public GPU_Extension
 {
 public:
+	explicit DomainExtension(DomainPerformance* profile) : m_Profile(profile)
+	{
+	}
+	DomainPerformance* m_Profile;
 	std::vector<std::pair<GPU_Backend*, std::unique_ptr<GPU_Extension>>> children;
 	~DomainExtension() override
 	{
@@ -129,10 +166,16 @@ public:
 	}
 	void Invoke(void (GPU_Extension::*hook)())
 	{
-		for (auto& child : children)
+		for (size_t i = 0; i < children.size(); ++i)
 		{
+			auto& child = children[i];
 			child.first->Activate();
+			auto* timing = m_Profile ? m_Profile->Begin(i, true) : nullptr;
 			(child.second.get()->*hook)();
+			if (m_Profile)
+			{
+				m_Profile->End(i, timing);
+			}
 		}
 	}
 	void DoPreVoltageUpdates() override
@@ -171,6 +214,7 @@ struct GPU_Backend_Domains::Impl
 	std::vector<std::unique_ptr<GPU_Backend>> devices;
 	std::vector<uint32_t> cuts;
 	std::unique_ptr<PartitionPlan> plan;
+	std::unique_ptr<DomainPerformance> profile;
 	LocalHaloTransport transport;
 	LocalCollectiveContext collectives;
 	std::vector<std::unique_ptr<BackendExecutor>> executors;
@@ -219,6 +263,8 @@ GPU_Backend_Domains::GPU_Backend_Domains(
 
 GPU_Backend_Domains::~GPU_Backend_Domains()
 {
+	// Timers belong to child contexts and must be destroyed before those contexts.
+	d->profile.reset();
 	for (auto& backend : d->devices)
 	{
 		try
@@ -260,6 +306,12 @@ bool GPU_Backend_Domains::Init(const Operator* op)
 		}
 	}
 	d->plan.reset(new PartitionPlan(1, shape, cuts));
+	std::vector<GPU_Backend*> profile_devices;
+	for (const auto& device : d->devices)
+	{
+		profile_devices.push_back(device.get());
+	}
+	d->profile = DomainPerformance::FromEnvironment(*d->plan, profile_devices);
 	std::vector<DomainExecutor*> executors;
 	for (const auto& domain : d->plan->Domains())
 	{
@@ -269,7 +321,8 @@ bool GPU_Backend_Domains::Init(const Operator* op)
 		{
 			throw std::runtime_error("selected executor does not support domain initialization");
 		}
-		d->executors.emplace_back(new BackendExecutor(domain, backend, op->GetTimestep()));
+		d->executors.emplace_back(
+			new BackendExecutor(domain, backend, op->GetTimestep(), d->profile.get()));
 		executors.push_back(d->executors.back().get());
 		std::cout << "Domain " << domain.id << ": owns X[" << domain.begin << "," << domain.end
 		          << "), storage nodes " << domain.StorageNodes() << ", " << backend->GetName()
@@ -278,6 +331,10 @@ bool GPU_Backend_Domains::Init(const Operator* op)
 	d->coordinator.reset(new FDTDCoordinator(*d->plan, d->transport, d->collectives, executors));
 	d->coordinator->Bootstrap();
 	d->MirrorLowerCurrent();
+	if (d->profile)
+	{
+		d->profile->StartStep(d->coordinator->NextStep());
+	}
 	return true;
 }
 
@@ -291,12 +348,34 @@ void GPU_Backend_Domains::UpdateCurrents()
 }
 void GPU_Backend_Domains::FinishVoltagePhase()
 {
+	const bool sampled = d->profile && d->profile->Active();
+	const auto started = sampled ? DomainPerformance::Now() : DomainPerformance::Time();
 	d->coordinator->FinishPhase(FieldPhase::Voltage);
+	if (sampled)
+	{
+		d->profile->Exchange(started);
+	}
 }
 void GPU_Backend_Domains::FinishCurrentPhase()
 {
+	const bool sampled = d->profile && d->profile->Active();
+	const auto started = sampled ? DomainPerformance::Now() : DomainPerformance::Time();
 	d->coordinator->FinishPhase(FieldPhase::Current);
+	if (sampled)
+	{
+		d->profile->Exchange(started);
+	}
+	const auto boundary = sampled ? DomainPerformance::Now() : DomainPerformance::Time();
 	d->MirrorLowerCurrent();
+	if (sampled)
+	{
+		d->profile->Host(0, DomainPerformance::Boundary, boundary);
+	}
+	if (d->profile)
+	{
+		d->profile->FinishStep();
+		d->profile->StartStep(d->coordinator->NextStep());
+	}
 }
 
 bool GPU_Backend_Domains::DownloadRange(bool currents, size_t offset, size_t count, float* dst)
@@ -390,7 +469,7 @@ void GPU_Backend_Domains::Synchronize()
 
 GPU_Extension* GPU_Backend_Domains::CreateExtension(Engine_Extension* ext, Engine* engine)
 {
-	std::unique_ptr<DomainExtension> result(new DomainExtension());
+	std::unique_ptr<DomainExtension> result(new DomainExtension(d->profile.get()));
 	for (auto& backend : d->devices)
 	{
 		backend->Activate();

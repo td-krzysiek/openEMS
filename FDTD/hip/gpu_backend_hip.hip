@@ -875,6 +875,64 @@ std::string GPU_Backend_HIP::GetName() const
 	return "HIP (" + d->ctx->name + ")";
 }
 
+namespace
+{
+class HIP_DeviceTimer : public GPU_DeviceTimer
+{
+public:
+	explicit HIP_DeviceTimer(std::shared_ptr<HIP_Context> context) : m_Context(context)
+	{
+		HIP_Check(hipSetDevice(m_Context->device), "profile device selection");
+		HIP_Check(hipEventCreate(&m_Start), "profile start event");
+		const auto error = hipEventCreate(&m_Stop);
+		if (error != hipSuccess)
+		{
+			hipEventDestroy(m_Start);
+			HIP_Check(error, "profile stop event");
+		}
+	}
+	~HIP_DeviceTimer() override
+	{
+		// Profiling cleanup must not throw during solver error unwinding.
+		hipSetDevice(m_Context->device);
+		hipEventDestroy(m_Start);
+		hipEventDestroy(m_Stop);
+	}
+	void Begin() override
+	{
+		HIP_Check(hipSetDevice(m_Context->device), "profile device selection");
+		HIP_Check(hipEventRecord(m_Start, m_Context->stream), "profile begin");
+	}
+	void End() override
+	{
+		HIP_Check(hipEventRecord(m_Stop, m_Context->stream), "profile end");
+	}
+	bool ReadSeconds(double& seconds) override
+	{
+		HIP_Check(hipSetDevice(m_Context->device), "profile device selection");
+		const auto error = hipEventQuery(m_Stop);
+		if (error == hipErrorNotReady)
+		{
+			return false;
+		}
+		HIP_Check(error, "profile event query");
+		float milliseconds = 0;
+		HIP_Check(hipEventElapsedTime(&milliseconds, m_Start, m_Stop), "profile elapsed");
+		seconds = milliseconds * 1e-3;
+		return true;
+	}
+
+private:
+	std::shared_ptr<HIP_Context> m_Context;
+	hipEvent_t m_Start, m_Stop;
+};
+}
+
+GPU_DeviceTimer* GPU_Backend_HIP::NewDeviceTimer()
+{
+	return new HIP_DeviceTimer(d->ctx);
+}
+
 bool GPU_Backend_HIP::Init(const Operator* op)
 {
 	unsigned int numLines[3];
