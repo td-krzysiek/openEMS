@@ -28,6 +28,7 @@
 #include <stdexcept>
 
 #include "hip_internal.h"
+#include "hip_halo_buffer.hiph"
 #include "gpu_build_id.h"
 #include "FDTD/operator.h"
 #include "FDTD/extensions/engine_ext_upml.h"
@@ -1098,6 +1099,46 @@ void GPU_Backend_HIP::UpdateVoltages()
 	d->MainRange(B, E, threads_z);
 	HIP_Launch(d, "update_voltages", update_voltages, threads_z, E.ny-B.ny, E.nx-B.nx,
 	            d->volt, (const float*)d->curr, (const void*)d->index, (const float*)(c ? d->coeff : d->vv), (const float*)(c ? d->coeff : d->vi), d->coeff_mode, d->dim, B, E, d->zslabs);
+}
+
+GPU_HaloBuffer* GPU_Backend_HIP::NewHaloBuffer(size_t samples)
+{
+	Activate();
+	return new HIP_HaloBuffer(d, samples);
+}
+
+bool GPU_Backend_HIP::CanOverlapCurrentInterior() const
+{
+	return d->domain.enabled && d->fused_step <= 0;
+}
+
+void GPU_Backend_HIP::UpdateCurrentRegion(bool interior)
+{
+	if (!CanOverlapCurrentInterior())
+	{
+		throw std::runtime_error("current interior overlap requires an unfused X domain");
+	}
+	const bool c = d->coeff_mode > 0;
+	HIP_GridDim B, E;
+	unsigned int threads_z;
+	d->MainRange(B, E, threads_z);
+	const unsigned int boundary = d->domain.end - d->domain.begin;
+	if (interior)
+	{
+		E.nx = std::min(E.nx, boundary);
+	}
+	else
+	{
+		B.nx = std::max(B.nx, boundary);
+	}
+	if (B.nx >= E.nx)
+	{
+		return;
+	}
+	HIP_Launch(d, "update_currents_region", update_currents, threads_z, E.ny-B.ny, E.nx-B.nx,
+	    d->curr, (const float*)d->volt, (const void*)d->index,
+	    (const float*)(c ? d->coeff : d->ii), (const float*)(c ? d->coeff : d->iv),
+	    d->coeff_mode, d->dim, B, E, d->zslabs);
 }
 
 void GPU_Backend_HIP::UpdateCurrents()

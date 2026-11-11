@@ -54,6 +54,9 @@ public:
 	virtual bool Init(const Operator* op);
 	bool InitDomain(const Operator* op, unsigned int begin, unsigned int end) override;
 	void Activate() override;
+	GPU_HaloBuffer* NewHaloBuffer(size_t samples) override;
+	bool CanOverlapCurrentInterior() const override;
+	void UpdateCurrentRegion(bool interior) override;
 
 	virtual void UpdateVoltages();
 	virtual void UpdateCurrents();

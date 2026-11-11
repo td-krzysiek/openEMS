@@ -171,3 +171,8 @@ inter-device halo staging. `test_domain_copy` checks queued dependent E/H
 copies, unchanged other locations, local/unsplit storage, empty/identical
 ranges and rejected overlap/overflow. Actual CUDA throughput still needs to
 be measured; fewer transfers alone is not a measured speedup.
+
+## Experimental communication pipeline
+
+See [ASYNC_HALOS.md](ASYNC_HALOS.md) for opt-in pinned staging and E/H overlap,
+qualification commands and limitations. Existing runs retain their frozen runtime.

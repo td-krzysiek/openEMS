@@ -37,6 +37,11 @@ public:
 	}
 
 	CompletionPtr Update(FieldPhase, uint64_t) override;
+	bool CanOverlapCurrentInterior() const override
+	{
+		return true;
+	}
+	CompletionPtr UpdateCurrentRegion(bool interior, uint64_t) override;
 	CompletionPtr Pack(const HaloRecipe&, HostBuffer) override;
 	CompletionPtr Unpack(const HaloRecipe&, HostBuffer) override;
 	std::vector<float> OwnedField(FieldPhase) const;
@@ -45,7 +50,7 @@ private:
 	LocalOperatorData m_Data;
 	std::vector<float> m_Voltage, m_Current;
 	void Voltage();
-	void Current();
+	void Current(uint32_t begin, uint32_t end);
 };
 
 }

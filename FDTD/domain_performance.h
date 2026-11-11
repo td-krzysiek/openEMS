@@ -79,7 +79,8 @@ public:
 			<< "\"solver_version\":" << Quote(GIT_VERSION) << ",\"interval_steps\":" << interval
 			<< ",\"warmup_steps\":" << warmup << ",\"repartition_during_run\":false,\"grid\":["
 			<< plan.Shape().nx << ',' << plan.Shape().ny << ',' << plan.Shape().nz
-			<< "],\"domains\":[";
+			<< "],\"halo_mode\":" << Quote(std::getenv("OPENEMS_DOMAIN_HALOS") ?
+			    std::getenv("OPENEMS_DOMAIN_HALOS") : "serial") << ",\"domains\":[";
 		for (size_t i = 0; i < devices.size(); ++i)
 		{
 			const auto& domain = plan.Domains()[i];
@@ -219,6 +220,13 @@ public:
 		if (m_Active)
 		{
 			m_Exchange += Seconds(started);
+		}
+	}
+	void ExchangeSeconds(double elapsed)
+	{
+		if (m_Active)
+		{
+			m_Exchange += elapsed;
 		}
 	}
 	void FinishStep()

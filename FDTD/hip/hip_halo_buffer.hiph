@@ -1,0 +1,139 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+#ifndef OPENEMS_HIP_HALO_BUFFER_HIPH
+#define OPENEMS_HIP_HALO_BUFFER_HIPH
+
+// Separate from snapshot streams: each reusable halo buffer owns its copy queue.
+class HIP_HaloBuffer : public GPU_HaloBuffer
+{
+public:
+	HIP_HaloBuffer(GPU_Backend_HIP::Impl* backend, size_t samples)
+	    : m_Backend(backend), m_Samples(samples)
+	{
+		if (!samples || samples % 2 || samples > std::numeric_limits<size_t>::max() / sizeof(float))
+		{
+			throw std::invalid_argument("invalid pinned halo allocation size");
+		}
+		try
+		{
+			HIP_Check(hipHostMalloc(reinterpret_cast<void**>(&m_Data), samples * sizeof(float),
+			              hipHostMallocPortable), "allocate pinned domain halo");
+			HIP_Check(hipStreamCreateWithFlags(&m_Stream, hipStreamNonBlocking), "create halo stream");
+			HIP_Check(hipEventCreateWithFlags(&m_Producer, hipEventDisableTiming), "create halo producer event");
+			HIP_Check(hipEventCreateWithFlags(&m_Complete, hipEventDisableTiming), "create halo completion event");
+		}
+		catch (...)
+		{
+			Cleanup();
+			throw;
+		}
+	}
+	~HIP_HaloBuffer() override
+	{
+		hipSetDevice(m_Backend->ctx->device);
+		Cleanup();
+	}
+	FDTD_FLOAT* Data() override
+	{
+		return m_Data;
+	}
+	void Download(bool currents, const size_t offsets[2], size_t count) override
+	{
+		CheckRange(offsets, count);
+		Wait();
+		HIP_Check(hipEventRecord(m_Producer, m_Backend->Stream()), "record halo producer");
+		HIP_Check(hipStreamWaitEvent(m_Stream, m_Producer, 0), "order halo download");
+		const float* field = currents ? m_Backend->curr : m_Backend->volt;
+		for (unsigned int c = 0; c < 2; ++c)
+		{
+			HIP_Check(hipMemcpyAsync(m_Data + c * count, field + offsets[c], count * sizeof(float),
+			              hipMemcpyDeviceToHost, m_Stream), "download tangential halo");
+		}
+		Record();
+	}
+	void Upload(bool currents, const size_t offsets[2], size_t count) override
+	{
+		CheckRange(offsets, count);
+		Wait();
+		float* field = currents ? m_Backend->curr : m_Backend->volt;
+		for (unsigned int c = 0; c < 2; ++c)
+		{
+			HIP_Check(hipMemcpyAsync(field + offsets[c], m_Data + c * count, count * sizeof(float),
+			              hipMemcpyHostToDevice, m_Stream), "upload tangential halo");
+		}
+		Record();
+	}
+	bool Ready() override
+	{
+		if (!m_Active)
+		{
+			return true;
+		}
+		HIP_Check(hipSetDevice(m_Backend->ctx->device), "select halo device");
+		auto status = hipEventQuery(m_Complete);
+		if (status == hipErrorNotReady)
+		{
+			return false;
+		}
+		HIP_Check(status, "query halo completion");
+		m_Active = false;
+		return true;
+	}
+	void Wait() override
+	{
+		if (m_Active)
+		{
+			HIP_Check(hipSetDevice(m_Backend->ctx->device), "select halo device");
+			HIP_Check(hipEventSynchronize(m_Complete), "wait for halo completion");
+			m_Active = false;
+		}
+	}
+private:
+	void CheckRange(const size_t offsets[2], size_t count)
+	{
+		if (m_Samples % 2 || count != m_Samples / 2)
+		{
+			throw std::invalid_argument("invalid halo component size");
+		}
+		for (unsigned int c = 0; c < 2; ++c)
+		{
+			if (offsets[c] > 3 * m_Backend->numCells || count > 3 * m_Backend->numCells - offsets[c])
+			{
+				throw std::out_of_range("halo field range exceeds storage");
+			}
+		}
+		HIP_Check(hipSetDevice(m_Backend->ctx->device), "select halo device");
+	}
+	void Record()
+	{
+		HIP_Check(hipEventRecord(m_Complete, m_Stream), "record halo completion");
+		m_Active = true;
+	}
+	void Cleanup()
+	{
+		// Also drain partially submitted work after an enqueue failure.
+		if (m_Stream)
+		{
+			hipStreamSynchronize(m_Stream);
+			hipStreamDestroy(m_Stream);
+		}
+		if (m_Producer)
+		{
+			hipEventDestroy(m_Producer);
+		}
+		if (m_Complete)
+		{
+			hipEventDestroy(m_Complete);
+		}
+		if (m_Data)
+		{
+			hipHostFree(m_Data);
+		}
+	}
+	GPU_Backend_HIP::Impl* m_Backend;
+	size_t m_Samples;
+	float* m_Data = nullptr;
+	hipStream_t m_Stream = nullptr;
+	hipEvent_t m_Producer = nullptr, m_Complete = nullptr;
+	bool m_Active = false;
+};
+#endif

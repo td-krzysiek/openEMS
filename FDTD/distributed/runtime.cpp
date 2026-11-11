@@ -124,6 +124,48 @@ private:
 	HaloRecipe m_Recipe;
 	HostBuffer m_Buffer;
 };
+
+// All device downloads are submitted before any producer is waited for.
+class PackedSendCompletion : public Completion
+{
+public:
+	PackedSendCompletion(CompletionPtr packed, HaloTransport& transport,
+	    MessageId id, HostBuffer buffer)
+	    : m_Packed(packed), m_Transport(transport), m_Id(id), m_Buffer(buffer)
+	{
+	}
+	bool Ready() override
+	{
+		if (!m_Packed->Ready())
+		{
+			return false;
+		}
+		StartSend();
+		return m_Sent->Ready();
+	}
+	void Wait() override
+	{
+		m_Packed->Wait();
+		StartSend();
+		m_Sent->Wait();
+	}
+private:
+	void StartSend()
+	{
+		if (!m_Sent)
+		{
+			m_Sent = m_Transport.Send(m_Id, m_Buffer);
+			if (!m_Sent)
+			{
+				throw std::runtime_error("missing send completion");
+			}
+		}
+	}
+	CompletionPtr m_Packed, m_Sent;
+	HaloTransport& m_Transport;
+	MessageId m_Id;
+	HostBuffer m_Buffer;
+};
 }
 
 CompletionPtr Completed()
@@ -361,13 +403,8 @@ ExchangeResult HaloExchange::Begin(const ExchangeEpoch& epoch)
 				{
 					throw std::runtime_error("missing pack completion");
 				}
-				packed->Wait();
-				auto sent = m_Transport.Send(id, b);
-				if (!sent)
-				{
-					throw std::runtime_error("missing send completion");
-				}
-				result.m_SendRelease.push_back(sent);
+				result.m_SendRelease.push_back(
+				    std::make_shared<PackedSendCompletion>(packed, m_Transport, id, b));
 			}
 		}
 	}
@@ -387,11 +424,17 @@ void HaloExchange::Wait(ExchangeResult& result)
 	}
 	try
 	{
-		for (auto& token : result.m_ReceiveReady)
+		for (auto& token : result.m_SendRelease)
 		{
 			token->Wait();
 		}
-		for (auto& token : result.m_SendRelease)
+		// Once producer sends have completed, give every arrival a chance to
+		// enqueue its upload before waiting for any destination device.
+		for (auto& token : result.m_ReceiveReady)
+		{
+			token->Ready();
+		}
+		for (auto& token : result.m_ReceiveReady)
 		{
 			token->Wait();
 		}
@@ -409,11 +452,21 @@ FDTDCoordinator::FDTDCoordinator(const PartitionPlan& plan,
     HaloTransport& transport,
     CollectiveContext& collectives,
     const std::vector<DomainExecutor*>& executors,
-    uint64_t initial_step)
+    uint64_t initial_step, bool overlap_voltage)
     : m_Plan(plan), m_Transport(transport), m_Collectives(collectives), m_Executors(executors),
       m_Exchange(plan, transport, executors), m_Step(initial_step), m_Bootstrapped(false),
-      m_Failed(false)
+      m_Failed(false), m_OverlapVoltage(overlap_voltage)
 {
+	if (m_OverlapVoltage)
+	{
+		for (auto* executor : m_Executors)
+		{
+			if (!executor->CanOverlapCurrentInterior())
+			{
+				throw std::invalid_argument("executor does not support E/H overlap");
+			}
+		}
+	}
 }
 
 void FDTDCoordinator::Bootstrap()
@@ -504,7 +557,45 @@ void FDTDCoordinator::BeginPhase(FieldPhase phase)
 	}
 	try
 	{
-		Update(phase);
+		m_DeferredExchangeSeconds = 0;
+		if (phase == FieldPhase::Current && m_PendingVoltage)
+		{
+			std::vector<CompletionPtr> interior, boundary;
+			for (auto* executor : m_Executors)
+			{
+				interior.push_back(executor->UpdateCurrentRegion(true, m_Step));
+			}
+			const auto started = std::chrono::steady_clock::now();
+			m_Exchange.Wait(*m_PendingVoltage);
+			m_DeferredExchangeSeconds = std::chrono::duration<double>(
+			    std::chrono::steady_clock::now() - started).count();
+			m_PendingVoltage.reset();
+			for (auto* executor : m_Executors)
+			{
+				executor->Observe(FieldPhase::Voltage, m_Step);
+				boundary.push_back(executor->UpdateCurrentRegion(false, m_Step));
+			}
+			for (auto& token : interior)
+			{
+				if (!token)
+				{
+					throw std::runtime_error("missing interior completion");
+				}
+				token->Wait();
+			}
+			for (auto& token : boundary)
+			{
+				if (!token)
+				{
+					throw std::runtime_error("missing boundary completion");
+				}
+				token->Wait();
+			}
+		}
+		else
+		{
+			Update(phase);
+		}
 		m_PhasePending = true;
 	}
 	catch (const std::exception& error)
@@ -525,6 +616,13 @@ void FDTDCoordinator::FinishPhase(FieldPhase phase)
 	try
 	{
 		auto exchange = m_Exchange.Begin({ m_Plan.Id(), m_Step + 1, phase });
+		if (m_OverlapVoltage && phase == FieldPhase::Voltage)
+		{
+			m_PendingVoltage.reset(new ExchangeResult(exchange));
+			m_PhasePending = false;
+			m_NextPhase = FieldPhase::Current;
+			return;
+		}
 		m_Exchange.Wait(exchange);
 		for (auto* executor : m_Executors)
 		{

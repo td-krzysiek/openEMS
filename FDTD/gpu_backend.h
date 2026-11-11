@@ -19,6 +19,7 @@
 #define GPU_BACKEND_H
 
 #include <complex>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -122,6 +123,21 @@ public:
 	virtual bool ReadSeconds(double& seconds) = 0;
 };
 
+//! Reusable pinned staging and completion events for two tangential components.
+//! The backend and its field storage must outlive this object.
+class GPU_HaloBuffer
+{
+public:
+	virtual ~GPU_HaloBuffer()
+	{
+	}
+	virtual FDTD_FLOAT* Data() = 0;
+	virtual void Download(bool currents, const size_t offsets[2], size_t count) = 0;
+	virtual void Upload(bool currents, const size_t offsets[2], size_t count) = 0;
+	virtual bool Ready() = 0;
+	virtual void Wait() = 0;
+};
+
 //! Abstract interface to the device used by Engine_GPU
 /*!
   A backend owns the device memory: the voltage and current fields and the update
@@ -179,6 +195,21 @@ public:
 	//! Select this executor's device before work, extension hooks and destruction.
 	virtual void Activate()
 	{
+	}
+	virtual GPU_HaloBuffer* NewHaloBuffer(size_t samples)
+	{
+		UNUSED(samples);
+		return nullptr;
+	}
+	virtual bool CanOverlapCurrentInterior() const
+	{
+		return false;
+	}
+	//! Disjoint interior/boundary ranges whose union is the ordinary H update.
+	virtual void UpdateCurrentRegion(bool interior)
+	{
+		UNUSED(interior);
+		throw std::runtime_error("backend cannot split the current update");
 	}
 	//! Native extension hooks have completed; corrected halos may now be sent.
 	virtual void FinishVoltagePhase()
