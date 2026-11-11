@@ -19,7 +19,7 @@
 #define ENGINE_EXT_DISPERSIVE_H
 
 #include "engine_extension.h"
-#include "tools/TileMap.h"
+#include "engine_ext_cellindex.h"
 #include "FDTD/engine.h"
 #include "FDTD/operator.h"
 #include "engine_extension_dispatcher.h"
@@ -35,17 +35,18 @@ public:
 	virtual void Apply2Voltages();
 	virtual void Apply2Current();
 
-	virtual void InitializeTiling(const std::vector<Range3D>& tiles);
-	virtual void Apply2Voltages(int timestep, unsigned int start[3], unsigned int stop[3]);
-	virtual void Apply2Current(int timestep, unsigned int start[3], unsigned int stop[3]);
+	//! cell-local updates: per box the cells in it, found through m_Index
+	virtual bool SupportsBoxes() const {return true;}
+	virtual void PrepareBoxes(const unsigned int numLines[3]);
+	virtual void Apply2VoltagesBox(const Engine_Box& box, unsigned int ts);
+	virtual void Apply2CurrentBox(const Engine_Box& box, unsigned int ts);
+
 protected:
-	TileMap m_volt_map, m_curr_map;
-	bool InsideTile(const unsigned int start[3], const unsigned int stop[3], unsigned int x, unsigned int y, unsigned int z);
 	template <typename EngType>
-	void Apply2VoltagesImpl(EngType* eng);
+	void Apply2VoltagesImpl(EngType* eng, const Engine_Box* box);
 
 	template <typename EngType>
-	void Apply2CurrentImpl(EngType* eng);
+	void Apply2CurrentImpl(EngType* eng, const Engine_Box* box);
 
 	Operator_Ext_Dispersive* m_Op_Ext_Disp;
 
@@ -59,6 +60,9 @@ protected:
 	//! ADE voltages
 	// Array setup: volt_ADE[N_order][direction][mesh_pos]
 	FDTD_FLOAT ***volt_ADE;
+
+	//! per order the cells of m_Op_Ext_Disp->m_LM_pos, by box
+	std::vector<Engine_Ext_CellIndex> m_Index;
 };
 
 #endif // ENGINE_EXT_DISPERSIVE_H

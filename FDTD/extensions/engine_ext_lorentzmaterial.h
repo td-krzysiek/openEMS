@@ -28,26 +28,21 @@ public:
 	Engine_Ext_LorentzMaterial(Operator_Ext_LorentzMaterial* op_ext_lorentz);
 	virtual ~Engine_Ext_LorentzMaterial();
 
+	//! per order and cell: three components of ten states and coefficients, and the position
+	virtual size_t BoxBytes() const;
 	virtual void DoPreVoltageUpdates();
-	virtual void DoPreVoltageUpdates(int threadID);
 
 	virtual void DoPreCurrentUpdates();
-	virtual void DoPreCurrentUpdates(int threadID);
 
-	virtual void DoPreVoltageUpdates(int timestep, unsigned int start[3], unsigned int stop[3]);
-
-	virtual void DoPreCurrentUpdates(int timestep, unsigned int start[3], unsigned int stop[3]);
+	virtual void DoPreVoltageUpdatesBox(const Engine_Box& box, unsigned int ts);
+	virtual void DoPreCurrentUpdatesBox(const Engine_Box& box, unsigned int ts);
 
 protected:
 	template <typename EngType>
-	void DoPreCurrentUpdatesTiledImpl(EngType* eng, unsigned int start[3], unsigned int stop[3]);
-	template <typename EngType>
-	void DoPreVoltageUpdatesTiledImpl(EngType* eng, unsigned int start[3], unsigned int stop[3]);
-	template <typename EngType>
-	void DoPreVoltageUpdatesImpl(EngType* eng, int threadID, int numThreads);
+	void DoPreVoltageUpdatesImpl(EngType* eng, const Engine_Box* box);
 
 	template <typename EngType>
-	void DoPreCurrentUpdatesImpl(EngType* eng, int threadID, int numThreads);
+	void DoPreCurrentUpdatesImpl(EngType* eng, const Engine_Box* box);
 
 	Operator_Ext_LorentzMaterial* m_Op_Ext_Lor;
 

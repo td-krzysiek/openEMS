@@ -1,5 +1,5 @@
 /*
-*	Copyright (C) 2012 Thorsten Liebig (Thorsten.Liebig@gmx.de)
+*	Copyright (C) 2026 Thorsten Liebig (Thorsten.Liebig@gmx.de)
 *
 *	This program is free software: you can redistribute it and/or modify
 *	it under the terms of the GNU General Public License as published by
@@ -15,27 +15,9 @@
 *	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "engine_cylinder.h"
+// The kernels of Engine_CPU for AVX2 and FMA: compiled with -mavx2 -mfma (CMakeLists.txt), run only on a CPU that has both (Engine_CPU::Init()).
 
-using std::cout;
-using std::endl;
+#include "engine_cpu_kernel.h"
 
-Engine_Cylinder::Engine_Cylinder(const Operator_Cylinder* op) : Engine_Multithread(op)
-{
-	m_Op_Cyl = op;
-}
-
-Engine_Cylinder::~Engine_Cylinder()
-{
-
-}
-
-Engine_Cylinder* Engine_Cylinder::New(const Operator_Cylinder* op, unsigned int numThreads)
-{
-	cout << "Create FDTD engine (cylindrical mesh using sse compression + multithreading)" << endl;
-	Engine_Cylinder* e = new Engine_Cylinder(op);
-	e->setNumThreads(numThreads);
-	e->Init();
-	return e;
-}
-
+#define ENGINE_CPU_NAMESPACE Engine_CPU_AVX2
+#include "engine_cpu_kernels.inc"

@@ -9,211 +9,106 @@ of the [openEMS documentation](https://docs.openems.de/).
 
 **When you change something user-visible, add a bullet under `Unreleased` in the
 same commit**, creating that section if it is not there — it exists only while
-there are unreleased changes. It becomes the next release entry.
+there are unreleased changes. It becomes the next release entry. Keep an entry
+to what a user notices, in a few lines; the details belong in the commit.
 
 ## Unreleased
 
 ### Added
 
-- Native GPU domains support Drude/Lorentz materials and PR242 LossyMetal
-  on HIP and Metal. Each domain keeps only its owned material histories;
-  single-device update equations are unchanged.
+- Experimental local GPU domain execution (`ENABLE_DOMAIN_RUNTIME`,
+  `--gpu-devices`, optional fixed `--gpu-domain-cuts`) supports PEC, PML,
+  excitation, lumped elements and owned dispersive histories on HIP and Metal.
+  Unsupported extensions fail explicitly; MPI antenna execution is not enabled.
+- Optional startup/runtime pause gates and DFT snapshots preserve fields and
+  material histories for external qualification and NF2FF processing.
+- PR242 LossyMetal surface impedance and the experimental opaque conductor
+  extension, including HIP/Metal device execution, remain available.
+- Optional HIP/CUDA NF2FF integration and Python/Matlab control helpers.
 
-- Experimental native GPU X-domain adapter behind `ENABLE_DOMAIN_RUNTIME`,
-  selected with `--gpu-devices=0,1`. HIP slices preserve native excitation,
-  UPML, lumped-RLC and opaque-surface ownership and exchange corrected
-  tangential halos after each half-step. Unsupported device extensions fail
-  explicitly. This initial local-host path does not enable distributed MPI
-  antenna execution or promise a speedup over the fused single-device engine.
-  Metal also supports the domain executor, with a non-installed test plugin
-  for two/three logical partitions on one physical GPU. Domain energy checks
-  exclude halo planes on both device backends.
-  Optional `--gpu-domain-cuts` selects fixed uneven ownership for different
-  device capacities; it does not perform adaptive balancing.
-
-- Generic in-memory pause/continue/stop requests and opt-in post-pulse decay
-  gates share startup qualification's native wait mechanism. Decay gates
-  publish DFT snapshots for an external NF2FF controller without resetting
-  state; runtime-controller timeout resumes the simulation. Disabled by default.
-
-- Opt-in startup qualification pauses a live run at a processing boundary and
-  continues it after controller approval without rebuilding the operator or
-  resetting fields, material histories or accumulated DFT data.
-
-- Opt-in `--dft-snapshots` requests export accumulated E/H HDF5 data at a
-  timestep boundary without stopping or resetting DFT sums. Snapshot directories
-  are published atomically and labelled unconverged with sample timing. Python
-  and Matlab request helpers are provided; final field dumps are unchanged.
-
-- Treat touching/overlapping conforming boxes with identical experimental
-  opaque-surface fits as one conductor, excluding internal contact faces.
-  Different-fit contacts are rejected. CPU/GPU updates are unchanged.
-- Metal and HIP/CUDA device updates for the experimental opaque RF surface
-  boundary, including its passive R-L histories and HIP fused-step fixups.
-  The device boundary uses FP32; the CPU boundary keeps FP64. The existing
-  Cartesian, disjoint, conforming-box restrictions and timestep selection
-  remain unchanged. This is not a production antenna/material qualification.
-- **A GPU engine**, `--engine=gpu` (`engine='gpu'` from Python), with a Metal
-  backend on macOS and a HIP backend for AMD (ROCm) and NVIDIA (CUDA) GPUs. It
-  is selected like the other engines, runs Cartesian and cylindrical meshes
-  (including multi-grid) with the usual extensions on the device, and writes
-  the same probes and dumps. Without a usable GPU the setup fails with an
-  error instead of running something slower. `--engine=gpu-reference` runs it
-  on a CPU reference backend, to check the device backends against. With
-  several GPUs it takes a discrete one before an integrated one, then the one
-  with more memory; `--gpu-device=N` (`gpu_device=N`) picks device N of the
-  list printed at `--verbose=1`.
-- `python -m openEMS.compare <sim_path_a> <sim_path_b>` compares the probes
-  and field dumps of two runs, e.g. of two engines, and
-  `openEMS.compare.compare_sim_results()` does the same from Python.
-- A DC-free Gaussian pulse: `SetGaussExcite(f0, fc, dc_free=True)` (Matlab
-  `'DCFree',1`, XML `DCFree="1"`) uses a sine instead of a cosine carrier, so
-  the pulse has no DC part and leaves no static charge behind, e.g. in a
-  structure closed by PEC. Away from DC the spectrum is the same; below about
-  f0-fc it falls to zero at DC. With `f0=0` the pulse is the derivative of the
-  Gaussian, with its peak at about 0.47*fc and its -20dB edge at 1.3*fc.
-- Conductor loss and surface roughness of ordinary 3D metal bodies, with the
-  CSXCAD `LossyMetal` property (`AddLossyMetal`): the faces of the body carry
-  the surface impedance of the conductor, optionally with the gradient
-  roughness model, as a passive rational fit up to the max. frequency of the
-  excitation, while the inside stays PEC. The skin depth needs no mesh. A
-  body thinner than the mesh becomes a conducting sheet with the thickness
-  of the body; a 2D primitive uses the `Thickness` of the property. It runs
-  on the Lorentz material machinery, so on all engines including the GPU.
-
-### Fixed
-
-- Apply the delayed-excitation correction to the experimental tiling hooks,
-  matching CPU/GPU behavior for step and custom sources.
-
-- A number of timesteps above 2^31 (about 2.1e9) made the setup fail with
-  "excitation setup failed". It is now limited to that.
-- Release waiting operator setup workers when a controller-side exception
-  occurs before the EC/PEC phases finish, instead of hanging during cleanup.
-- Reject the new Debye extension with the experimental tiling engine until
-  its pre/post hooks have tiled implementations, instead of skipping them.
-- Include the experimental opaque-surface boundary's physical exterior
-  capacitance in timestep selection, preventing growth on graded meshes.
-  Extensions can prepare EC elements through a default no-op `PreprocessEC()`
-  hook before timestep selection; existing extensions keep their behavior.
-- A run switched flush-to-zero on in the calling process and left it on: in
-  Python, numpy computations after `Run()` lost their denormal (subnormal)
-  values, and the results of a following run with the basic engine depended
-  on it. Every engine now flushes denormals to zero during the run only.
-- Python: an option passed as `False` to `Run()`, e.g. `debug_PEC=False`, made
-  openEMS ignore all options after it without a message, so that for example
-  a following `engine=...` or `numThreads=...` had no effect.
-- A node-interpolated B-field dump of a closed cylindrical mesh was zero on
-  its first alpha line: the B field was not evaluated across the seam of the
-  mesh as the H field is.
-- A simulation that was aborted (`SetAbort()`, an `ABORT` file, Ctrl-C) no
-  longer ends with the warning that the max. number of timesteps was reached;
-  it reports the abort.
-- An error during the setup or the run of a simulation, e.g. running out of
-  memory, or an invalid command line option, e.g. an unknown `--engine`, no
-  longer terminates the process: openEMS ends with an error message,
-  Python raises a `RuntimeError`, and Ctrl-C works again afterwards.
-- A simulation with more than about 1.4 billion mesh nodes no longer
-  overflows the size of its field and coefficient arrays, which corrupted
-  memory without a message. The operator statistics show the right memory
-  size above about 89 million nodes, and the cell count, the speed, frequency
-  domain and SAR dumps, the SAR calculation, VTK field dumps and the node
-  counts of materials, excitations and lumped elements no longer wrap around
-  at 2 to 4 billion nodes.
-- A SAR dump kept a second, unused copy of its frequency domain fields:
-  24 bytes per dumped cell and frequency less memory now.
-- `Write2XML()` crashed when no excitation or no structure was set. It now
-  reports the missing part and returns false, as the file could not be read
-  back anyway.
-- An excitation with a delay injected the first sample of its signal before
-  the delay had expired: a delayed step excitation started at t=0, and so did
-  a custom excitation whose function is not zero at t=0.
+- **A GPU engine**, `--engine=gpu` (`engine='gpu'` from Python), for AMD and
+  NVIDIA GPUs (HIP/CUDA) and on macOS (Metal), with Cartesian and cylindrical
+  meshes and the usual extensions. `--gpu-device=N` picks one of the GPUs
+  listed at `--verbose=1`.
+- **A CPU engine, experimental**, `--engine=cpu` (`engine='cpu'`): on an
+  8-core Ryzen 7 5800X it runs typical models 3-6x faster than the default
+  engine, with dispersive materials up to 10x, and needs less memory, at
+  the peak of the setup about a third less. Benchmarks from other machines
+  are welcome (`benchmark/bench.py`).
+- `python -m openEMS.compare <sim_path_a> <sim_path_b>` (or
+  `openEMS.compare.compare_sim_results()`) compares the probes and field
+  dumps of two runs.
+- A DC-free Gaussian pulse, `SetGaussExcite(f0, fc, dc_free=True)` (Matlab
+  `'DCFree',1`): it leaves no static charge behind, e.g. in a structure
+  closed by PEC.
 
 ### Changed
 
-- Native domain execution copies the physical lower-boundary current halo
-  within the device when supported, avoiding two device-to-host and two
-  host-to-device plane transfers per timestep. Other backends retain the
-  existing staged fallback.
-
-- Store uniform-order experimental opaque-surface GPU histories and scaled
-  coefficients in compact 32-edge tiles on HIP and Metal, without padding or
-  changing the per-edge FP32 arithmetic. Mixed orders keep edge-major storage.
-
-- Share experimental opaque-surface GPU `a` and memory coefficients per fit
-  instead of per edge on HIP and Metal, preserving per-edge states and scales.
-- HIP/CUDA UPML stores either exact compressed coefficient sets or full
-  arrays, rather than both. Separate pre/post updates also use compressed
-  sets, so the memory saving does not require UPML fusion.
-
-- The Python bindings need Python 3.6 or newer (was 3.4), the oldest version
-  CI still tests; CentOS 7 and Ubuntu 14.04 are no longer tested.
-- Time-domain HDF5 field dumps are written in the background instead of
-  stalling the timestepping, with the file kept open for the whole run; with
-  the GPU engine from snapshots of the fields.
-- Field dumps are evaluated on several threads, with every engine; large
-  dumps, like the surfaces of an NF2FF box, slow the simulation down less.
-- The end criteria is checked every Nyquist period during the first minute of
-  a simulation, and only after that with the progress report every few
-  seconds. A short simulation used to run on until the first report, on a fast
-  machine several times longer than necessary, with correspondingly larger
-  dumps; it now stops where the end criteria is met, at the same timestep on
-  every machine. `--exact-endcriteria` keeps this for the whole run.
-- The memory of the operator and the engine is freed at the end of the
-  simulation, not when the `openEMS` object is destroyed. A post-processing in
-  the same script (NF2FF, SAR) has it available, and running one `openEMS`
-  object several times no longer keeps the memory of every run.
-- Reading a time-domain field dump with many timesteps is much faster: its
-  datasets are listed once instead of looked up one by one, which took
-  quadratic time. A far-field (NF2FF) calculation from a recording of 3200
-  timesteps went from 79 s to 2.4 s per frequency.
-- An unknown `--engine` value (`engine=` from Python) is an error; it used to
-  run the default engine without a word, e.g. for `--engine=GPU` or `cuda`.
+- The Python bindings need Python 3.6 or newer (was 3.4).
+- Field dumps slow the simulation down less: they are evaluated on several
+  threads, and time-domain HDF5 dumps are written in the background.
+- A short simulation stops where the end criteria is met, at the same
+  timestep on every machine, instead of running on until the first progress
+  report.
+- The memory of a simulation is freed when it ends, so a post-processing in
+  the same script (NF2FF, SAR) has it available.
+- Reading a time-domain field dump with many timesteps is much faster, e.g.
+  an NF2FF from 3200 timesteps takes 2.4 instead of 79 s per frequency.
+- An unknown `--engine` value is an error instead of running the default
+  engine.
 - A mesh line within 1/1000 of the smallest mesh step of a primitive's
-  surface counts as lying on it, and so as metal or material there (CSXCAD's
-  drawing tolerance): for STL files, coordinates rounded in the XML or
-  computed ones. A few edges more can become metal, e.g. on sloped walls; a
-  slit at x=0 in the split ground plane of the StripLine2MSL tutorial is
-  closed.
+  surface counts as lying on it, e.g. for STL files or rounded coordinates;
+  a few more edges can become metal.
+- The CPU engines use all threads (`--numThreads`); `sse` and
+  `sse-compressed` are other names of the default engine now. Small models
+  run up to twice as fast, cylindrical multi-grid meshes 12-25 % faster.
+- The setup is 5-10x faster on large models, most of it runs on all threads
+  now, and openEMS prints how long it took.
+
+### Fixed
+
+- The non-installed Metal logical-domain test plugin reuses the loaded solver
+  library, avoiding duplicate globals when testing an installed macOS build.
+
+- More than 2^31 timesteps made the setup fail; the number is now limited to
+  that.
+- Python: numpy lost denormal values after `Run()`.
+- Python: an option passed as `False` to `Run()`, e.g. `debug_PEC=False`,
+  silently disabled all options after it.
+- A node-interpolated B-field dump of a closed cylindrical mesh was zero on
+  its first alpha line.
+- An aborted simulation reports the abort, not the max. number of timesteps.
+- An error during the setup or the run, e.g. out of memory or an unknown
+  `--engine`, no longer terminates the process: openEMS ends with an error
+  message, Python raises a `RuntimeError`.
+- Simulations with more than about 1.4 billion mesh nodes corrupted memory,
+  and several counts and dumps were wrong above 2 to 4 billion nodes.
+- A SAR dump needs 24 bytes per dumped cell and frequency less memory.
+- `Write2XML()` crashed when no excitation or no structure was set.
+- A delayed excitation injected its first sample before the delay.
 
 ### Build
 
-- Optional internal domain-runtime library (`ENABLE_DOMAIN_RUNTIME`, off by
-  default), with backend-independent ownership/coordination, a CPU executor
-  and optional MPI halo/collective adapters. Dynamic solver extensions and
-  production antenna processing are not supported by this experimental path.
-
-- `ENABLE_HIP` and `ENABLE_METAL` CMake options for the GPU backends. HIP
-  (CMake 3.28) is on when a HIP compiler is found. `OPENEMS_HIP_AS_CUDA`
-  compiles the same sources as CUDA, for NVIDIA GPUs without a HIP compiler
-  (CMake 3.24, a CUDA compiler and the HIP headers, looked for in `ROCM_PATH`
-  and `/opt/rocm`); it is the default on Windows. Metal (macOS, CMake 3.16)
-  is on by default. The GPU code is built for the GPU of the build machine,
-  or without one (CI, packages) for all AMD GPUs from RDNA1 and CDNA1 on
-  (`OPENEMS_HIP_AMD_ARCHITECTURES`, the plugin is then about 9 MB) or all
-  major NVIDIA architectures, unless `CMAKE_HIP_ARCHITECTURES` /
-  `CMAKE_CUDA_ARCHITECTURES` name others.
-  Whatever a backend is missing switches it off with a warning; openEMS
-  builds without it. The HIP backend is a plugin, `openEMS_gpu_hip_amd` or
-  `openEMS_gpu_hip_nvidia`, loaded at runtime from `openEMS/plugins` next to
-  `libopenEMS` (`OPENEMS_PLUGIN_PATH` overrides that directory), so
-  `libopenEMS` itself needs no GPU runtime; a plugin of another build is
-  refused (a release build is told by its version, so it stays
-  reproducible). `OPENEMS_GPU_PLUGINS=OFF` links it into `libopenEMS`
-  instead. On Windows the AMD plugin needs ROCm's clang, which CMake does not
-  combine with MSVC: build all of openEMS with it, or only the plugin in a
-  second build with `-DOPENEMS_GPU_BUILD_ID` of the first, as the Windows
-  package does.
-- C++17 is now required (was C++11), e.g. GCC 8 or newer, also for the
-  Python bindings and the GPU sources (HIP/CUDA, were C++14).
-- VTK is no longer needed: openEMS writes its VTK files (`.vtr`, `.vts`,
-  `.vtp`) itself, in the same format as before. zlib is needed instead,
-  which HDF5 usually brings along.
+- `ENABLE_HIP` and `ENABLE_METAL` CMake options for the GPU backends, on when
+  their compiler is found; `OPENEMS_HIP_AS_CUDA` builds the HIP backend with
+  a CUDA compiler for NVIDIA GPUs. A missing dependency switches a backend
+  off with a warning. The HIP backend is a plugin loaded at runtime from
+  `openEMS/plugins` next to `libopenEMS` (`OPENEMS_GPU_PLUGINS=OFF` links it
+  in), so `libopenEMS` needs no GPU runtime.
+- C++17 is now required (was C++11), e.g. GCC 8 or newer.
+- VTK is no longer needed; zlib is needed instead, which HDF5 usually brings
+  along.
 
 ### Upgrade notes
 
-- **Rebuild the Python bindings** together with openEMS: the layout of its
-  array classes changed, the soname did not.
+The old experimental `--engine=tiling` is retired on this integration branch.
+Use the upstream experimental `--engine=cpu` for temporal blocking. Rebuild all
+GPU plugins and Python bindings together with the solver.
+
+- **Rebuild the Python bindings** together with openEMS.
+- `basic`, `sse` and `sse-compressed` use all threads now; for one thread
+  pass `--numThreads=1` (`numThreads=1`). The uncompressed SSE engine is
+  gone.
 
 ## 0.37.0 — 2026-10-09
 
@@ -222,15 +117,6 @@ this one is v0.37.0. The leading `0.0.` was never going anywhere, so the minor
 number moved up and patch releases now have somewhere to go.
 
 ### Added
-
-- Experimental opt-in opaque RF surface boundary for grid-conforming Cartesian metal boxes; excludes interior H and uses passive implicit R-L face currents.
-
-- Experimental opt-in positive R-L sheet-admittance fit through the existing
-  CSXCAD property-attribute mechanism, for roughness-model qualification.
-
-- Experimental Cartesian spatial/temporal tiling engine (`--engine=tiling`),
-  with opt-in tile settings and regression tests. Supports UPML, excitation,
-  conducting sheets and Lorentz/Drude materials; rejects unsupported extensions.
 
 - **SAR calculation reworked**, following IEEE/IEC 62704-1: averaging is done
   once for all frequencies instead of per frequency, and is multi-threaded,
@@ -299,20 +185,7 @@ number moved up and patch releases now have somewhere to go.
   then stops at the same timestep regardless of machine speed and load, at
   the cost of performance — mainly useful for engine or code verification.
 
-- **nf2ff can run its surface integral on a GPU.** Select it with the
-  `Backend` attribute of the nf2ff XML (`'Backend', 'gpu'` in
-  `CalcNF2FF.m`) or `backend=` in `CalcNF2FF()` (Python): `auto` (default)
-  uses the GPU if the build has GPU support and a device is usable, `cpu`
-  always runs the original code, `gpu` fails instead of falling back.
-  The results agree with the CPU ones to about 1e-6 of the pattern peak.
-  Written in HIP, so it runs on AMD and on NVIDIA GPUs. Needs the new
-  `NF2FF_HIP` build option.
-
 ### Changed
-
-- Experimental combined performance build: distribute standard-engine UPML work
-  over XY rows, group disjoint UPML barriers, parallelize compatible Lorentz
-  pre-updates, and use POSIX iteration barriers on Linux, including tiling.
 
 - **The MPI engine was removed.** It had not compiled for years, as it used
   the C++ MPI bindings that MPI-3 dropped, it had no tests, and several
@@ -367,7 +240,6 @@ number moved up and patch releases now have somewhere to go.
   Drude/Lorentz branch put the update's root on -1. It now integrates the pole's
   capacitor voltage, in its own extension pair; `eps_delta` is no longer limited,
   and a pole shorter than three timesteps is refused with a warning (#229).
-
 - Python: a `ContinuousStructure` handed to `SetCSX()` is no longer destroyed
   twice. `SetCSX()` takes ownership, which the binding now states, and
   `GetCSX()` no longer leaks a fresh structure per call. Requires a CSXCAD
@@ -414,8 +286,6 @@ number moved up and patch releases now have somewhere to go.
 - Six of the nine steady-state detection probes sat on the first mesh line of
   their direction (usually a field-free boundary) instead of a quarter/three
   quarters across, due to an integer-division bug.
-- nf2ff stops with an error if a plane cannot be processed, instead of
-  printing it and continuing with a far field that is missing that plane.
 
 ### Build
 
@@ -433,9 +303,6 @@ number moved up and patch releases now have somewhere to go.
   `update_openEMS.sh` were removed.
 - CI covers Linux, macOS, FreeBSD and Windows, and compiles with warnings
   enabled.
-- New `NF2FF_HIP` CMake option (default `OFF`) builds the GPU backend of
-  nf2ff. It needs CMake 3.21 or newer (3.28 for NVIDIA GPUs) and the HIP
-  toolkit; nothing changes for builds without it.
 
 ### Upgrade notes
 

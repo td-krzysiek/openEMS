@@ -287,7 +287,7 @@ ELSEIF(ENABLE_HIP)
   enable_language(HIP)
   set(CMAKE_HIP_STANDARD 17)
   # No fused multiply-add and the same denormal handling, so the kernels round like the
-  # CPU engines (python/Tests/GPU_Engine.py compares them value by value). The flags are
+  # CPU engines (python/Tests/Engine_Compare.py compares them value by value). The flags are
   # those of the compiler behind hipcc: hipcc on the NVIDIA platform, clang on AMD, and
   # the clang spelling would only reach the host compiler under hipcc.
   IF(CMAKE_HIP_PLATFORM STREQUAL "nvidia")
@@ -377,7 +377,26 @@ IF(ENABLE_HIP AND OPENEMS_HIP_AS_CUDA)
   set_source_files_properties(${HIP_SOURCES} PROPERTIES LANGUAGE CUDA COMPILE_OPTIONS "-x;cu")
 ENDIF()
 
+# the kernels of the CPU engine once more for AVX2 and FMA, chosen at run time
+# (Engine_CPU::InitKernels()); on x86-64 with GCC, Clang, MSVC and clang-cl
+set(CPU_AVX2_SOURCE ${CMAKE_CURRENT_SOURCE_DIR}/FDTD/engine_cpu_kernels_avx2.cpp)
+IF(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|amd64")
+  IF(MSVC)   # MSVC and clang-cl
+    set(OPENEMS_CPU_AVX2 ON)
+    set_source_files_properties(${CPU_AVX2_SOURCE} PROPERTIES COMPILE_OPTIONS "/arch:AVX2")
+  ELSEIF(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    set(OPENEMS_CPU_AVX2 ON)
+    set_source_files_properties(${CPU_AVX2_SOURCE} PROPERTIES COMPILE_OPTIONS "-mavx2;-mfma")
+  ENDIF()
+  IF(OPENEMS_CPU_AVX2)
+    set(SOURCES ${SOURCES} ${CPU_AVX2_SOURCE})
+  ENDIF()
+ENDIF()
+
 add_library( openEMS SHARED ${SOURCES})
+IF(OPENEMS_CPU_AVX2)
+  target_compile_definitions(openEMS PRIVATE OPENEMS_CPU_AVX2)
+ENDIF()
 
 # the target the HIP sources are built into: libopenEMS or the plugin
 IF(ENABLE_HIP)
@@ -452,7 +471,11 @@ if(ENABLE_DOMAIN_RUNTIME)
       # Explicit manual-test path only: several queues on one physical GPU.
       # Not installed, and never added to the normal plugin search directory.
       add_library(openEMS_gpu_metal_domain_test MODULE TESTSUITE/distributed/metal_test_plugin.cpp)
-      target_link_libraries(openEMS_gpu_metal_domain_test openEMS)
+      # Resolve against the solver already loaded by the executable/bindings.
+      # Linking the build-tree dylib loads a second copy beside an installed
+      # libopenEMS on macOS, duplicating global settings and thread limits.
+      target_link_options(openEMS_gpu_metal_domain_test PRIVATE "LINKER:-undefined,dynamic_lookup")
+      add_dependencies(openEMS_gpu_metal_domain_test openEMS)
       set_target_properties(openEMS_gpu_metal_domain_test PROPERTIES
         PREFIX "" SUFFIX ".so" LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/test-plugins")
     endif()
@@ -526,4 +549,13 @@ INSTALL(FILES ${PUB_HEADERS} DESTINATION include/openEMS)
 INSTALL( DIRECTORY matlab DESTINATION share/openEMS )
 INSTALL( DIRECTORY python/Tutorials DESTINATION share/openEMS/python )
 INSTALL( DIRECTORY resources DESTINATION share/openEMS )
+
+# C++ unit tests. Off by default: they are of no use to somebody installing
+# openEMS, and building them needs nothing the library does not need anyway.
+# Enable with -DOPENEMS_BUILD_TESTS=ON, then run them with `ctest`.
+option(OPENEMS_BUILD_TESTS "Build the C++ unit tests in tests/" OFF)
+if (OPENEMS_BUILD_TESTS)
+  enable_testing()
+  ADD_SUBDIRECTORY( tests )
+endif()
 # TODO tarball, debug, release

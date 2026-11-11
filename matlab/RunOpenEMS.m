@@ -20,13 +20,11 @@ function RunOpenEMS(Sim_Path, Sim_File, opts, Settings)
 %      --debug-CSX          Write CSX geometry file to debugCSX.xml
 %      --engine=<type>      Choose engine type
 %          --engine=fastest         fastest available engine (default)
-%          --engine=basic           basic FDTD engine
-%          --engine=sse             engine using sse vector extensions
-%          --engine=sse-compressed  engine using compressed operator + sse vector extensions
+%          --engine=basic           basic FDTD engine, multithreaded
 %          --engine=multithreaded   engine using compressed operator + sse vector extensions + multithreading
-%      --numThreads=<n>     Force use n threads for multithreaded engine
-%      --gpu-devices=0,1    Experimental local X-domain GPU execution;
-%                          requires ENABLE_DOMAIN_RUNTIME. See MULTI_GPU.md.
+%          --engine=sse, --engine=sse-compressed   other names of multithreaded
+%      --numThreads=<n>     Force use n threads (basic and multithreaded engine)
+%      --gpu-devices=0,1    Experimental local X-domain GPU execution; see MULTI_GPU.md.
 %      --no-simulation      only run preprocessing; do not simulate
 %      --dft-snapshots     Accept RequestDFTSnapshot requests without stopping
 %      --dump-statistics    dump simulation statistics to 'openEMS_run_stats.txt' and 'openEMS_stats.txt'

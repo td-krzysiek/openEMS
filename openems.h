@@ -186,7 +186,7 @@ protected:
 
 	bool m_Abort;
 
-	enum EngineType {EngineType_Basic, EngineType_SSE, EngineType_SSE_Compressed, EngineType_Multithreaded, EngineType_Tiling, EngineType_GPU, EngineType_GPU_Reference};
+	enum EngineType {EngineType_Basic, EngineType_SSE, EngineType_GPU, EngineType_GPU_Reference, EngineType_CPU};
 	EngineType m_engine;
 	unsigned int m_engine_numThreads;
 

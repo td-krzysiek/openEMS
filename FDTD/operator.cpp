@@ -19,7 +19,12 @@
 #include <algorithm>
 #include <stdexcept>
 #include "operator.h"
+#include "tools/useful.h"
 #include "engine.h"
+#include "engine_sse.h"
+#include "engine_cpu.h"
+#include "engine_gpu.h"
+#include "gpu_backend.h"
 #include "extensions/operator_extension.h"
 #include "extensions/operator_ext_excitation.h"
 #include "Common/processfields.h"
@@ -38,10 +43,10 @@ using std::cerr;
 using std::endl;
 using std::flush;
 
-Operator* Operator::New()
+Operator* Operator::New(unsigned int numThreads)
 {
-	cout << "Create FDTD operator" << endl;
 	Operator* op = new Operator();
+	op->SetNumThreads(numThreads);
 	op->Init();
 	return op;
 }
@@ -51,6 +56,12 @@ Operator::Operator() : Operator_Base()
 	m_Exc = 0;
 	m_InvaildTimestep = false;
 	m_TimeStepVar = 3;
+	m_numThreads = 0;
+	m_Coeffs = NULL;
+	m_ECCoeffs = NULL;
+	m_EngineType = Engine::UNKNOWN;   // SetEngineType() before the build
+	m_GPU_Backend = NULL;
+	m_GPU_Parent = NULL;
 }
 
 Operator::~Operator()
@@ -60,11 +71,51 @@ Operator::~Operator()
 	m_Op_exts.clear();
 
 	Delete();
+	delete m_Coeffs;
+	delete m_GPU_Backend;
+}
+
+void Operator::SetEngineType(Engine_Types::EngineType type)
+{
+	if ((type!=Engine::BASIC) && (type!=Engine::SSE) && (type!=Engine::GPU) && (type!=Engine::CPU))
+		throw std::invalid_argument("Operator::SetEngineType: no such engine type");
+	if (m_Coeffs)
+		throw std::logic_error("Operator::SetEngineType: the operator is built already, for another engine type");
+	m_EngineType = type;
+}
+
+void Operator::SetGPUBackend(GPU_Backend* backend, GPU_Backend* parent)
+{
+	if (backend!=m_GPU_Backend)
+		delete m_GPU_Backend;
+	m_GPU_Backend = backend;
+	m_GPU_Parent = parent;
 }
 
 Engine* Operator::CreateEngine()
 {
-	m_Engine = Engine::New(this);
+	switch (m_EngineType)
+	{
+	case Engine::GPU:
+		m_Engine = Engine_GPU::New(this, TakeGPUBackend(), m_GPU_Parent);
+		// The device holds the coefficients now: free the circuit values they are computed from
+		// (48 bytes per node), as the compressed storage frees its full arrays. GetVV() and friends are invalid after this.
+		FreeCoeffs();
+		break;
+	case Engine::SSE:
+		m_Engine = Engine_sse::New(this, m_numThreads);
+		break;
+	case Engine::BASIC:
+		m_Engine = Engine::New(this, m_numThreads);
+		break;
+	case Engine::CPU:
+		// the engine holds its runs once they are built: it has the coefficients and the circuit values
+		// they are computed from (48 bytes per node) freed then, before it allocates its fields
+		m_Engine = Engine_CPU::New(this, m_numThreads, [this]() {FreeCoeffs();});
+		break;
+	default:
+		throw std::logic_error("Operator::CreateEngine: no engine type set (SetEngineType())");
+	}
 	return m_Engine;
 }
 
@@ -75,10 +126,9 @@ void Operator::Init()
 
 	Operator_Base::Init();
 
-	vv_ptr = NULL;
-	vi_ptr = NULL;
-	iv_ptr = NULL;
-	ii_ptr = NULL;
+	delete m_Coeffs;
+	m_Coeffs = NULL;
+	m_ECCoeffs = NULL;
 
 	m_epsR_ptr = NULL;
 	m_kappa_ptr = NULL;
@@ -103,15 +153,16 @@ void Operator::Init()
 void Operator::Delete()
 {
 	CSX = NULL;
+	for (int d=0; d<2; ++d)
+		for (int n=0; n<3; ++n)
+		{
+			m_LineTable[d][n].clear();
+			m_EdgeLengthTable[d][n].clear();
+		}
 
-	delete vv_ptr;
-	delete vi_ptr;
-	delete iv_ptr;
-	delete ii_ptr;
-	vv_ptr = NULL;
-	vi_ptr = NULL;
-	iv_ptr = NULL;
-	ii_ptr = NULL;
+	delete m_Coeffs;
+	m_Coeffs = NULL;
+	m_ECCoeffs = NULL;
 
 	delete MainOp; MainOp=0;
 	for (int n=0; n<3; ++n)
@@ -142,6 +193,9 @@ double Operator::GetDiscLine(int n, unsigned int pos, bool dualMesh) const
 {
 	if ((n<0) || (n>2)) return 0.0;
 	if (pos>=numLines[n]) return 0.0;
+	const std::vector<double>& table = m_LineTable[dualMesh][n];
+	if (!table.empty())
+		return table[pos];
 	if (dualMesh==false)
 		return discLines[n][pos];
 
@@ -208,7 +262,38 @@ bool Operator::GetNodeCoords(const unsigned int pos[3], double* coords, bool dua
 
 double Operator::GetEdgeLength(int n, const unsigned int* pos, bool dualMesh) const
 {
+	const std::vector<double>& table = m_EdgeLengthTable[dualMesh][n];
+	if (pos[n]<table.size())
+		return table[pos[n]];
 	return GetDiscDelta(n,pos[n],dualMesh)*gridDelta;
+}
+
+void Operator::InitGeometry()
+{
+	// from the functions themselves, the same values: lines first, the lengths from them
+	for (int d=0; d<2; ++d)
+		for (int n=0; n<3; ++n)
+		{
+			m_LineTable[d][n].clear();
+			m_EdgeLengthTable[d][n].clear();
+		}
+	for (int d=0; d<2; ++d)
+		for (int n=0; n<3; ++n)
+		{
+			std::vector<double> lines(numLines[n]);
+			for (unsigned int i=0; i<numLines[n]; ++i)
+				lines[i] = GetDiscLine(n, i, d==1);
+			m_LineTable[d][n].swap(lines);
+		}
+	for (int d=0; d<2; ++d)
+		for (int n=0; n<3; ++n)
+		{
+			std::vector<double> lengths(numLines[n]);
+			unsigned int pos[3] = {0, 0, 0};
+			for (pos[n]=0; pos[n]<numLines[n]; ++pos[n])
+				lengths[pos[n]] = GetDiscDelta(n, pos[n], d==1)*gridDelta;
+			m_EdgeLengthTable[d][n].swap(lengths);
+		}
 }
 
 double Operator::GetCellVolume(const unsigned int pos[3], bool dualMesh) const
@@ -535,6 +620,8 @@ void Operator::ShowStat() const
 	cout << "Nyquist criteria (TS)\t: " << m_Exc->GetNyquistNum() << endl;
 	cout << "Nyquist criteria (s)\t: " << m_Exc->GetNyquistNum()*dT << endl;
 	cout << "-----------------------------------" << endl;
+	if (m_Coeffs)
+		m_Coeffs->ShowStat(cout);
 }
 
 void Operator::ShowExtStat() const
@@ -840,14 +927,47 @@ double Operator::GetMinMeshStep() const
 
 void Operator::InitOperator()
 {
-	delete vv_ptr;
-	delete vi_ptr;
-	delete iv_ptr;
-	delete ii_ptr;
-	vv_ptr = new ArrayLib::ArrayNIJK<FDTD_FLOAT>("vv", numLines);
-	vi_ptr = new ArrayLib::ArrayNIJK<FDTD_FLOAT>("vi", numLines);
-	iv_ptr = new ArrayLib::ArrayNIJK<FDTD_FLOAT>("iv", numLines);
-	ii_ptr = new ArrayLib::ArrayNIJK<FDTD_FLOAT>("ii", numLines);
+	// the layout the engine reads; the GPU backends read the coefficients through GetVV() and
+	// friends, in any layout, the basic one is the fastest to build and read
+	if (m_EngineType==Engine::UNKNOWN)
+		throw std::logic_error("Operator::InitOperator: no engine type set (SetEngineType())");
+	delete m_Coeffs;
+	m_ECCoeffs = NULL;
+	if (m_EngineType==Engine::SSE)
+		m_Coeffs = new Coeffs_SSE_Compressed();
+	else if (m_EngineType==Engine::BASIC)
+		m_Coeffs = new Coeffs_Basic();
+	else
+	{
+		// the CPU and GPU engines read each coefficient once to build their own form of them:
+		// computed from the circuit values when read, no array of their own
+		m_ECCoeffs = new Coeffs_EC();
+		m_Coeffs = m_ECCoeffs;
+	}
+	m_Coeffs->Init(numLines);
+	if (m_ECCoeffs)
+		m_ECCoeffs->SetEC(EC_C, EC_G, EC_L, EC_R, dT);
+}
+
+void Operator::FreeEC()
+{
+	for (int n=0; n<3; ++n)
+	{
+		delete[] EC_C[n];
+		EC_C[n]=NULL;
+		delete[] EC_G[n];
+		EC_G[n]=NULL;
+		delete[] EC_L[n];
+		EC_L[n]=NULL;
+		delete[] EC_R[n];
+		EC_R[n]=NULL;
+	}
+}
+
+void Operator::FreeCoeffs()
+{
+	m_Coeffs->Free();
+	FreeEC();
 }
 
 void Operator::InitDataStorage()
@@ -957,36 +1077,25 @@ void Operator::SetExcitationSignal(Excitation* exc)
 
 void Operator::Calc_ECOperatorPos(int n, unsigned int* pos)
 {
-	unsigned int i = MainOp->SetPos(pos[0],pos[1],pos[2]);
-	double C = EC_C[n][i];
-	double G = EC_G[n][i];
-	if (C>0)
+	if (m_ECCoeffs)
 	{
-		SetVV(n,pos[0],pos[1],pos[2], (1.0-dT*G/2.0/C)/(1.0+dT*G/2.0/C) );
-		SetVI(n,pos[0],pos[1],pos[2], (dT/C)/(1.0+dT*G/2.0/C) );
+		// computed from the circuit values when read
+		m_ECCoeffs->Reset(n, pos[0], pos[1], pos[2]);
+		return;
 	}
-	else
-	{
-		SetVV(n,pos[0],pos[1],pos[2], 0 );
-		SetVI(n,pos[0],pos[1],pos[2], 0 );
-	}
-
-	double L = EC_L[n][i];
-	double R = EC_R[n][i];
-	if (L>0)
-	{
-		SetII(n,pos[0],pos[1],pos[2], (1.0-dT*R/2.0/L)/(1.0+dT*R/2.0/L) );
-		SetIV(n,pos[0],pos[1],pos[2], (dT/L)/(1.0+dT*R/2.0/L) );
-	}
-	else
-	{
-		SetII(n,pos[0],pos[1],pos[2], 0 );
-		SetIV(n,pos[0],pos[1],pos[2], 0 );
-	}
+	const size_t i = GetECIndex(pos);
+	FDTD_FLOAT self, curl;
+	Coeffs_FromEC(EC_C[n][i], EC_G[n][i], dT, self, curl);
+	SetVV(n,pos[0],pos[1],pos[2], self);
+	SetVI(n,pos[0],pos[1],pos[2], curl);
+	Coeffs_FromEC(EC_L[n][i], EC_R[n][i], dT, self, curl);
+	SetII(n,pos[0],pos[1],pos[2], self);
+	SetIV(n,pos[0],pos[1],pos[2], curl);
 }
 
 int Operator::CalcECOperator( DebugFlags debugFlags )
 {
+	m_DebugFlags = debugFlags;
 	Init_EC();
 	InitDataStorage();
 
@@ -1030,21 +1139,15 @@ int Operator::CalcECOperator( DebugFlags debugFlags )
 
 	InitOperator();
 
-	unsigned int pos[3];
-
-	for (int n=0; n<3; ++n)
-	{
-		for (pos[0]=0; pos[0]<numLines[0]; ++pos[0])
-		{
-			for (pos[1]=0; pos[1]<numLines[1]; ++pos[1])
-			{
-				for (pos[2]=0; pos[2]<numLines[2]; ++pos[2])
-				{
-					Calc_ECOperatorPos(n,pos);
-				}
-			}
-		}
-	}
+	if (m_ECCoeffs==NULL)   // else computed from the circuit values when read
+		ParallelFor(numLines[0], [this](unsigned int, size_t begin, size_t end) {
+			unsigned int pos[3];
+			for (int n=0; n<3; ++n)
+				for (pos[0]=begin; pos[0]<end; ++pos[0])
+					for (pos[1]=0; pos[1]<numLines[1]; ++pos[1])
+						for (pos[2]=0; pos[2]<numLines[2]; ++pos[2])
+							Calc_ECOperatorPos(n,pos);
+		});
 
 	//Apply PEC to all boundary's
 	bool PEC[6]={1,1,1,1,1,1};
@@ -1088,18 +1191,11 @@ int Operator::CalcECOperator( DebugFlags debugFlags )
 	if (debugFlags & debugPEC)
 		DumpPEC2File( "PEC_dump" );
 
-	//cleanup
-	for (int n=0; n<3; ++n)
-	{
-		delete[] EC_C[n];
-		EC_C[n]=NULL;
-		delete[] EC_G[n];
-		EC_G[n]=NULL;
-		delete[] EC_L[n];
-		EC_L[n]=NULL;
-		delete[] EC_R[n];
-		EC_R[n]=NULL;
-	}
+	// the circuit values are no longer needed, unless the coefficients are computed from them (FreeCoeffs())
+	if (m_ECCoeffs==NULL)
+		FreeEC();
+
+	m_Coeffs->Finalize();
 
 	return 0;
 }
@@ -1194,12 +1290,7 @@ void Operator::ApplyMagneticBC(bool* dirs)
 	}
 }
 
-bool Operator::Calc_ECPos(
-	int ny,
-	const unsigned int* pos,
-	double* EC,
-	std::vector<CSPrimitives*> vPrims
-) const
+bool Operator::Calc_ECPos(int ny, const unsigned int* pos, double* EC, const std::vector<CSPrimitives*>& vPrims) const
 {
 	double EffMat[4];
 	Calc_EffMatPos(ny,pos,EffMat, vPrims);
@@ -1281,17 +1372,22 @@ bool Operator::GetCellCenterMaterialAvgCoord(const int pos[], double coord[3]) c
 	return true;
 }
 
-double Operator::GetMaterial(
-	int ny,
-	const double* coords,
-	int MatType,
-	std::vector<CSPrimitives*> vPrims,
-	bool markAsUsed
-) const
+double Operator::GetMaterial(int ny, const double* coords, int MatType, const std::vector<CSPrimitives*>& vPrims, bool markAsUsed) const
+{
+	return GetMaterialValue(CSX->GetPropertyByCoordPriority(coords,vPrims,markAsUsed), ny, coords, MatType);
+}
+
+void Operator::GetMaterials(int ny, const double* coords, int type1, int type2, double& val1, double& val2, const std::vector<CSPrimitives*>& vPrims, bool markAsUsed) const
 {
 	CSProperties* prop = CSX->GetPropertyByCoordPriority(coords,vPrims,markAsUsed);
+	val1 = GetMaterialValue(prop, ny, coords, type1);
+	val2 = GetMaterialValue(prop, ny, coords, type2);
+}
 
-	CSPropMaterial* mat = dynamic_cast<CSPropMaterial*>(prop);
+double Operator::GetMaterialValue(CSProperties* prop, int ny, const double* coords, int MatType) const
+{
+	// only CSPropMaterial and its subclasses have the type MATERIAL: no dynamic_cast, which compares type names across the libraries
+	CSPropMaterial* mat = (prop && (prop->GetType() & CSProperties::MATERIAL)) ? static_cast<CSPropMaterial*>(prop) : NULL;
 	if (mat)
 	{
 		switch (MatType)
@@ -1330,13 +1426,9 @@ double Operator::GetMaterial(
 	}
 }
 
-bool Operator::AverageMatCellCenter(
-	int ny,
-	const unsigned int* pos,
-	double* EffMat,
-	std::vector<CSPrimitives *> vPrims
-) const
+bool Operator::AverageMatCellCenter(int ny, const unsigned int* pos, double* EffMat, const std::vector<CSPrimitives*>& vPrims) const
 {
+	double eps, kappa, mue;   // GetMaterials()
 	int n=ny;
 	double coord[3];
 	int nP = (n+1)%3;
@@ -1355,8 +1447,9 @@ bool Operator::AverageMatCellCenter(
 	if (GetCellCenterMaterialAvgCoord(loc_pos,coord))
 	{
 		A_n = GetNodeArea(ny,loc_pos,true);
-		EffMat[0] += GetMaterial(n, coord, 0, vPrims)*A_n;
-		EffMat[1] += GetMaterial(n, coord, 1, vPrims)*A_n;
+		GetMaterials(n, coord, 0, 1, eps, kappa, vPrims);
+		EffMat[0] += eps*A_n;
+		EffMat[1] += kappa*A_n;
 		area+=A_n;
 	}
 
@@ -1365,8 +1458,9 @@ bool Operator::AverageMatCellCenter(
 	if (GetCellCenterMaterialAvgCoord(loc_pos,coord))
 	{
 		A_n = GetNodeArea(ny,loc_pos,true);
-		EffMat[0] += GetMaterial(n, coord, 0, vPrims)*A_n;
-		EffMat[1] += GetMaterial(n, coord, 1, vPrims)*A_n;
+		GetMaterials(n, coord, 0, 1, eps, kappa, vPrims);
+		EffMat[0] += eps*A_n;
+		EffMat[1] += kappa*A_n;
 		area+=A_n;
 	}
 
@@ -1376,8 +1470,9 @@ bool Operator::AverageMatCellCenter(
 	if (GetCellCenterMaterialAvgCoord(loc_pos,coord))
 	{
 		A_n = GetNodeArea(ny,loc_pos,true);
-		EffMat[0] += GetMaterial(n, coord, 0, vPrims)*A_n;
-		EffMat[1] += GetMaterial(n, coord, 1, vPrims)*A_n;
+		GetMaterials(n, coord, 0, 1, eps, kappa, vPrims);
+		EffMat[0] += eps*A_n;
+		EffMat[1] += kappa*A_n;
 		area+=A_n;
 	}
 
@@ -1386,8 +1481,9 @@ bool Operator::AverageMatCellCenter(
 	if (GetCellCenterMaterialAvgCoord(loc_pos,coord))
 	{
 		A_n = GetNodeArea(ny,loc_pos,true);
-		EffMat[0] += GetMaterial(n, coord, 0, vPrims)*A_n;
-		EffMat[1] += GetMaterial(n, coord, 1, vPrims)*A_n;
+		GetMaterials(n, coord, 0, 1, eps, kappa, vPrims);
+		EffMat[0] += eps*A_n;
+		EffMat[1] += kappa*A_n;
 		area+=A_n;
 	}
 
@@ -1405,8 +1501,8 @@ bool Operator::AverageMatCellCenter(
 	if (GetCellCenterMaterialAvgCoord(loc_pos,coord))
 	{
 		delta_ny = GetNodeWidth(n,loc_pos,true);
-		EffMat[2] += delta_ny / GetMaterial(n, coord, 2, vPrims);
-		sigma = GetMaterial(n, coord, 3, vPrims);
+		GetMaterials(n, coord, 2, 3, mue, sigma, vPrims);
+		EffMat[2] += delta_ny / mue;
 		if (sigma)
 			EffMat[3] += delta_ny / sigma;
 		else
@@ -1419,8 +1515,8 @@ bool Operator::AverageMatCellCenter(
 	if (GetCellCenterMaterialAvgCoord(loc_pos,coord))
 	{
 		delta_ny = GetNodeWidth(n,loc_pos,true);
-		EffMat[2] += delta_ny / GetMaterial(n, coord, 2, vPrims);
-		sigma = GetMaterial(n, coord, 3, vPrims);
+		GetMaterials(n, coord, 2, 3, mue, sigma, vPrims);
+		EffMat[2] += delta_ny / mue;
 		if (sigma)
 			EffMat[3] += delta_ny / sigma;
 		else
@@ -1441,13 +1537,9 @@ bool Operator::AverageMatCellCenter(
 	return true;
 }
 
-bool Operator::AverageMatQuarterCell(
-	int ny,
-	const unsigned int* pos,
-	double* EffMat,
-	std::vector<CSPrimitives*> vPrims
-) const
+bool Operator::AverageMatQuarterCell(int ny, const unsigned int* pos, double* EffMat, const std::vector<CSPrimitives*>& vPrims) const
 {
+	double eps, kappa, mue;   // GetMaterials()
 	int n=ny;
 	double coord[3];
 	double shiftCoord[3];
@@ -1473,8 +1565,9 @@ bool Operator::AverageMatQuarterCell(
 	shiftCoord[nP] = coord[nP]+deltaP*0.25;
 	shiftCoord[nPP] = coord[nPP]+deltaPP*0.25;
 	A_n = GetNodeArea(ny,loc_pos,true);
-	EffMat[0] = GetMaterial(n, shiftCoord, 0, vPrims)*A_n;
-	EffMat[1] = GetMaterial(n, shiftCoord, 1, vPrims)*A_n;
+	GetMaterials(n, shiftCoord, 0, 1, eps, kappa, vPrims);
+	EffMat[0] = eps*A_n;
+	EffMat[1] = kappa*A_n;
 	area+=A_n;
 
 	//shift up-left
@@ -1484,8 +1577,9 @@ bool Operator::AverageMatQuarterCell(
 
 	--loc_pos[nP];
 	A_n = GetNodeArea(ny,loc_pos,true);
-	EffMat[0] += GetMaterial(n, shiftCoord, 0, vPrims)*A_n;
-	EffMat[1] += GetMaterial(n, shiftCoord, 1, vPrims)*A_n;
+	GetMaterials(n, shiftCoord, 0, 1, eps, kappa, vPrims);
+	EffMat[0] += eps*A_n;
+	EffMat[1] += kappa*A_n;
 	area+=A_n;
 
 	//shift down-right
@@ -1495,8 +1589,9 @@ bool Operator::AverageMatQuarterCell(
 	++loc_pos[nP];
 	--loc_pos[nPP];
 	A_n = GetNodeArea(ny,loc_pos,true);
-	EffMat[0] += GetMaterial(n, shiftCoord, 0, vPrims)*A_n;
-	EffMat[1] += GetMaterial(n, shiftCoord, 1, vPrims)*A_n;
+	GetMaterials(n, shiftCoord, 0, 1, eps, kappa, vPrims);
+	EffMat[0] += eps*A_n;
+	EffMat[1] += kappa*A_n;
 	area+=A_n;
 
 	//shift down-left
@@ -1505,8 +1600,9 @@ bool Operator::AverageMatQuarterCell(
 	shiftCoord[nPP] = coord[nPP]-deltaPP_M*0.25;
 	--loc_pos[nP];
 	A_n = GetNodeArea(ny,loc_pos,true);
-	EffMat[0] += GetMaterial(n, shiftCoord, 0, vPrims)*A_n;
-	EffMat[1] += GetMaterial(n, shiftCoord, 1, vPrims)*A_n;
+	GetMaterials(n, shiftCoord, 0, 1, eps, kappa, vPrims);
+	EffMat[0] += eps*A_n;
+	EffMat[1] += kappa*A_n;
 	area+=A_n;
 
 	EffMat[0]*=EPS0/area;
@@ -1524,8 +1620,9 @@ bool Operator::AverageMatQuarterCell(
 	shiftCoord[nPP] = coord[nPP]+deltaPP*0.5;
 	--loc_pos[n];
 	double delta_ny = GetNodeWidth(n,loc_pos,true);
-	EffMat[2] = delta_ny / GetMaterial(n, shiftCoord, 2, vPrims);
-	double sigma = GetMaterial(n, shiftCoord, 3, vPrims);
+	double sigma;
+	GetMaterials(n, shiftCoord, 2, 3, mue, sigma, vPrims);
+	EffMat[2] = delta_ny / mue;
 	if (sigma)
 		EffMat[3] = delta_ny / sigma;
 	else
@@ -1538,8 +1635,8 @@ bool Operator::AverageMatQuarterCell(
 	shiftCoord[nPP] = coord[nPP]+deltaPP*0.5;
 	++loc_pos[n];
 	delta_ny = GetNodeWidth(n,loc_pos,true);
-	EffMat[2] += delta_ny / GetMaterial(n, shiftCoord, 2, vPrims);
-	sigma = GetMaterial(n, shiftCoord, 3, vPrims);
+	GetMaterials(n, shiftCoord, 2, 3, mue, sigma, vPrims);
+	EffMat[2] += delta_ny / mue;
 	if (sigma)
 		EffMat[3] += delta_ny / sigma;
 	else
@@ -1560,12 +1657,7 @@ bool Operator::AverageMatQuarterCell(
 	return true;
 }
 
-bool Operator::Calc_EffMatPos(
-	int ny,
-	const unsigned int* pos,
-	double* EffMat,
-	std::vector<CSPrimitives *> vPrims
-) const
+bool Operator::Calc_EffMatPos(int ny, const unsigned int* pos, double* EffMat, const std::vector<CSPrimitives*>& vPrims) const
 {
 	switch (m_MatAverageMethod)
 	{
@@ -1771,6 +1863,7 @@ bool Operator::IsLEparRC(const CSPropLumpedElement* const p_prop)
 
 void Operator::Init_EC()
 {
+	InitGeometry();
 	for (int n=0; n<3; ++n)
 	{
 		//init x-cell-array
@@ -1782,14 +1875,17 @@ void Operator::Init_EC()
 		EC_G[n] = new FDTD_FLOAT[MainOp->GetSize()];
 		EC_L[n] = new FDTD_FLOAT[MainOp->GetSize()];
 		EC_R[n] = new FDTD_FLOAT[MainOp->GetSize()];
-		for (unsigned int i=0; i<MainOp->GetSize(); i++) //init all
-		{
-			EC_C[n][i]=0;
-			EC_G[n][i]=0;
-			EC_L[n][i]=0;
-			EC_R[n][i]=0;
-		}
 	}
+	// all 0 (a multi-grid leaves out the lines of its sub-grid), on the build threads
+	ParallelFor(MainOp->GetSize(), [this](unsigned int, size_t begin, size_t end) {
+		for (int n=0; n<3; ++n)
+		{
+			std::fill(EC_C[n]+begin, EC_C[n]+end, 0);
+			std::fill(EC_G[n]+begin, EC_G[n]+end, 0);
+			std::fill(EC_L[n]+begin, EC_L[n]+end, 0);
+			std::fill(EC_R[n]+begin, EC_R[n]+end, 0);
+		}
+	});
 }
 
 bool Operator::Calc_EC()
@@ -1801,15 +1897,56 @@ bool Operator::Calc_EC()
 	}
 
 	MainOp->SetPos(0,0,0);
-	Calc_EC_Range(0,numLines[0]-1);
+
+	unsigned int numThreads = GetBuildThreads();
+	std::vector<unsigned int> start, stop;
+	CalcStartStopLines(numThreads, start, stop);
+	if (g_settings.GetVerboseLevel()>0)
+		cout << "Building the operator on " << numThreads << " threads." << endl;
+
+	// the x lines one by one to the threads as they get done: the material lookups cost unevenly
+	std::vector<unsigned int> lines;
+	for (unsigned int n=0; n<numThreads; ++n)
+		for (unsigned int x=start.at(n); x<=stop.at(n); ++x)
+			lines.push_back(x);
+	ParallelForEach(lines.size(), numThreads, [&](unsigned int, size_t i) {
+		Calc_EC_Range(lines[i], lines[i]);
+	});
 	return true;
 }
 
-std::vector<CSPrimitives*>
-Operator::GetPrimitivesBoundBox(
-	int posX, int posY, int posZ,
-	CSProperties::PropertyType type
-) const
+unsigned int Operator::GetBuildThreads() const
+{
+	if ((m_numThreads==0) || (m_numThreads>AvailableThreads()))
+		return AvailableThreads();
+	return m_numThreads;
+}
+
+void Operator::ParallelFor(size_t count, const std::function<void(unsigned int thread, size_t begin, size_t end)>& fn) const
+{
+	::ParallelFor(count, GetBuildThreads(), fn);
+}
+
+void Operator::CalcStartStopLines(unsigned int &numThreads, std::vector<unsigned int> &start, std::vector<unsigned int> &stop) const
+{
+	std::vector<unsigned int> jpt = AssignJobs2Threads(numLines[0], numThreads, true);
+
+	numThreads = jpt.size();
+
+	start.resize(numThreads);
+	stop.resize(numThreads);
+
+	start.at(0)=0;
+	stop.at(0)=jpt.at(0)-1;
+
+	for (unsigned int n=1; n<numThreads; n++)
+	{
+		start.at(n) = stop.at(n-1)+1;
+		stop.at(n) = start.at(n) + jpt.at(n) - 1;
+	}
+}
+
+std::vector<CSPrimitives*> Operator::GetPrimitivesBoundBox(int posX, int posY, int posZ, CSProperties::PropertyType type) const
 {
 	double boundBox[6];
 	int BBpos[3] = {posX, posY, posZ};
@@ -1848,7 +1985,7 @@ void Operator::Calc_EC_Range(unsigned int xStart, unsigned int xStop)
 
 			for (pos[2]=0; pos[2]<numLines[2]; ++pos[2])
 			{
-				ipos = MainOp->GetPos(pos[0],pos[1],pos[2]);
+				ipos = GetECIndex(pos);
 				for (int n=0; n<3; ++n)
 				{
 					Calc_ECPos(n,pos,inEC,vPrims);
@@ -1874,6 +2011,58 @@ void Operator::SetTimestepFactor(double factor)
 	m_TimeStepFactor=factor;
 }
 
+namespace
+{
+//! the smallest timestep a search found and where; on equal values the first in the order of the serial loops (n, z, y, x),
+//! so the result does not depend on how the search is split over the threads
+struct Timestep_Min
+{
+	double dT = 1e200;
+	unsigned int n = 0;
+	unsigned int pos[3] = {0, 0, 0};
+
+	//! (n1, p1) before (n2, p2) in the order n, z, y, x
+	static bool Earlier(unsigned int n1, const unsigned int p1[3], unsigned int n2, const unsigned int p2[3])
+	{
+		if (n1!=n2)
+			return n1<n2;
+		for (int a=2; a>=0; --a)
+			if (p1[a]!=p2[a])
+				return p1[a]<p2[a];
+		return false;
+	}
+	void Add(double newT, unsigned int ny, const unsigned int p[3])
+	{
+		if (!(newT>0.0))
+			return;
+		if ((newT<dT) || ((newT==dT) && Earlier(ny, p, n, pos)))
+		{
+			dT = newT;
+			n = ny;
+			pos[0] = p[0]; pos[1] = p[1]; pos[2] = p[2];
+		}
+	}
+	void Join(const Timestep_Min& o)
+	{
+		if ((o.dT<dT) || ((o.dT==dT) && Earlier(o.n, o.pos, n, pos)))
+			*this = o;
+	}
+};
+
+//! the smallest of the per thread results
+double Timestep_Result(const std::vector<Timestep_Min>& found, const char* name)
+{
+	Timestep_Min best;
+	for (size_t t=0; t<found.size(); ++t)
+		best.Join(found[t]);
+	if (best.dT==0)
+		throw std::runtime_error("Operator::CalcTimestep: Timestep is zero... this is not supposed to happen!");
+	if (g_settings.GetVerboseLevel()>1)
+		cout << "Operator::" << name << ": Smallest timestep (" << best.dT << "s) found at position: " <<  best.n << " : " << best.pos[0] << ";" <<  best.pos[1] << ";" <<  best.pos[2] << endl;
+	return best.dT;
+}
+}
+
 double Operator::CalcTimestep()
 {
 	if (m_TimeStepVar==3)
@@ -1887,50 +2076,28 @@ double Operator::CalcTimestep()
 double Operator::CalcTimestep_Var1()
 {
 	m_Used_TS_Name = std::string("Rennings_1");
-	dT=1e200;
-	double newT;
-	unsigned int pos[3];
-	unsigned int smallest_pos[3] = {0, 0, 0};
-	unsigned int smallest_n = 0;
-	unsigned int ipos;
-	unsigned int ipos_PM;
-	unsigned int ipos_PPM;
-	MainOp->SetReflection2Cell();
-	for (int n=0; n<3; ++n)
-	{
-		int nP = (n+1)%3;
-		int nPP = (n+2)%3;
-
-		for (pos[2]=0; pos[2]<numLines[2]; ++pos[2])
+	// on the build threads along x
+	std::vector<Timestep_Min> found(GetBuildThreads());
+	ParallelFor(numLines[0], [&](unsigned int thread, size_t begin, size_t end) {
+		Timestep_Min& m = found[thread];
+		unsigned int pos[3];
+		size_t ipos, ipos_PM, ipos_PPM;
+		for (int n=0; n<3; ++n)
 		{
-			for (pos[1]=0; pos[1]<numLines[1]; ++pos[1])
-			{
-				for (pos[0]=0; pos[0]<numLines[0]; ++pos[0])
-				{
-					ipos = MainOp->SetPos(pos[0],pos[1],pos[2]);
-					ipos_PM = MainOp->Shift(nP,-1);
-					MainOp->ResetShift();
-					ipos_PPM= MainOp->Shift(nPP,-1);
-					MainOp->ResetShift();
-					newT = 2/sqrt( ( 4/EC_L[nP][ipos] + 4/EC_L[nP][ipos_PPM] + 4/EC_L[nPP][ipos] + 4/EC_L[nPP][ipos_PM]) / EC_C[n][ipos] );
-					if ((newT<dT) && (newT>0.0))
+			int nP = (n+1)%3;
+			int nPP = (n+2)%3;
+			for (pos[0]=begin; pos[0]<end; ++pos[0])
+				for (pos[1]=0; pos[1]<numLines[1]; ++pos[1])
+					for (pos[2]=0; pos[2]<numLines[2]; ++pos[2])
 					{
-						dT=newT;
-						smallest_pos[0]=pos[0];smallest_pos[1]=pos[1];smallest_pos[2]=pos[2];
-						smallest_n = n;
+						ipos = GetECIndex(pos);
+						ipos_PM = GetECIndexShifted(pos, nP, -1);
+						ipos_PPM= GetECIndexShifted(pos, nPP, -1);
+						m.Add(2/sqrt( ( 4/EC_L[nP][ipos] + 4/EC_L[nP][ipos_PPM] + 4/EC_L[nPP][ipos] + 4/EC_L[nPP][ipos_PM]) / EC_C[n][ipos] ), n, pos);
 					}
-				}
-			}
 		}
-	}
-	if (dT==0)
-	{
-		throw std::runtime_error("Operator::CalcTimestep: Timestep is zero... this is not supposed to happen!");
-	}
-	if (g_settings.GetVerboseLevel()>1)
-	{
-		cout << "Operator::CalcTimestep_Var1: Smallest timestep (" << dT << "s) found at position: " <<  smallest_n << " : " << smallest_pos[0] << ";" <<  smallest_pos[1] << ";" <<  smallest_pos[2] << endl;
-	}
+	});
+	dT = Timestep_Result(found, "CalcTimestep_Var1");
 	return 0;
 }
 
@@ -1948,85 +2115,88 @@ double min(double* val, unsigned int count)
 //Berechnung nach Andreas Rennings Dissertation 2008, Seite 76 ff, Formel 4.77 ff
 double Operator::CalcTimestep_Var3()
 {
-	dT=1e200;
 	m_Used_TS_Name = std::string("Rennings_2");
-	double newT;
-	unsigned int pos[3];
-	unsigned int smallest_pos[3] = {0, 0, 0};
-	unsigned int smallest_n = 0;
-	unsigned int ipos;
-	double w_total=0;
-	double wqp=0,wt1=0,wt2=0;
-	double wt_4[4]={0,0,0,0};
-	MainOp->SetReflection2Cell();
-	for (int n=0; n<3; ++n)
-	{
-		int nP = (n+1)%3;
-		int nPP = (n+2)%3;
-
-		for (pos[2]=0; pos[2]<numLines[2]; ++pos[2])
+	// on the build threads along x
+	std::vector<Timestep_Min> found(GetBuildThreads());
+	ParallelFor(numLines[0], [&](unsigned int thread, size_t begin, size_t end) {
+		Timestep_Min& m = found[thread];
+		unsigned int pos[3];
+		double w_total=0;
+		double wqp=0,wt1=0,wt2=0;
+		double wt_4[4]={0,0,0,0};
+		for (int n=0; n<3; ++n)
 		{
-			for (pos[1]=0; pos[1]<numLines[1]; ++pos[1])
+			int nP = (n+1)%3;
+			int nPP = (n+2)%3;
+
+			for (pos[0]=begin; pos[0]<end; ++pos[0])
 			{
-				for (pos[0]=0; pos[0]<numLines[0]; ++pos[0])
+				for (pos[1]=0; pos[1]<numLines[1]; ++pos[1])
 				{
-					MainOp->ResetShift();
-					ipos = MainOp->SetPos(pos[0],pos[1],pos[2]);
-					wqp  = 1/(EC_L[nPP][ipos]*EC_C[n][MainOp->GetShiftedPos(nP ,1)]) + 1/(EC_L[nPP][ipos]*EC_C[n][ipos]);
-					wqp += 1/(EC_L[nP ][ipos]*EC_C[n][MainOp->GetShiftedPos(nPP,1)]) + 1/(EC_L[nP ][ipos]*EC_C[n][ipos]);
-					ipos = MainOp->Shift(nP,-1);
-					wqp += 1/(EC_L[nPP][ipos]*EC_C[n][MainOp->GetShiftedPos(nP ,1)]) + 1/(EC_L[nPP][ipos]*EC_C[n][ipos]);
-					ipos = MainOp->Shift(nPP,-1);
-					wqp += 1/(EC_L[nP ][ipos]*EC_C[n][MainOp->GetShiftedPos(nPP,1)]) + 1/(EC_L[nP ][ipos]*EC_C[n][ipos]);
-
-					MainOp->ResetShift();
-					ipos = MainOp->SetPos(pos[0],pos[1],pos[2]);
-					wt_4[0] = 1/(EC_L[nPP][ipos]						  *EC_C[nP ][ipos]);
-					wt_4[1] = 1/(EC_L[nPP][MainOp->GetShiftedPos(nP ,-1)] *EC_C[nP ][ipos]);
-					wt_4[2] = 1/(EC_L[nP ][ipos]						  *EC_C[nPP][ipos]);
-					wt_4[3] = 1/(EC_L[nP ][MainOp->GetShiftedPos(nPP,-1)] *EC_C[nPP][ipos]);
-
-					wt1 = wt_4[0]+wt_4[1]+wt_4[2]+wt_4[3] - 2*min(wt_4,4);
-
-					MainOp->ResetShift();
-					ipos = MainOp->SetPos(pos[0],pos[1],pos[2]);
-					wt_4[0] = 1/(EC_L[nPP][ipos]						  *EC_C[nP ][MainOp->GetShiftedPos(n,1)]);
-					wt_4[1] = 1/(EC_L[nPP][MainOp->GetShiftedPos(nP ,-1)] *EC_C[nP ][MainOp->GetShiftedPos(n,1)]);
-					wt_4[2] = 1/(EC_L[nP ][ipos]						  *EC_C[nPP][MainOp->GetShiftedPos(n,1)]);
-					wt_4[3] = 1/(EC_L[nP ][MainOp->GetShiftedPos(nPP,-1)] *EC_C[nPP][MainOp->GetShiftedPos(n,1)]);
-
-					wt2 = wt_4[0]+wt_4[1]+wt_4[2]+wt_4[3] - 2*min(wt_4,4);
-
-					w_total = wqp + wt1 + wt2;
-					newT = 2/sqrt( w_total );
-					if ((newT<dT) && (newT>0.0))
+					for (pos[2]=0; pos[2]<numLines[2]; ++pos[2])
 					{
-						dT=newT;
-						smallest_pos[0]=pos[0];smallest_pos[1]=pos[1];smallest_pos[2]=pos[2];
-						smallest_n = n;
+						// the neighbours, clamped into the mesh at its borders
+						const size_t i0     = GetECIndex(pos);
+						const size_t iP     = GetECIndexShifted(pos, nP, 1);
+						const size_t iPP    = GetECIndexShifted(pos, nPP, 1);
+						const size_t iN     = GetECIndexShifted(pos, n, 1);
+						const size_t iPm    = GetECIndexShifted(pos, nP, -1);
+						const size_t iPPm   = GetECIndexShifted(pos, nPP, -1);
+						wqp  = 1/(EC_L[nPP][i0]*EC_C[n][iP]) + 1/(EC_L[nPP][i0]*EC_C[n][i0]);
+						wqp += 1/(EC_L[nP ][i0]*EC_C[n][iPP]) + 1/(EC_L[nP ][i0]*EC_C[n][i0]);
+						wqp += 1/(EC_L[nPP][iPm]*EC_C[n][i0]) + 1/(EC_L[nPP][iPm]*EC_C[n][iPm]);
+						// TODO check against Rennings, formula 4.77: the mirror of the term above. Up to openEMS 0.37 this
+						// term read at the diagonal neighbour (nP-1, nPP-1): the former AdrOp code did not reset its
+						// Shift(nP,-1) before Shift(nPP,-1)
+						wqp += 1/(EC_L[nP ][iPPm]*EC_C[n][i0]) + 1/(EC_L[nP ][iPPm]*EC_C[n][iPPm]);
+
+						wt_4[0] = 1/(EC_L[nPP][i0]  *EC_C[nP ][i0]);
+						wt_4[1] = 1/(EC_L[nPP][iPm] *EC_C[nP ][i0]);
+						wt_4[2] = 1/(EC_L[nP ][i0]  *EC_C[nPP][i0]);
+						wt_4[3] = 1/(EC_L[nP ][iPPm]*EC_C[nPP][i0]);
+
+						wt1 = wt_4[0]+wt_4[1]+wt_4[2]+wt_4[3] - 2*min(wt_4,4);
+
+						wt_4[0] = 1/(EC_L[nPP][i0]  *EC_C[nP ][iN]);
+						wt_4[1] = 1/(EC_L[nPP][iPm] *EC_C[nP ][iN]);
+						wt_4[2] = 1/(EC_L[nP ][i0]  *EC_C[nPP][iN]);
+						wt_4[3] = 1/(EC_L[nP ][iPPm]*EC_C[nPP][iN]);
+
+						wt2 = wt_4[0]+wt_4[1]+wt_4[2]+wt_4[3] - 2*min(wt_4,4);
+
+						w_total = wqp + wt1 + wt2;
+						m.Add(2/sqrt( w_total ), n, pos);
 					}
 				}
 			}
 		}
-	}
-	if (dT==0)
-	{
-		throw std::runtime_error("Operator::CalcTimestep: Timestep is zero... this is not supposed to happen!");
-	}
-	if (g_settings.GetVerboseLevel()>1)
-	{
-		cout << "Operator::CalcTimestep_Var3: Smallest timestep (" << dT << "s) found at position: " <<  smallest_n << " : " << smallest_pos[0] << ";" <<  smallest_pos[1] << ";" <<  smallest_pos[2] << endl;
-	}
+	});
+	dT = Timestep_Result(found, "CalcTimestep_Var3");
 	return 0;
 }
 
 bool Operator::CalcPEC()
 {
-	m_Nr_PEC[0]=0;
-	m_Nr_PEC[1]=0;
-	m_Nr_PEC[2]=0;
+	unsigned int numThreads = GetBuildThreads();
+	std::vector<unsigned int> start, stop;
+	CalcStartStopLines(numThreads, start, stop);
 
-	CalcPEC_Range(0,numLines[0]-1,m_Nr_PEC);
+	std::vector<unsigned int> counter(3*numThreads, 0);   // three PEC counters per thread, summed up below
+	// the x lines one by one to the threads as they get done, as in Calc_EC()
+	std::vector<unsigned int> lines;
+	for (unsigned int n=0; n<numThreads; ++n)
+		for (unsigned int x=start.at(n); x<=stop.at(n); ++x)
+			lines.push_back(x);
+	ParallelForEach(lines.size(), numThreads, [&](unsigned int thread, size_t i) {
+		CalcPEC_Range(lines[i], lines[i], &counter[3*thread]);
+	});
+
+	for (int n=0; n<3; ++n)
+	{
+		m_Nr_PEC[n] = 0;
+		for (unsigned int t=0; t<numThreads; ++t)
+			m_Nr_PEC[n] += counter[3*t+n];
+	}
 
 	CalcPEC_Curves();
 

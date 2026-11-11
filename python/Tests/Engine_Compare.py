@@ -1,42 +1,72 @@
 # -*- coding: utf-8 -*-
 """
- GPU engine test — comparison with the basic engine
+ Engine comparison test — every engine against the basic engine
 
- Each case runs with engine='basic', engine='gpu-reference' and engine='gpu'
- and compares all probe files and all HDF5 field dumps.
+ Each case is a small model run with several engines; all probe files and all
+ HDF5 field dumps are compared with those of engine='basic':
 
- The reference backend performs the main FDTD updates on the CPU on its own
- copy of the fields, exactly like the basic engine, so its results must be
- bit-identical. A device backend (engine='gpu': Metal on macOS, HIP) runs on
- the GPU, whose float arithmetic may differ in rounding (e.g. fused
- multiply-add), so it is compared with a tolerance.
+   engine='gpu-reference'  the GPU engine's host backend: the main updates on
+                           the CPU, on its own copy of the fields, exactly like
+                           the basic engine, so bit-identical
+   engine='gpu'            a device backend (Metal on macOS, HIP), if a GPU is
+                           there: its float arithmetic may round differently
+                           (e.g. fused multiply-add), so within a tolerance
+   engine='cpu'            cell runs and factorised coefficients, the UPML and
+                           the dispersive materials fused into its update:
+                           within the tolerance, once on its flat sweep and
+                           once with temporal blocking forced, which must be
+                           bit-identical to the flat sweep
+   engine='multithreaded'  (cylindrical and multi-grid cases) bit-identical
 
- Together the cases use the excitation, UPML, Mur ABC, Lorentz and Debye material,
- lumped RLC, conducting sheet, lossy metal, TF/SF, local absorber, steady-state and
- cylinder extensions, and cylindrical meshes with one and two multi-grid
- levels. For cylindrical meshes the engine choice 'basic' has no effect, the
- CPU reference is the cylindrical (multithreaded) engine.
+ Together the cases use the excitation, UPML, Mur ABC, Lorentz and Debye
+ material, lumped RLC, conducting sheet, TF/SF, local absorber, steady-state
+ and cylinder extensions, and cylindrical meshes with one and two multi-grid
+ levels. Run on its own (python3 Engine_Compare.py) or by run_testsuite.py;
+ without a GPU the device backend is skipped.
 
- Pass criteria (per case)
-   the requested backend was created (not a silent fallback)
-   device backend: all extensions run on the device (backends in FULL_DEVICE_BACKENDS)
-   device backend, cases dumps_snapshot, multigrid_snapshot and dumps_snapshot_host_dft: the
-     dumps read field snapshots (FULL_DEVICE_BACKENDS); dumps_snapshot_host_dft sums the
-     frequency domain dumps from them on the host (OPENEMS_GPU_DUMPS=snapshot)
-   HIP backend, cases pml, pml_upml_regions and pml_upml_separate: the UPML is updated in the
-     fused step, by region kernels (OPENEMS_HIP_FUSED_STEP=0) and by separate kernels
-     (OPENEMS_HIP_UPML_FUSION=0), each bit-identical; pml_index32: the fused step with 32 bit
-     indices (OPENEMS_HIP_INDEX=32, the default on NVIDIA), bit-identical; pml_full_separate: the
-     separate kernels with the full UPML coefficient arrays instead of sets, bit-identical
-   device backend, cases dumps and sar: the FD dumps (the E field of the SAR) are accumulated on
-     the device (DEVICE_DFT_BACKENDS)
-   device backend, cases coeff_index32 and coeff_full: the update coefficients as sets with
-     a 32 bit index, and as full arrays (FULL_DEVICE_BACKENDS)
-   HIP backend: UPML coefficient storage uses 16 bit sets, 32 bit sets or full arrays,
-     including separate kernels with fusion disabled
-   reference backend: all probe data and field dumps bit-identical
-   device backend: max. deviation < 1e-4 of the peak value, per probe file and per field dump
-     (skipped without a GPU device)
+ Pass criteria, per case
+
+   every engine
+     created as requested (not a silent fallback)
+
+   gpu-reference
+     all probe data and field dumps bit-identical
+
+   gpu (skipped without a GPU device)
+     max. deviation < 1e-4 of the peak value, per probe file and per field dump
+     all extensions run on the device (backends in FULL_DEVICE_BACKENDS)
+     dumps_snapshot, multigrid_snapshot, dumps_snapshot_host_dft: the dumps
+       read field snapshots (FULL_DEVICE_BACKENDS); dumps_snapshot_host_dft
+       sums the frequency domain dumps from them on the host
+       (OPENEMS_GPU_DUMPS=snapshot)
+     dumps, sar: the FD dumps (the E field of the SAR) accumulated on the
+       device (DEVICE_DFT_BACKENDS)
+     coeff_index32, coeff_full: the update coefficients as sets with a 32 bit
+       index, and as full arrays (FULL_DEVICE_BACKENDS)
+     HIP only, each bit-identical to basic:
+       pml, pml_upml_regions, pml_upml_separate: the UPML in the fused step,
+         by region kernels (OPENEMS_HIP_FUSED_STEP=0) and by separate kernels
+         (OPENEMS_HIP_UPML_FUSION=0)
+       pml_index32: the fused step with 32 bit indices (OPENEMS_HIP_INDEX=32,
+         the default on NVIDIA)
+       pml_full_separate: the separate kernels with the full UPML coefficient
+         arrays instead of sets
+
+   cpu
+     max. deviation < 1e-4 of the peak value, like a device backend
+     blocking forced (OPENEMS_CPU_TBLOCK=2:5,3:7: tiles of 5 lines and 2
+       timesteps per block, of 7 lines and 3) and switched between those and
+       the flat sweep on every call at the start (OPENEMS_CPU_TRIAL):
+       bit-identical to the flat sweep
+     blocked in at least one case (the multi-grid cases run the flat sweep)
+
+   multithreaded (cylindrical and multi-grid cases)
+     bit-identical to basic
+
+ With the environment variable OPENEMS_ENGINE set (run_testsuite.py
+ --engine=<e>), only that engine is compared with basic: cpu (flat and
+ blocked), gpu or gpu-reference (both GPU backends), multithreaded (then in
+ every case); with basic there is nothing to compare.
 
  Tested with
   - python 3.13
@@ -371,7 +401,7 @@ def case_absorbers():
 
 
 def cylinder_mesh(FDTD, alpha, r0, r1, z_pad=0):
-    """ cylindrical mesh, the CPU reference is the cylindrical engine (engine='basic' has no effect);
+    """ cylindrical mesh;
         z_pad extends z beyond 0..30 on both sides, e.g. to make room for a PML """
     CSX = ContinuousStructure(CoordSystem=1)
     FDTD.SetCSX(CSX)
@@ -680,26 +710,72 @@ DEVICE_RTOL = 1e-4
 FULL_DEVICE_BACKENDS = ('HIP', 'Metal')
 # device backends that accumulate the frequency domain dumps
 DEVICE_DFT_BACKENDS = ('HIP',)
-engines = ('basic', 'gpu-reference', 'gpu')
+# the engines compared with basic: all of them, or those of OPENEMS_ENGINE (run_testsuite.py --engine)
+ENGINE_SETS = {'cpu': ('cpu', 'cpu-blocked'),
+               'gpu': ('gpu-reference', 'gpu'), 'gpu-reference': ('gpu-reference', 'gpu'),
+               'multithreaded': ('multithreaded',), 'sse': ('multithreaded',),
+               'sse-compressed': ('multithreaded',), 'fastest': ('multithreaded',),
+               'basic': ()}
+only = os.environ.get('OPENEMS_ENGINE')
+if only:
+    assert only in ENGINE_SETS, f'FAIL: OPENEMS_ENGINE={only} is no engine this test knows'
+    if not ENGINE_SETS[only]:
+        print(f'OPENEMS_ENGINE={only}: nothing to compare with the basic engine')
+        print('PASS')
+        sys.exit(0)
+    print(f'OPENEMS_ENGINE={only}: comparing {", ".join(ENGINE_SETS[only])} with the basic engine')
 
+blocked_cases = []
 for name, case, on_device in cases:
     print(f'Testing case: {name}')
-    paths = {engine: os.path.join(tempfile.gettempdir(), f'GPU_Engine_{name}_{engine}') for engine in engines}
+    if only:
+        engines = ('basic',) + ENGINE_SETS[only]
+    else:
+        engines = ('basic', 'gpu-reference', 'gpu', 'cpu', 'cpu-blocked')
+        if name.startswith(('cylinder', 'multigrid')):
+            engines += ('multithreaded',)   # the basic engine on a cylindrical mesh against the default one
+    paths = {engine: os.path.join(tempfile.gettempdir(), f'Engine_Compare_{name}_{engine}') for engine in engines}
     os.environ.update(CASE_ENV.get(name, {}))
     try:
-        logs = {engine: run_captured(case, paths[engine], engine) for engine in engines}
+        logs = {}
+        for engine in engines:
+            # the CPU engine flat, and with blocking forced even where the model fits the cache: two
+            # tiles and the flat sweep tried for a tiny time each, so the engine switches between them
+            # on every call at the start, then keeps one
+            os.environ['OPENEMS_CPU_TBLOCK'] = '2:5,3:7' if engine=='cpu-blocked' else '0'
+            os.environ['OPENEMS_CPU_TRIAL'] = '1e-9'
+            logs[engine] = run_captured(case, paths[engine], 'cpu' if engine=='cpu-blocked' else engine)
     finally:
+        del os.environ['OPENEMS_CPU_TBLOCK']
+        del os.environ['OPENEMS_CPU_TRIAL']
         for var in CASE_ENV.get(name, {}):
             del os.environ[var]
 
     assert 'Create FDTD engine (GPU' not in logs['basic'], \
         f'FAIL [{name}]: engine=basic created the GPU engine'
-    assert 'Create FDTD engine (GPU, backend: reference' in logs['gpu-reference'], \
-        f'FAIL [{name}]: engine=gpu-reference did not create the GPU engine with the reference backend'
 
-    diff, n_probes, n_dumps, _ = compare_outputs(paths['basic'], paths['gpu-reference'])
-    print(f'  reference backend: compared {n_probes} probe files and {n_dumps} field dumps')
-    assert not diff, f'FAIL [{name}]: reference backend differs from the basic engine in: {", ".join(n for n, _ in diff)}'
+    if 'gpu-reference' in engines:
+        assert 'Create FDTD engine (GPU, backend: reference' in logs['gpu-reference'], \
+            f'FAIL [{name}]: engine=gpu-reference did not create the GPU engine with the reference backend'
+        diff, n_probes, n_dumps, _ = compare_outputs(paths['basic'], paths['gpu-reference'])
+        print(f'  reference backend: compared {n_probes} probe files and {n_dumps} field dumps')
+        assert not diff, f'FAIL [{name}]: reference backend differs from the basic engine in: {", ".join(n for n, _ in diff)}'
+
+    if 'cpu' in engines:
+        assert 'Create FDTD engine (CPU' in logs['cpu'], f'FAIL [{name}]: engine=cpu did not create the CPU engine'
+        diff, _, _, worst = compare_outputs(paths['basic'], paths['cpu'], rtol=DEVICE_RTOL)
+        print(f'  CPU engine: max. deviation {worst:.1e} of the peak value')
+        assert not diff, f'FAIL [{name}]: the CPU engine deviates from the basic engine: ' + \
+            ', '.join(f'{n} ({d:.1e})' for n, d in diff)
+        if 'Engine_CPU: temporal blocking' in logs['cpu-blocked']:
+            blocked_cases.append(name)
+            diff, _, _, _ = compare_outputs(paths['cpu'], paths['cpu-blocked'])
+            assert not diff, f'FAIL [{name}]: the blocked CPU engine differs from its flat sweep in: {", ".join(n for n, _ in diff)}'
+            print('  CPU engine blocked: bit-identical to its flat sweep')
+
+    if 'multithreaded' in engines:
+        diff, _, _, _ = compare_outputs(paths['basic'], paths['multithreaded'])
+        assert not diff, f'FAIL [{name}]: the multithreaded engine differs from the basic engine in: {", ".join(n for n, _ in diff)}'
 
     if name=='cylinder_closed':
         # the H and the B field are interpolated alike, also on the alpha seam of the mesh
@@ -708,56 +784,46 @@ for name, case, on_device in cases:
             dev = deviation(H['FieldData/TD'][ts][()], B['FieldData/TD'][ts][()]/(4e-7*np.pi))
         assert dev<1e-6, f'FAIL [{name}]: the B field dump is not mue0 times the H field dump ({dev:.1e} of the peak)'
 
-    backend = re.search(r'Create FDTD engine \(GPU, backend: (\w+)', logs['gpu'])
-    backend = backend.group(1) if backend else None
-    if backend and backend!='reference':
-        if on_device and backend in FULL_DEVICE_BACKENDS:
-            assert ('Engine_GPU: all extensions run on the device' in logs['gpu']) and ('host fallback' not in logs['gpu']), \
-                f'FAIL [{name}]: the {backend} backend did not run all extensions on the device'
-        if name in ('dumps_snapshot', 'multigrid_snapshot', 'dumps_snapshot_host_dft') and backend in FULL_DEVICE_BACKENDS:
-            assert 'Engine_GPU: field dumps from snapshots' in logs['gpu'], \
-                f'FAIL [{name}]: the {backend} backend did not take field snapshots for the dumps'
-        if name=='dumps_snapshot_host_dft':
-            assert 'frequency domain dumps accumulated on the device' not in logs['gpu'], \
-                f'FAIL [{name}]: OPENEMS_GPU_DUMPS=snapshot did not keep the sums off the device'
-        if name in ('dumps', 'sar') and backend in DEVICE_DFT_BACKENDS:
-            assert 'Engine_GPU: frequency domain dumps accumulated on the device' in logs['gpu'], \
-                f'FAIL [{name}]: the {backend} backend did not accumulate the frequency domain dumps'
-        if name=='coeff_index32' and backend in FULL_DEVICE_BACKENDS:
-            assert 'compressed update coefficients (32 bit index)' in logs['gpu'], \
-                f'FAIL [{name}]: the {backend} backend did not use a 32 bit coefficient set index'
-        if name=='coeff_full' and backend in FULL_DEVICE_BACKENDS:
-            assert 'compressed update coefficients' not in logs['gpu'], \
-                f'FAIL [{name}]: the {backend} backend did not use the full coefficient arrays'
-        if backend=='HIP':
-            # Exercise each representation in the fused and separate kernels. These
-            # are UPML set indices, independent of the main update/node indices.
-            modes = re.findall(r'UPML coefficients: \d+ cells, (.*?), \d+ device bytes', logs['gpu'])
-            if name.startswith('pml_coeff_index32'):
-                assert '32 bit sets' in modes, f'FAIL [{name}]: no 32 bit UPML coefficient sets'
-            elif name in ('pml_full', 'pml_full_separate', 'pml_graded_separate'):
-                assert 'full arrays' in modes, f'FAIL [{name}]: no full UPML coefficient arrays'
-            elif name in UPML_MODES:
-                assert modes and all(m=='16 bit sets' for m in modes), \
-                    f'FAIL [{name}]: expected 16 bit UPML coefficient sets, got {modes}'
-            if name.endswith('_separate'):
-                assert 'UPML regions fused with the main updates' not in logs['gpu'], \
-                    f'FAIL [{name}]: the separate UPML kernels were not used'
-        if name in UPML_MODES and backend=='HIP':
-            expected, unexpected = UPML_MODES[name]
-            assert (expected is None or expected in logs['gpu']) and (unexpected is None or unexpected not in logs['gpu']), \
-                f'FAIL [{name}]: the HIP backend did not take the intended UPML update'
-        diff, _, _, worst = compare_outputs(paths['basic'], paths['gpu'], rtol=DEVICE_RTOL)
-        print(f'  {backend} backend: max. deviation {worst:.1e} of the peak value')
-        assert not diff, f'FAIL [{name}]: {backend} backend deviates from the basic engine: ' + \
-            ', '.join(f'{n} ({d:.1e})' for n, d in diff)
-        if name in UPML_MODES and backend=='HIP':
-            assert worst==0, f'FAIL [{name}]: the HIP UPML update is not bit-identical ({worst:.1e})'
-    else:
-        # no silent fallback to the (slow) reference backend
-        assert 'Running FDTD engine' not in logs['gpu'], \
-            f'FAIL [{name}]: engine=gpu ran without a GPU device'
-        print('  no GPU device, device backend not tested')
+    if 'gpu' in engines:
+        backend = re.search(r'Create FDTD engine \(GPU, backend: (\w+)', logs['gpu'])
+        backend = backend.group(1) if backend else None
+        if backend and backend!='reference':
+            if on_device and backend in FULL_DEVICE_BACKENDS:
+                assert ('Engine_GPU: all extensions run on the device' in logs['gpu']) and ('host fallback' not in logs['gpu']), \
+                    f'FAIL [{name}]: the {backend} backend did not run all extensions on the device'
+            if name in ('dumps_snapshot', 'multigrid_snapshot', 'dumps_snapshot_host_dft') and backend in FULL_DEVICE_BACKENDS:
+                assert 'Engine_GPU: field dumps from snapshots' in logs['gpu'], \
+                    f'FAIL [{name}]: the {backend} backend did not take field snapshots for the dumps'
+            if name=='dumps_snapshot_host_dft':
+                assert 'frequency domain dumps accumulated on the device' not in logs['gpu'], \
+                    f'FAIL [{name}]: OPENEMS_GPU_DUMPS=snapshot did not keep the sums off the device'
+            if name in ('dumps', 'sar') and backend in DEVICE_DFT_BACKENDS:
+                assert 'Engine_GPU: frequency domain dumps accumulated on the device' in logs['gpu'], \
+                    f'FAIL [{name}]: the {backend} backend did not accumulate the frequency domain dumps'
+            if name=='coeff_index32' and backend in FULL_DEVICE_BACKENDS:
+                assert 'compressed update coefficients (32 bit index)' in logs['gpu'], \
+                    f'FAIL [{name}]: the {backend} backend did not use a 32 bit coefficient set index'
+            if name=='coeff_full' and backend in FULL_DEVICE_BACKENDS:
+                assert 'compressed update coefficients' not in logs['gpu'], \
+                    f'FAIL [{name}]: the {backend} backend did not use the full coefficient arrays'
+            if name in UPML_MODES and backend=='HIP':
+                expected, unexpected = UPML_MODES[name]
+                assert (expected is None or expected in logs['gpu']) and (unexpected is None or unexpected not in logs['gpu']), \
+                    f'FAIL [{name}]: the HIP backend did not take the intended UPML update'
+            diff, _, _, worst = compare_outputs(paths['basic'], paths['gpu'], rtol=DEVICE_RTOL)
+            print(f'  {backend} backend: max. deviation {worst:.1e} of the peak value')
+            assert not diff, f'FAIL [{name}]: {backend} backend deviates from the basic engine: ' + \
+                ', '.join(f'{n} ({d:.1e})' for n, d in diff)
+            if name in UPML_MODES and backend=='HIP':
+                assert worst==0, f'FAIL [{name}]: the HIP UPML update is not bit-identical ({worst:.1e})'
+        else:
+            # no silent fallback to the (slow) reference backend
+            assert 'Running FDTD engine' not in logs['gpu'], \
+                f'FAIL [{name}]: engine=gpu ran without a GPU device'
+            print('  no GPU device, device backend not tested')
     print('PASS [{}]'.format(name))
 
+if not only or 'cpu' in ENGINE_SETS[only]:
+    assert blocked_cases, 'FAIL: the CPU engine blocked in no case'
+    print(f'CPU engine blocked in {len(blocked_cases)} cases: {", ".join(blocked_cases)}')
 print('PASS')

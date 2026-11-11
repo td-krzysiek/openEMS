@@ -1,95 +1,50 @@
-# Antenna runtime integration
+# Upstream / multi-GPU integration — 11 November 2026
 
-**Historical pre-merge snapshot below.** The Monster integration on this
-branch now combines upstream `d686f1d` with the adopted runtime. Qualified
-solver source is `2a4f5ffa70d389c1105d2bb3effe26c029f37aca`; later documentation
-commits do not change its engine code. See [fork PR 19](https://github.com/td-krzysiek/openEMS/pull/19)
-for the completed CPU/Metal/CUDA, startup, NF2FF and relocation controls.
-The fork's master remains upstream-only. Full-array equivalence is not claimed.
+Generated with OpenAI Codex at the user's request. This is an experimental fork
+integration, not a deployment or an upstream submission.
 
-Snapshot recorded on 25 October 2026. This branch preserves the adopted
-experimental solver changes and the qualified startup gate. It is not a merge
-of every prototype branch and is not the latest upstream solver.
+The branch combines upstream `1d710c210920908a143b573f2babca05455f5479` with
+our adopted runtime `836dd5d29b7afa3f2b96b3a5b2ca6eef2712b832`. It retains
+the upstream operator/coefficient refactor and the experimental CPU engine.
 
-## Source identities
+## Retained extensions
 
-| Fork branch | Source | Status |
-| --- | --- | --- |
-| `runtime/monster-20261025` | `8a6afe4937bc4493a8bb32bb8c542411da909393` | Exact solver source of the active antenna workers when checked on 25 October |
-| `integration/antenna-runtime` | `20635e910cfde2399b08d5085db600fbb86526c1`, followed by this documentation | Same integration plus opt-in startup qualification; qualified on short controls, prepared for future antenna runs |
-| `upstream/sync-20261025` | `d686f1dfbb8900a748eacf1925e091ee32d1995c` | Unmodified upstream master snapshot; not merged or deployed |
+- Native HIP and Metal X-domain execution, fixed uneven cuts, owned energy
+  reductions and post-extension E/H halo exchanges.
+- Per-domain Drude/Lorentz and PR242 LossyMetal material histories.
+- Experimental opaque conductor boundary, shared coefficients and compact GPU
+  histories, plus compact HIP UPML coefficients.
+- Startup qualification, manual/decay pause gates and accumulated DFT snapshots.
+- Optional HIP/CUDA NF2FF and Python/Matlab controls.
 
-The integration retains opaque-surface timestep stabilization, connected box
-unions and CPU/Metal/HIP updates; shared material coefficients and compact GPU
-history storage; compact HIP UPML coefficients; setup-error cleanup; accelerated
-HIP NF2FF with the CUDA build path; and on-demand accumulated DFT snapshots.
-Earlier experimental CPU tiling also remains in its ancestry. The optional
-CUDA FMA experiment and multi-domain/MPI proof of concept are separate branches,
-not additions to this runtime integration.
+## Integration choices
 
-The startup gate is the only solver commit after the active runtime snapshot.
-It continues the same process after qualification without rebuilding the
-operator, resetting fields or discarding DFT sums. See [STARTUP_GATE.md](STARTUP_GATE.md)
-and [fork PR 18](https://github.com/td-krzysiek/openEMS/pull/18).
+The old experimental `--engine=tiling` and its extension hooks are removed.
+The upstream `--engine=cpu` provides the maintained temporal-blocking path.
+The opaque extension runs flat on that CPU engine; it does not claim support
+for its box hooks. Its HIP/Metal device updates remain available.
 
-## Build provenance and qualification
+The GPU operator no longer has a dedicated subclass or full intermediate
+coefficient arrays. Domain uploads read the upstream coefficient interface.
+Domain exchanges still finish after the device extension hooks. Upstream
+single-GPU cylindrical sub-grid stepping is preserved; the domain adapter
+continues to reject cylindrical meshes and unsupported device extensions.
 
-Source checkout alone is not a reproducible installation: CSXCAD, compiler,
-build options, GPU architecture and linked libraries must also be pinned.
-The observed active Linux runtime has these SHA-256 hashes:
+Rebuild Python bindings and GPU plugins together with the solver. Use a new
+prefix: do not replace a runtime referenced by frozen or active simulations.
 
-```text
-openEMS       b22dc28dd7caec8299de56fcf7f8c6f2cbc36e5f037e727413e0975d91fc062e
-libopenEMS.so 15fd79d5f3589ae097710784583b2cd381d71fb604f10b2ffa81508e7eb4afac
-```
+## Qualification
 
-The separately qualified startup-gate Linux build has:
+Build, numerical and runtime-control checks are required before adoption:
 
-```text
-openEMS       02bc7d8c0e073bde65ad839b82983d015fc59e09dba1d4953c1ce89050f36f63
-libopenEMS.so f1c49ddd1a3004b333d4c077b8c7cfbde43a8dcb31845bf33d19d0bb6d25f0ce
-```
+1. CTest and Python API/unit regressions.
+2. Single versus two/three domains with PEC, PML, RLC, opaque and dispersive
+   materials, including PR242. Check all nonzero complex E/H components.
+3. Uneven cuts, one-node slabs, invalid partitions and unsupported extensions.
+4. Startup/runtime pause, DFT snapshots, continuation and energy stopping.
+5. Old/new public antenna input and native CUDA tests on free physical GPUs.
 
-Startup continuation controls passed on basic CPU, GPU reference, actual Metal
-and RTX 3080 CUDA, including opaque histories, rejection, timeout and abort.
-Comparisons against uninterrupted controls used stated tolerances and measured
-zero field/probe differences. A production-controller synthetic fixture also
-matched the deployed runtime on 226 probes and 12 nonzero complex field arrays.
-These are short regression controls, not a new full-array antenna qualification.
-Matlab helpers were reviewed but not executed. Rebuild bindings and C++ clients
-against the new library; do not mix ABI versions.
-
-This backup does not change active workers or replace frozen antenna results.
-It contains solver source and synthetic tests, not antenna designs, supplier
-documents, credentials, compiled libraries or simulation result archives.
-
-## Upstream review
-
-The common ancestor with upstream is `c3a956b221ee57f85bcf45f65f853c06e9769a7d`.
-The fetched upstream snapshot contains 19 commits beyond that ancestor,
-including 12 beyond the earlier `11aa063` review baseline. Dates below follow
-commit metadata; the comparison uses ancestry, not date ordering.
-
-| Change | Commits | Relevance to this runtime |
-| --- | --- | --- |
-| HIP runtime plugins, unified GPU selection, early device checks | `170c71b`, `c0ca95a` | Cleaner deployment and earlier failure when no usable device exists. Changes backend ownership and construction; port opaque extensions and requalify selection. It does not split one solve across GPUs. |
-| Builds without a local GPU, Windows plugins and GPU build CI | `81ec4db`, `a5594df`, `4ed0ced` | Useful for portable cloud/container images. Architecture compatibility and plugin build identities still need checking. |
-| Compact HIP UPML storage | `53a4264` | Based on our upstream PR 238. Same purpose as our existing memory optimization; reconcile implementations rather than stack another copy. |
-| GPU synchronization before returning from a timestep batch | `6bb955d` | Fixes inflated solver speed reports when queued work was not timed. Does not itself promise faster solves; remeasure throughput and wall time. |
-| Binary benchmark harness | `6fa7e8e` | Five workload families at approximately 1M/8M cells, interleaved binary comparisons and probe checks. Useful for future performance PRs; does not replace antenna/opaque-boundary controls. |
-| Mesh-derived geometry tolerance | `db68e62` | Tolerance becomes 1/1000 of the smallest mesh step. Recheck thin copper, contacts and mesh-aligned unions; geometry classification can change. |
-| C++17 and VTK dependency removal | `a2b049d`, `d9ca3b6`, `11aa063` | Update build images and bindings. Internal VTK output uses zlib; this reduces dependencies, not necessarily FDTD runtime. |
-| Safer setup, CLI and timestep limits | `dd72017`, `c971899`, `ec4d2db`, `7badca4` | Better failure handling and an INT_MAX timestep cap. Check worker option parsing and error paths. |
-| Delayed excitation correction | `d1fef7c` | Skips excitation before its delay expires on CPU/HIP/Metal. Particularly relevant to delayed step/custom sources; inspect actual source settings before attributing antenna changes to it. |
-| Optional DC-free Gaussian excitation | `d686f1d` | Addresses static residual charge for pulses with significant DC content. Opt-in; do not change frozen antenna excitation settings implicitly. |
-| Setup-cleanup test timing | `ff68e3d` | Allows thread counts to settle before checking them; test robustness rather than a numerical change. |
-
-Primary evidence is the corresponding commit diff in
-[upstream openEMS](https://github.com/thliebig/openEMS/compare/c3a956b...d686f1d).
-This review reads the source; it does not claim the new upstream was built or
-numerically qualified against our extended runtime.
-
-Before adopting a merged runtime, reconcile plugin ownership and UPML changes,
-build with matching CSXCAD and bindings, then run CPU/Metal/CUDA controls for
-opaque stability/unions, allocation cleanup, DFT snapshots and startup
-continuation. Compare both numerical output and external wall-time benchmarks.
+The Metal test plugin exposes logical domains on **one physical GPU**. It is
+not installed and cannot establish physical multi-GPU scaling. Preserve failed
+controls and distinguish inherited upstream behaviour from integration defects.
+Only measured setup/FDTD times may be reported as performance evidence.

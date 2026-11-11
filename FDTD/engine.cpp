@@ -15,19 +15,24 @@
 *	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include <stdexcept>
+
 #include "engine.h"
 #include "extensions/engine_extension.h"
 #include "extensions/operator_extension.h"
+#include "engine_threadpool.h"
+#include "engine_subgrid.h"
 
 using std::cout;
 using std::endl;
 
 //! \brief construct an Engine instance
 //! it's the responsibility of the caller to free the returned pointer
-Engine* Engine::New(const Operator* op)
+Engine* Engine::New(const Operator* op, unsigned int numThreads)
 {
-	cout << "Create FDTD engine" << endl;
+	cout << "Create FDTD engine (" << GetTypeName(BASIC) << ")" << endl;
 	Engine* e = new Engine(op);
+	e->SetNumThreads(numThreads);
 	e->Init();
 	return e;
 }
@@ -41,18 +46,60 @@ Engine::Engine(const Operator* op)
 		numLines[n] = Op->GetNumberOfLines(n, true);
 	volt_ptr = NULL;
 	curr_ptr = NULL;
+	m_numThreads = 0;
+	m_ThreadPool = NULL;
+	m_SubGrid = NULL;
+	m_SubGridCoupling = NULL;
 }
 
 Engine::~Engine()
 {
+	// the threads first, they step the sub-grid too
 	this->Reset();
+	ClearSubGrid();
+}
+
+void Engine::ClearSubGrid()
+{
+	// the coupling refers to both grids
+	delete m_SubGridCoupling;
+	m_SubGridCoupling = NULL;
+	delete m_SubGrid;
+	m_SubGrid = NULL;
+}
+
+void Engine::SetSubGrid(Engine* sub, Engine_SubGridCoupling* coupling)
+{
+	if (m_ThreadPool)
+		throw std::logic_error("Engine::SetSubGrid: the engine is running already, its threads step the old grids");
+	ClearSubGrid();
+	m_SubGrid = sub;
+	m_SubGridCoupling = coupling;
+}
+
+void Engine::SyncSubGridVoltages()
+{
+	if (m_SubGridCoupling)
+		m_SubGridCoupling->SyncVoltages();
+}
+
+void Engine::SyncSubGridCurrents()
+{
+	if (m_SubGridCoupling)
+		m_SubGridCoupling->SyncCurrents();
+}
+
+void Engine::InterpolateFromSubGrid()
+{
+	if (m_SubGridCoupling)
+		m_SubGridCoupling->Interpolate();
 }
 
 void Engine::Init()
 {
 	numTS = 0;
-	volt_ptr = new ArrayLib::ArrayNIJK<FDTD_FLOAT>("volt", numLines);
-	curr_ptr = new ArrayLib::ArrayNIJK<FDTD_FLOAT>("curr", numLines);
+	volt_ptr = new ArrayLib::ArrayNIJK<FDTD_FLOAT>("volt", {numLines[0], numLines[1], numLines[2]}, GetFieldLayout());
+	curr_ptr = new ArrayLib::ArrayNIJK<FDTD_FLOAT>("curr", {numLines[0], numLines[1], numLines[2]}, GetFieldLayout());
 
 	InitExtensions();
 	SortExtensionByPriority();
@@ -99,6 +146,10 @@ void Engine::SortExtensionByPriority()
 
 void Engine::Reset()
 {
+	// the threads first, they use the fields and extensions
+	delete m_ThreadPool;
+	m_ThreadPool = NULL;
+
 	delete volt_ptr;
 	volt_ptr = NULL;
 	delete curr_ptr;
@@ -111,8 +162,9 @@ void Engine::UpdateVoltages(unsigned int startX, unsigned int numX)
 {
 	ArrayLib::ArrayNIJK<FDTD_FLOAT>& volt = *volt_ptr;
 	ArrayLib::ArrayNIJK<FDTD_FLOAT>& curr = *curr_ptr;
-	ArrayLib::ArrayNIJK<FDTD_FLOAT>& vv = *Op->vv_ptr;
-	ArrayLib::ArrayNIJK<FDTD_FLOAT>& vi = *Op->vi_ptr;
+	const Coeffs_Basic& coeffs = Op->GetCoeffsAs<Coeffs_Basic>();
+	ArrayLib::ArrayNIJK<FDTD_FLOAT>& vv = *coeffs.vv;
+	ArrayLib::ArrayNIJK<FDTD_FLOAT>& vi = *coeffs.vi;
 
 	unsigned int pos[3];
 	bool shift[3];
@@ -167,12 +219,33 @@ void Engine::UpdateVoltages(unsigned int startX, unsigned int numX)
 	}
 }
 
+bool Engine::CanUpdateBox(const Engine_Box& box, bool currents) const
+{
+	// the kernels update whole y-z planes of x lines
+	const unsigned int last = currents ? 1 : 0;
+	for (int n=1; n<3; ++n)
+		if ((box.start[n]!=0) || (box.stop[n]+last<numLines[n]))
+			return false;
+	return true;
+}
+
+void Engine::UpdateVoltages(const Engine_Box& box)
+{
+	UpdateVoltages(box.start[0], box.stop[0]-box.start[0]);
+}
+
+void Engine::UpdateCurrents(const Engine_Box& box)
+{
+	UpdateCurrents(box.start[0], box.stop[0]-box.start[0]);
+}
+
 void Engine::UpdateCurrents(unsigned int startX, unsigned int numX)
 {
 	ArrayLib::ArrayNIJK<FDTD_FLOAT>& curr = *curr_ptr;
 	ArrayLib::ArrayNIJK<FDTD_FLOAT>& volt = *volt_ptr;
-	ArrayLib::ArrayNIJK<FDTD_FLOAT>& ii = *Op->ii_ptr;
-	ArrayLib::ArrayNIJK<FDTD_FLOAT>& iv = *Op->iv_ptr;
+	const Coeffs_Basic& coeffs = Op->GetCoeffsAs<Coeffs_Basic>();
+	ArrayLib::ArrayNIJK<FDTD_FLOAT>& ii = *coeffs.ii;
+	ArrayLib::ArrayNIJK<FDTD_FLOAT>& iv = *coeffs.iv;
 
 	unsigned int pos[3];
 	pos[0] = startX;
@@ -266,21 +339,14 @@ void Engine::Apply2Current()
 
 bool Engine::IterateTS(unsigned int iterTS)
 {
-	for (unsigned int iter=0; iter<iterTS; ++iter)
-	{
-		//voltage updates with extensions
-		DoPreVoltageUpdates();
-		UpdateVoltages(0,numLines[0]);
-		DoPostVoltageUpdates();
-		Apply2Voltages();
-
-		//current updates with extensions
-		DoPreCurrentUpdates();
-		UpdateCurrents(0,numLines[0]-1);
-		DoPostCurrentUpdates();
-		Apply2Current();
-
-		++numTS;
-	}
+	if (m_ThreadPool==NULL)
+		m_ThreadPool = new Engine_ThreadPool(this, m_numThreads);
+	m_ThreadPool->IterateTS(iterTS);
 	return true;
+}
+
+void Engine::NextInterval(float curr_speed)
+{
+	if (m_ThreadPool)
+		m_ThreadPool->NextInterval(curr_speed);
 }

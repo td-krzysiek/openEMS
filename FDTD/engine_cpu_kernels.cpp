@@ -1,5 +1,5 @@
 /*
-*	Copyright (C) 2010 Thorsten Liebig (Thorsten.Liebig@gmx.de)
+*	Copyright (C) 2026 Thorsten Liebig (Thorsten.Liebig@gmx.de)
 *
 *	This program is free software: you can redistribute it and/or modify
 *	it under the terms of the GNU General Public License as published by
@@ -15,20 +15,9 @@
 *	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#ifndef OPERATOR_TILING_H
-#define OPERATOR_TILING_H
+// The kernels of Engine_CPU for the generic build: the instruction set of the compiler flags.
 
-#include "operator_multithread.h"
+#include "engine_cpu_kernel.h"
 
-#define OPERATOR_TILING_BASE Operator_Multithread
-
-class Operator_Tiling : public OPERATOR_TILING_BASE
-{
-	friend class Engine_Tiling;
-public:
-	//! Create a new operator
-	static Operator_Tiling* New(unsigned int numThreads = 0);
-	virtual Engine* CreateEngine();
-};
-
-#endif // OPERATOR_TILING_H
+#define ENGINE_CPU_NAMESPACE Engine_CPU_Generic
+#include "engine_cpu_kernels.inc"

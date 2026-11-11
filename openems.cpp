@@ -26,10 +26,7 @@
 #include "tools/denormal.h"
 #include "FDTD/operator_cylinder.h"
 #include "FDTD/operator_cylindermultigrid.h"
-#include "FDTD/engine_multithread.h"
-#include "FDTD/operator_multithread.h"
-#include "FDTD/operator_tiling.h"
-#include "FDTD/operator_gpu.h"
+#include "FDTD/engine_sse.h"
 #include "FDTD/extensions/operator_ext_excitation.h"
 #include "FDTD/extensions/operator_ext_tfsf.h"
 #include "FDTD/extensions/operator_ext_mur_abc.h"
@@ -104,7 +101,7 @@ openEMS::openEMS()
 	m_startupGateStep = 0;
 	m_startupGateTimeout = 300;
 
-	m_engine = EngineType_Multithreaded; //default engine type
+	m_engine = EngineType_SSE; //default engine type
 	m_engine_numThreads = 0;
 
 	m_Abort = false;
@@ -220,7 +217,7 @@ void openEMS::collectCommandLineArguments()
 					DebugOperator();
 				}
 			),
-			"Dump operator to vtk file for debugging"
+			"Dump operator to vtk file for debugging (the CPU engine: also its cell model, 'cellmodel_dump.h5')"
 		)
 		(
 			"debug-boxes",
@@ -254,31 +251,18 @@ void openEMS::collectCommandLineArguments()
 					if (val == "fastest")
 					{
 						// default, don't show console output
-						m_engine = EngineType_Multithreaded;
+						m_engine = EngineType_SSE;
 					}
 					else if (val == "basic")
 					{
 						cout << "openEMS - enabled basic engine" << endl;
 						m_engine = EngineType_Basic;
 					}
-					else if (val == "sse")
+					else if ((val == "sse") || (val == "sse-compressed") || (val == "multithreaded"))
 					{
-						cout << "openEMS - enabled sse engine" << endl;
+						// one engine with three names, see the help text
+						cout << "openEMS - enabled the multithreaded SSE engine" << endl;
 						m_engine = EngineType_SSE;
-					}
-					else if (val == "sse-compressed")
-					{
-						cout << "openEMS - enabled compressed sse engine" << endl;
-						m_engine = EngineType_SSE_Compressed;
-					}
-					else if (val == "tiling")
-					{
-						m_engine = EngineType_Tiling;
-					}
-					else if (val == "multithreaded")
-					{
-						cout << "openEMS - enabled multithreading" << endl;
-						m_engine = EngineType_Multithreaded;
 					}
 					else if (val == "gpu")
 					{
@@ -290,6 +274,11 @@ void openEMS::collectCommandLineArguments()
 						cout << "openEMS - enabled GPU engine with the reference backend" << endl;
 						m_engine = EngineType_GPU_Reference;
 					}
+					else if (val == "cpu")
+					{
+						cout << "openEMS - enabled the CPU engine (experimental)" << endl;
+						m_engine = EngineType_CPU;
+					}
 					else
 					{
 						po::invalid_option_value e(val);
@@ -300,15 +289,13 @@ void openEMS::collectCommandLineArguments()
 			),
 		    "Choose engine type \n\n"
 			"  fastest: \tfastest available engine (default)\n"
-			"  tiling: \texperimental spatial/temporal tiling (Cartesian only)\n"
-			"  basic: \tbasic FDTD engine\n"
-			"  sse: \tengine using SSE vector extensions\n"
-			"  sse-compressed: \tengine using compressed "
-			"operator + sse vector extensions\n"
+			"  basic: \tbasic FDTD engine, multithreaded\n"
 			"  multithreaded: \tengine using compressed "
-			"operator + sse vector extensions + multithreading\n"
+			"operator + SSE vector extensions + multithreading\n"
+			"  sse, sse-compressed: \tother names of multithreaded\n"
 			"  gpu: \tGPU engine on the best available backend\n"
 			"  gpu-reference: \tGPU engine with the reference backend on the CPU\n"
+			"  cpu: \tCPU engine on cell runs, experimental\n"
 		)
 		(
 			"gpu-domain-cuts",
@@ -343,7 +330,7 @@ void openEMS::collectCommandLineArguments()
 				}
 			),
 			"Force use n threads for multithreaded engine "
-			"(needs: --engine=multithreaded or --engine=tiling)"
+			"(needs: a CPU engine)"
 		)
 		(
 			"no-simulation",
@@ -569,12 +556,16 @@ void openEMS::SetupAbsorbingSheets()
 //! The engine interface for the field storage of the engine of \a op; what depends on the mesh, the interfaces ask the operator
 static Engine_Interface_FDTD* NewEngineInterface(Operator* op)
 {
-	if (dynamic_cast<Engine_GPU*>(op->GetEngine()))
+	// without an engine the basic interface throws
+	switch (op->GetEngine() ? op->GetEngine()->GetType() : Engine::UNKNOWN)
+	{
+	case Engine::GPU:
 		return new Engine_Interface_GPU_FDTD(op);
-	Operator_sse* op_sse = dynamic_cast<Operator_sse*>(op);
-	if (op_sse)
-		return new Engine_Interface_SSE_FDTD(op_sse);
-	return new Engine_Interface_FDTD(op);
+	case Engine::SSE:
+		return new Engine_Interface_SSE_FDTD(op);
+	default:
+		return new Engine_Interface_FDTD(op);
+	}
 }
 
 Engine_Interface_FDTD* openEMS::NewEngineInterface(int multigridlevel)
@@ -891,16 +882,30 @@ void openEMS::SetupCylinderMultiGrid(std::string val)
 
 bool openEMS::SetupOperator()
 {
-	if (m_engine == EngineType_Tiling && CylinderCoords)
-	{
-		cerr << "Tiling engine does not support cylindrical coordinates" << endl;
-		return false;
-	}
 	// what defaults to AvailableThreads() (GPU operator build, field dumps, SAR, nf2ff) honours numThreads
 	SetThreadLimit(m_engine_numThreads);
 
+	// the command-line choice (openEMS::EngineType) as the engine type of the operator
+	Engine::EngineType type = Engine::UNKNOWN;
+	switch (m_engine)
+	{
+	case EngineType_Basic:
+		type = Engine::BASIC;
+		break;
+	case EngineType_SSE:
+		type = Engine::SSE;
+		break;
+	case EngineType_CPU:
+		type = Engine::CPU;
+		break;
+	case EngineType_GPU:
+	case EngineType_GPU_Reference:   // the GPU engine, the reference backend chosen below
+		type = Engine::GPU;
+		break;
+	}
+
 	// the GPU backend first: without a usable device the operator is not worth building
-	const bool gpu = (m_engine == EngineType_GPU) || (m_engine == EngineType_GPU_Reference);
+	const bool gpu = (type==Engine::GPU);
 	GPU_Backend* gpu_backend = NULL;
 	if (gpu)
 	{
@@ -920,41 +925,30 @@ bool openEMS::SetupOperator()
 		}
 	}
 
+	// one line for every mesh, ending in the engine type (bench.py looks for "(GPU)")
+	const char* name = Engine::GetTypeName(type);
 	if (CylinderCoords)
 	{
 		Operator_Cylinder* op_cyl = NULL;
 		if (m_CC_MultiGrid.size()>0)
 			op_cyl = Operator_CylinderMultiGrid::New(m_CC_MultiGrid, m_engine_numThreads);
-		if (op_cyl==NULL)
+		if (op_cyl)
+			cout << "Create cylindrical multi-grid FDTD operator with " << m_CC_MultiGrid.size() << " sub-grid" << (m_CC_MultiGrid.size()==1 ? "" : "s") << " (" << name << ")" << endl;
+		else
+		{
 			op_cyl = Operator_Cylinder::New(m_engine_numThreads);
-		if (gpu)
-			op_cyl->SetGPUBackend(gpu_backend);
+			cout << "Create cylindrical FDTD operator (" << name << ")" << endl;
+		}
 		FDTD_Op = op_cyl;
-	}
-	else if (m_engine == EngineType_SSE)
-	{
-		FDTD_Op = Operator_sse::New();
-	}
-	else if (m_engine == EngineType_SSE_Compressed)
-	{
-		FDTD_Op = Operator_SSE_Compressed::New();
-	}
-	else if (m_engine == EngineType_Tiling)
-	{
-		FDTD_Op = Operator_Tiling::New(m_engine_numThreads);
-	}
-	else if (m_engine == EngineType_Multithreaded)
-	{
-		FDTD_Op = Operator_Multithread::New(m_engine_numThreads);
-	}
-	else if (gpu)
-	{
-		FDTD_Op = Operator_GPU::New(gpu_backend);
 	}
 	else
 	{
-		FDTD_Op = Operator::New();
+		cout << "Create FDTD operator (" << name << ")" << endl;
+		FDTD_Op = Operator::New(m_engine_numThreads);
 	}
+	FDTD_Op->SetEngineType(type);
+	if (gpu)
+		FDTD_Op->SetGPUBackend(gpu_backend);
 	return true;
 }
 
@@ -1572,6 +1566,10 @@ int openEMS::SetupFDTD()
 	{
 		PA->DumpBoxes2File("box_dump_");
 	}
+
+	timeval setupDoneTime;
+	gettimeofday(&setupDoneTime,NULL);
+	cout << "Setup time: " << CalcDiffTime(setupDoneTime,startTime) << " s" << endl;
 
 	return 0;
 }

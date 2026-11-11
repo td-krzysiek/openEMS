@@ -46,30 +46,26 @@ endif()
 
 set(SOURCES
   ${SOURCES}
-  ${CMAKE_CURRENT_SOURCE_DIR}/engine_tiling.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/operator_tiling.cpp
   ${HIP_SOURCES}
   ${METAL_SOURCES}
   ${CMAKE_CURRENT_SOURCE_DIR}/engine.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/engine_threadpool.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/engine_plan.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/cell_model.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/engine_cpu.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/engine_cpu_kernels.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/operator.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/engine_multithread.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/operator_coeffs.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/operator_cylinder.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/engine_cylinder.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_sse.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/operator_sse.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/operator_sse_compressed.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/engine_sse_compressed.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/operator_multithread.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/excitation.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/operator_cylindermultigrid.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/engine_cylindermultigrid.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/engine_subgrid.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_interface_fdtd.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_interface_sse_fdtd.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_interface_gpu_fdtd.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_field_gather.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/operator_gpu.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_gpu.cpp
-  ${CMAKE_CURRENT_SOURCE_DIR}/engine_gpu_cylindermultigrid.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/gpu_backend.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/gpu_backend_domains.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/gpu_plugins.cpp

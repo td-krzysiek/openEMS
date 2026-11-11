@@ -42,6 +42,12 @@ public:
 	*/
 	virtual Operator_Extension* Clone(Operator* op) {UNUSED(op); return NULL;}
 
+	//! Build the extension, once the operator has its coefficients
+	/*!
+		An extension that changes the operator's circuit values (EC_C, EC_G, EC_L, EC_R) of a node must call
+		Operator::Calc_ECOperatorPos() for it afterwards, or Operator::FreezeCoeffs() before to keep its
+		coefficients: the CPU and GPU engines compute the coefficients from the circuit values when read.
+	*/
 	virtual bool BuildExtension() {return true;}
 
 	//! Adjust physical EC elements before timestep selection and coefficient setup.
@@ -59,9 +65,6 @@ public:
 
 	//! The cylindrical multi grid operator will check whether the extension is save to use. Default is false. Derive this method to override.
 	virtual bool IsCylindricalMultiGridSave(bool child) const {UNUSED(child); return false;}
-
-	//! The GPU engine will check whether the engine extension works on the device data (see Engine_GPU). Default is false: the extension runs on the host copy of the fields, which the engine then synchronizes every timestep. Derive this method to override.
-	virtual bool IsGPUSave() const {return false;}
 
 	virtual std::string GetExtensionName() const
 	{

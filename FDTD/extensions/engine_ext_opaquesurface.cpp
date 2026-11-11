@@ -7,7 +7,6 @@
 Engine_Ext_OpaqueSurface::Engine_Ext_OpaqueSurface(Operator_Ext_OpaqueSurface* p)
     : Engine_Extension(p), op(p)
 {
-    m_TilingSupported=true;
     // After PML, before sources. The operator rejects surface updates in PML.
     SetPriority(100);
     voltage.resize(op->edges.size(),0);
@@ -48,34 +47,15 @@ void Engine_Ext_OpaqueSurface::Update(Eng* eng, const std::vector<size_t>& indic
     }
 }
 
-void Engine_Ext_OpaqueSurface::Apply2Voltages() {ENG_DISPATCH_ARGS(Update,all);}
+void Engine_Ext_OpaqueSurface::Apply2Voltages()
+{
+    ENG_DISPATCH_ARGS(Update, all);
+}
 void Engine_Ext_OpaqueSurface::Apply2Voltages(int threadID)
 {
     // One serial surface pass; main volume remains multithreaded.
-    if (threadID==0) Apply2Voltages();
-}
-
-void Engine_Ext_OpaqueSurface::InitializeTiling(const std::vector<Range3D>& tiles)
-{
-    tile_map.clear();
-    for (const auto& t: tiles) {
-        if (!t.HasVoltage()) continue;
-        std::array<unsigned int,6> key;
-        for (int n=0;n<3;++n) {key[n]=t.voltageStart[n];key[n+3]=t.voltageStop[n];}
-        auto entry=tile_map.emplace(key,std::vector<size_t>());
-        if (!entry.second) continue;
-        for (size_t i=0;i<op->edges.size();++i) {
-            bool inside=true;
-            for (int n=0;n<3;++n)
-                inside=inside && op->edges[i].pos[n]>=key[n] && op->edges[i].pos[n]<=key[n+3];
-            if (inside) entry.first->second.push_back(i);
-        }
+    if (threadID == 0)
+    {
+        Apply2Voltages();
     }
-}
-
-void Engine_Ext_OpaqueSurface::Apply2Voltages(int, unsigned int start[3], unsigned int stop[3])
-{
-    const std::array<unsigned int,6> key={{start[0],start[1],start[2],stop[0],stop[1],stop[2]}};
-    const auto& indices=tile_map.at(key);
-    ENG_DISPATCH_ARGS(Update,indices);
 }
