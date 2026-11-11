@@ -50,6 +50,8 @@ devices, strictly increasing, starting at zero and ending at the actual
 number of X lines. Invalid cuts fail before initializing device fields.
 This is explicit placement for qualification or heterogeneous resources,
 not adaptive load balancing; nodes in PML/material regions can cost more.
+Optional [sampled domain performance records](DOMAIN_PERFORMANCE.md) let an
+external planner use measurements when selecting the next run's fixed cuts.
 The default equal split and all physics/timesteps remain unchanged.
 Every owned Yee location and material history has one device owner; the
 two adjacent halo planes contain field values, not duplicated evolving

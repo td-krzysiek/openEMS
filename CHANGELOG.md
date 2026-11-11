@@ -16,6 +16,8 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Added
 
+- Optional sampled multi-GPU timing records for external planning of subsequent
+  runs (`OPENEMS_DOMAIN_PROFILE`); a running simulation keeps its fixed partition.
 - Experimental local GPU domain execution (`ENABLE_DOMAIN_RUNTIME`,
   `--gpu-devices`, optional fixed `--gpu-domain-cuts`) supports PEC, PML,
   excitation, lumped elements and owned dispersive histories on HIP and Metal.

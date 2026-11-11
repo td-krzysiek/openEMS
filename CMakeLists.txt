@@ -467,6 +467,10 @@ if(ENABLE_DOMAIN_RUNTIME)
     target_link_libraries(test_domain_energy openEMS)
     add_executable(test_domain_copy TESTSUITE/distributed/test_native_copy.cpp)
     target_link_libraries(test_domain_copy openEMS)
+    add_executable(test_domain_performance TESTSUITE/distributed/test_domain_performance.cpp)
+    target_link_libraries(test_domain_performance openEMS)
+    add_test(NAME domain_performance COMMAND test_domain_performance
+      ${CMAKE_CURRENT_BINARY_DIR}/domain-performance-test.jsonl)
     if(APPLE AND ENABLE_METAL)
       # Explicit manual-test path only: several queues on one physical GPU.
       # Not installed, and never added to the normal plugin search directory.

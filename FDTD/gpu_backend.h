@@ -110,6 +110,18 @@ OPENEMS_EXPORT void GPU_NodeCoefficients(const Operator* op, const unsigned int 
 //! Coefficient array \a c (0: vv, 1: vi, 2: ii, 3: iv) of \a op as uploaded, the value of direction n at [n*numCells + node]
 OPENEMS_EXPORT void GPU_CoefficientArray(const Operator* op, const unsigned int numLines[3], int c, std::vector<float>& values);
 
+//! Optional sampled device-clock interval. Reading must never wait for work.
+class GPU_DeviceTimer
+{
+public:
+	virtual ~GPU_DeviceTimer()
+	{
+	}
+	virtual void Begin() = 0;
+	virtual void End() = 0;
+	virtual bool ReadSeconds(double& seconds) = 0;
+};
+
 //! Abstract interface to the device used by Engine_GPU
 /*!
   A backend owns the device memory: the voltage and current fields and the update
@@ -129,6 +141,7 @@ OPENEMS_EXPORT void GPU_CoefficientArray(const Operator* op, const unsigned int 
   The backend outlives everything it creates (sub-grid backend, device
   extensions, multi-grid link), and the caller frees those first.
   */
+
 class GPU_Backend
 {
 public:
@@ -220,6 +233,11 @@ public:
 	virtual FDTD_FLOAT* GetSharedCurrents() const {return NULL;}
 	//! Wait until the device finished all work, required before the host accesses shared memory
 	virtual void Synchronize() {}
+	//! Caller owns the timer and destroys it before this backend. NULL if unsupported.
+	virtual GPU_DeviceTimer* NewDeviceTimer()
+	{
+		return nullptr;
+	}
 
 	//! Copy the current fields into the snapshot and return host pointers to it (ArrayNIJK layout), valid until the next snapshot. Returns false if the backend cannot.
 	/*!
