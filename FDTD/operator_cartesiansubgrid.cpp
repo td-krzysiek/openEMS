@@ -3,6 +3,7 @@
 #include "CSPrimBox.h"
 #include "CSPropDumpBox.h"
 #include "CSPropExcitation.h"
+#include "CSPropMaterial.h"
 #include "CSPropProbeBox.h"
 #include "engine.h"
 #include "extensions/operator_ext_excitation.h"
@@ -13,10 +14,29 @@
 #include <cmath>
 #include <iostream>
 #include <limits>
+#include <sstream>
 #include <stdexcept>
 
 namespace
 {
+bool UnitWeight(const std::string &term)
+{
+	// CSXCAD stores a numeric weight without a term. Its value is checked
+	// independently through the weighted material getters below.
+	if (term.empty())
+	{
+		return true;
+	}
+	std::istringstream stream(term);
+	double value = 0;
+	if (!(stream >> value) || value != 1)
+	{
+		return false;
+	}
+	stream >> std::ws;
+	return stream.eof();
+}
+
 unsigned int BaseLineIndex(const double *lines, unsigned int count, double value)
 {
 	if (!std::isfinite(value))
@@ -245,10 +265,44 @@ void Operator_CartesianSubgrid::ValidateProperties() const
 	for (CSProperties *property : CSX->GetPropertyByType(CSProperties::ANY))
 	{
 		const int type = property->GetType();
-		if (type & ~(CSProperties::EXCITATION | CSProperties::PROBEBOX | CSProperties::DUMPBOX))
+		if (type != CSProperties::MATERIAL &&
+			(type & ~(CSProperties::EXCITATION | CSProperties::PROBEBOX | CSProperties::DUMPBOX)))
 		{
-			throw std::invalid_argument(
-				"CartesianSubgrid: only homogeneous background, soft E sources and E/H observations are supported");
+			throw std::invalid_argument("CartesianSubgrid: only lossless isotropic materials, soft E sources "
+										"and E/H observations are supported");
+		}
+		if (type == CSProperties::MATERIAL)
+		{
+			auto *material = static_cast<CSPropMaterial *>(property);
+			if (!material->GetIsotropy() || material->GetKappa() != 0 || material->GetSigma() != 0)
+			{
+				throw std::invalid_argument(
+					"CartesianSubgrid: material objects must be isotropic and lossless");
+			}
+			if (!(material->GetEpsilon() > 0) || !std::isfinite(material->GetEpsilon()) ||
+				!(material->GetMue() > 0) || !std::isfinite(material->GetMue()))
+			{
+				throw std::invalid_argument(
+					"CartesianSubgrid: positive finite material epsilon and permeability required");
+			}
+			for (unsigned int n = 0; n < 3; ++n)
+			{
+				if (!UnitWeight(material->GetEpsilonWeightFunction(n)) ||
+					!UnitWeight(material->GetMueWeightFunction(n)) ||
+					!UnitWeight(material->GetKappaWeightFunction(n)) ||
+					!UnitWeight(material->GetSigmaWeightFunction(n)))
+				{
+					throw std::invalid_argument(
+						"CartesianSubgrid: spatial material weight functions are unsupported");
+				}
+				const double coordinate[3] = {1, 1, 1};
+				if (material->GetEpsilonWeighted(n, coordinate) != material->GetEpsilon(n) ||
+					material->GetMueWeighted(n, coordinate) != material->GetMue(n))
+				{
+					throw std::invalid_argument(
+						"CartesianSubgrid: non-unit material weights are unsupported");
+				}
+			}
 		}
 		if (auto *source = dynamic_cast<CSPropExcitation *>(property))
 		{
@@ -274,6 +328,16 @@ void Operator_CartesianSubgrid::ValidateProperties() const
 		}
 		for (CSPrimitives *primitive : property->GetAllPrimitives())
 		{
+			if (type == CSProperties::MATERIAL && !dynamic_cast<CSPrimBox *>(primitive))
+			{
+				throw std::invalid_argument(
+					"CartesianSubgrid: material objects must use axis-aligned volume boxes");
+			}
+			if (type == CSProperties::MATERIAL && primitive->GetCoordinateSystem() != UNDEFINED_CS &&
+				primitive->GetCoordinateSystem() != CARTESIAN)
+			{
+				throw std::invalid_argument("CartesianSubgrid: material boxes require Cartesian coordinates");
+			}
 			if ((type & CSProperties::EXCITATION) && !dynamic_cast<CSPrimBox *>(primitive))
 			{
 				throw std::invalid_argument("CartesianSubgrid: soft E sources must use box primitives");
@@ -283,7 +347,18 @@ void Operator_CartesianSubgrid::ValidateProperties() const
 				!std::all_of(box, box + 6, [](double v) { return std::isfinite(v); }))
 			{
 				throw std::invalid_argument(
-					"CartesianSubgrid: untransformed finite observation/source bounds required");
+					"CartesianSubgrid: untransformed finite primitive bounds required");
+			}
+			if (type == CSProperties::MATERIAL)
+			{
+				for (unsigned int n = 0; n < 3; ++n)
+				{
+					if (!(box[2 * n] < box[2 * n + 1]))
+					{
+						throw std::invalid_argument(
+							"CartesianSubgrid: material boxes must have positive volume");
+					}
+				}
 			}
 		}
 	}
@@ -318,7 +393,59 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 		}
 		regions.push_back(region);
 	}
-	m_Grid.reset(new CartesianSubgrid(lines, GetBackgroundEpsR() * EPS0, GetBackgroundMueR() * MUE0, regions));
+	// The primitive-list lookup stops at its first hit; CSXCAD requires this
+	// list to be sorted by descending priority, not property insertion order.
+	const auto primitives = CSX->GetAllPrimitives(true, CSProperties::MATERIAL);
+	std::vector<std::array<double, 6>> bounds;
+	for (CSPrimitives *primitive : primitives)
+	{
+		std::array<double, 6> box;
+		primitive->GetBoundBox(box.data());
+		bounds.push_back(box);
+	}
+	auto sample = [&](const CartesianSubgrid::Point &start, const CartesianSubgrid::Point &stop)
+	{
+		double lo[3], hi[3], centre[3], tolerance[3];
+		for (unsigned int n = 0; n < 3; ++n)
+		{
+			lo[n] = start[n] / gridDelta + discLines[n][0];
+			hi[n] = stop[n] / gridDelta + discLines[n][0];
+			centre[n] = (lo[n] + hi[n]) / 2;
+			if (!(hi[n] > lo[n]) || !(centre[n] > lo[n]) || !(centre[n] < hi[n]) ||
+				!std::isfinite(centre[n]))
+			{
+				throw std::invalid_argument(
+					"CartesianSubgrid: leaf material sampling is not representable in drawing coordinates");
+			}
+			tolerance[n] = std::min((hi[n] - lo[n]) * 1e-8,
+									32 * std::numeric_limits<double>::epsilon() *
+										std::max({std::abs(lo[n]), std::abs(hi[n]), hi[n] - lo[n]}));
+		}
+		// Centre sampling is exact only when every box is constant throughout
+		// this leaf. Do not silently replace a subcell interface by its centre.
+		for (const auto &box : bounds)
+		{
+			bool intersects = true, contains = true;
+			for (unsigned int n = 0; n < 3; ++n)
+			{
+				intersects =
+					intersects && box[2 * n] < hi[n] - tolerance[n] && box[2 * n + 1] > lo[n] + tolerance[n];
+				contains =
+					contains && box[2 * n] <= lo[n] + tolerance[n] && box[2 * n + 1] >= hi[n] - tolerance[n];
+			}
+			if (intersects && !contains)
+			{
+				throw std::invalid_argument("CartesianSubgrid: material boundary cuts a leaf; align material "
+											"faces to local cell boundaries");
+			}
+		}
+		auto *property = CSX->GetPropertyByCoordPriority(centre, primitives, true);
+		auto *material = property ? static_cast<CSPropMaterial *>(property) : nullptr;
+		return CartesianSubgrid::Medium{(material ? material->GetEpsilon() : GetBackgroundEpsR()) * EPS0,
+										(material ? material->GetMue() : GetBackgroundMueR()) * MUE0};
+	};
+	m_Grid.reset(new CartesianSubgrid(lines, GetBackgroundEpsR() * EPS0, GetBackgroundMueR() * MUE0, regions,
+									  false, sample));
 	const double limit = m_Grid->StableTimestep();
 	if (dT == 0)
 	{

@@ -66,7 +66,8 @@ CartesianSubgrid::CartesianSubgrid(Index cells, Point spacing, double epsilon, d
 }
 
 CartesianSubgrid::CartesianSubgrid(const Axes &lines, double epsilon, double permeability,
-								   const std::vector<Region> &regions, bool uniformFine)
+								   const std::vector<Region> &regions, bool uniformFine,
+								   const MediumSampler &medium)
 	: m_Ratio{1, 1, 1}, m_Epsilon(epsilon), m_Mu(permeability), m_UniformFine(uniformFine)
 {
 	Require(epsilon > 0 && std::isfinite(epsilon) && permeability > 0 && std::isfinite(permeability),
@@ -142,7 +143,7 @@ CartesianSubgrid::CartesianSubgrid(const Axes &lines, double epsilon, double per
 	}
 	m_Regions = regions;
 	m_Lines = lines;
-	Build();
+	Build(medium);
 }
 
 void CartesianSubgrid::ValidateRatio(const Index &ratio)
@@ -278,7 +279,7 @@ CartesianSubgrid::Trace CartesianSubgrid::Restrict(const Edge &edge) const
 	return trace;
 }
 
-void CartesianSubgrid::Build()
+void CartesianSubgrid::Build(const MediumSampler &medium)
 {
 	const std::size_t roots = std::size_t(m_Cells[0]) * m_Cells[1] * m_Cells[2];
 	m_RootLeaves.resize(roots);
@@ -332,6 +333,21 @@ void CartesianSubgrid::Build()
 			}
 		}
 	}
+	m_Media.reserve(m_Leaves.size());
+	for (std::size_t index = 0; index < m_Leaves.size(); ++index)
+	{
+		const auto start = LeafStart(index), length = LeafLengths(index);
+		Point stop;
+		for (unsigned int n = 0; n < 3; ++n)
+		{
+			stop[n] = start[n] + length[n];
+		}
+		const Medium value = medium ? medium(start, stop) : Medium{m_Epsilon, m_Mu};
+		Require(value.epsilon > 0 && std::isfinite(value.epsilon) && value.permeability > 0 &&
+					std::isfinite(value.permeability),
+				"CartesianSubgrid: positive finite leaf epsilon and permeability required");
+		m_Media.push_back(value);
+	}
 	for (const Leaf &cell : m_Leaves)
 	{
 		for (unsigned int n = 0; n < 3; ++n)
@@ -352,8 +368,10 @@ void CartesianSubgrid::Build()
 	std::vector<double> mass(m_Edges.size(), 0);
 	std::map<std::pair<std::size_t, std::size_t>, double> off;
 	m_RowStart.push_back(0);
-	for (const Leaf &cell : m_Leaves)
+	for (std::size_t cellIndex = 0; cellIndex < m_Leaves.size(); ++cellIndex)
 	{
+		const Leaf &cell = m_Leaves[cellIndex];
+		const Medium &material = m_Media[cellIndex];
 		Point length;
 		for (unsigned int n = 0; n < 3; ++n)
 		{
@@ -371,12 +389,13 @@ void CartesianSubgrid::Build()
 					const Trace trace = Restrict(LocalEdge(cell, n, i, j));
 					for (const auto &a : trace.weights)
 					{
-						mass[a.first] += m_Epsilon * volume / 4 * a.second * a.second;
+						mass[a.first] += material.epsilon * volume / 4 * a.second * a.second;
 						for (const auto &b : trace.weights)
 						{
 							if (a.first < b.first)
 							{
-								off[{a.first, b.first}] += m_Epsilon * volume / 4 * a.second * b.second;
+								off[{a.first, b.first}] +=
+									material.epsilon * volume / 4 * a.second * b.second;
 							}
 						}
 					}
@@ -416,7 +435,7 @@ void CartesianSubgrid::Build()
 				m_RowStart.push_back(m_Values.size());
 				// One half-volume per face. Coincident faces are deliberately
 				// separate quadrature histories, not a global fine H lattice.
-				m_SqrtReluctance.push_back(std::sqrt(volume / (2 * m_Mu * area * area)));
+				m_SqrtReluctance.push_back(std::sqrt(volume / (2 * material.permeability * area * area)));
 			}
 		}
 	}
@@ -706,7 +725,7 @@ void CartesianSubgrid::SetMagnetic(const Field &field)
 				const std::size_t index = 6 * cell + 2 * n + side;
 				const double value = field(n, position);
 				Require(std::isfinite(value), "CartesianSubgrid: nonfinite initial magnetic field");
-				m_Magnetic[index] = value * m_Mu * area * m_SqrtReluctance[index];
+				m_Magnetic[index] = value * m_Media[cell].permeability * area * m_SqrtReluctance[index];
 			}
 		}
 	}
@@ -721,6 +740,18 @@ std::size_t CartesianSubgrid::FindLeaf(const Point &position) const
 				"CartesianSubgrid: sample outside domain");
 		const auto next = std::upper_bound(m_Lines[n].begin(), m_Lines[n].end(), position[n]);
 		root[n] = std::min(unsigned(next - m_Lines[n].begin() - 1), m_Cells[n] - 1);
+		const double width = m_Lines[n][root[n] + 1] - m_Lines[n][root[n]];
+		const double boundary = m_Lines[n][root[n] + 1];
+		const double tolerance = std::min(width / m_Ratio[n] * 1e-8,
+										  32 * std::numeric_limits<double>::epsilon() *
+											  std::max({std::abs(position[n]), std::abs(boundary), width}));
+		// Material-normal fields can jump. At a cell face select the positive
+		// side consistently despite SI/drawing-unit coordinate roundoff.
+		// Only lookup is disambiguated; geometry and sample positions stay fixed.
+		if (root[n] + 1 < m_Cells[n] && std::abs(position[n] - boundary) <= tolerance)
+		{
+			++root[n];
+		}
 	}
 	const std::size_t index = RootIndex(root);
 	const std::size_t first = m_RootLeaves[index];
@@ -728,9 +759,19 @@ std::size_t CartesianSubgrid::FindLeaf(const Point &position) const
 	Index child;
 	for (unsigned int n = 0; n < 3; ++n)
 	{
-		child[n] = std::min(unsigned(ratio[n] * ((position[n] - m_Lines[n][root[n]]) /
-												 (m_Lines[n][root[n] + 1] - m_Lines[n][root[n]]))),
-							ratio[n] - 1);
+		const double start = m_Lines[n][root[n]];
+		const double width = m_Lines[n][root[n] + 1] - start;
+		double local = ratio[n] * (position[n] - start) / width;
+		const double nearest = std::clamp(std::round(local), 0., double(ratio[n]));
+		const double boundary = start + nearest * width / ratio[n];
+		const double tolerance = std::min(width / ratio[n] * 1e-8,
+										  32 * std::numeric_limits<double>::epsilon() *
+											  std::max({std::abs(position[n]), std::abs(boundary), width}));
+		if (std::abs(position[n] - boundary) <= tolerance)
+		{
+			local = nearest;
+		}
+		child[n] = std::min(unsigned(std::max(0., local)), ratio[n] - 1);
 	}
 	return first + (std::size_t(child[0]) * ratio[1] + child[1]) * ratio[2] + child[2];
 }
@@ -773,7 +814,7 @@ double CartesianSubgrid::Magnetic(unsigned int n, const Point &position) const
 	const std::size_t first = 6 * index + 2 * n;
 	return ((1 - t) * m_Magnetic[first] / m_SqrtReluctance[first] +
 			t * m_Magnetic[first + 1] / m_SqrtReluctance[first + 1]) /
-		   (area * m_Mu);
+		   (area * m_Media[index].permeability);
 }
 
 void CartesianSubgrid::AddElectric(std::size_t edge, double value)
@@ -842,7 +883,7 @@ std::size_t CartesianSubgrid::StorageBytes() const
 		bytes += axis.capacity() * sizeof(double);
 	}
 	bytes += m_Edges.capacity() * sizeof(Edge) + m_RootRatios.capacity() * sizeof(Index) +
-			 m_Regions.capacity() * sizeof(Region);
+			 m_Regions.capacity() * sizeof(Region) + m_Media.capacity() * sizeof(Medium);
 	// std::map node overhead is implementation-specific; this is an approximate
 	// accounting estimate, not a measurement of allocator or process RSS.
 	bytes += m_EdgeMap.size() * (sizeof(Edge) + sizeof(std::size_t) + 4 * sizeof(void *));

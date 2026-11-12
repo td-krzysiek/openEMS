@@ -23,8 +23,10 @@ to what a user notices, in a few lines; the details belong in the commit.
   Each region has its own ratios; nesting, overlap and touching are rejected.
   Nonuniform base lines are supported with physical-coordinate sampling;
   region bounds must coincide with base lines, without geometric snapping.
-  The serial reference requires `engine=basic`, outer PEC and a homogeneous
-  medium; material objects, ports, PML and GPU execution are not supported yet.
+  Lossless isotropic material boxes may follow local cell boundaries, with
+  CSXCAD material priorities. A box cutting through a cell is rejected.
+  The serial reference requires `engine=basic` and outer PEC; internal metal,
+  physical ports, PML and GPU execution are not supported yet.
 - **A GPU engine**, `--engine=gpu` (`engine='gpu'` from Python), for AMD and
   NVIDIA GPUs (HIP/CUDA) and on macOS (Metal), with Cartesian and cylindrical
   meshes and the usual extensions. `--gpu-device=N` picks one of the GPUs

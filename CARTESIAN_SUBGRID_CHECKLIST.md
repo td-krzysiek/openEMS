@@ -27,7 +27,8 @@ separate tasks; a passing test on one engine does not qualify another engine.
   the recorded runs summarized in the numerical documentation, not CI coverage
   of every platform or engine.
 - Current capability is a **serial CPU numerical reference**, with homogeneous
-  lossless background and PEC outer walls. It is not an antenna-ready solver.
+  lossless background, cell-aligned isotropic lossless material boxes and PEC
+  outer walls. It is not an antenna-ready solver.
 - The new feature concerns Cartesian coordinates. Preserve the existing
   cylindrical modes and test them for regressions; implementing a new
   cylindrical subgrid is outside this scope.
@@ -82,8 +83,10 @@ universal limits of subgridding. A shared timestep is retained.
 
 - [ ] **G01** Map CSXCAD geometry and material priorities onto actual local
   cells, edges and faces; preserve coordinate units and physical dimensions.
-- [ ] **G02** Implement spatially varying isotropic dielectric/permeability
+- [x] **G02** Implement spatially varying isotropic dielectric/permeability
   coefficients with a consistent interface mass and stability bound.
+  Qualified for lossless, piecewise-constant leaf coefficients on serial CPU;
+  native geometry currently accepts only cell-aligned volume boxes.
 - [ ] **G03** Implement internal PEC objects, including finite physical metal
   height, sheets where supported, vias, gaps and finite-width contacts.
 - [ ] **G04** Qualify dielectric and conductor crossings of coarse/fine
@@ -96,6 +99,10 @@ universal limits of subgridding. A shared timestep is retained.
 Acceptance: independently inspect material occupancy and contacts, verify
 geometry priorities, and demonstrate convergence and bounded evolution.
 The current outer PEC-wall tests do not complete internal PEC mapping.
+G01/G04/G06 are **partial**: native volume-box priorities, units and leaf
+occupancy, dielectric crossings of refinement faces, analytic layered-cavity
+convergence and a graded dielectric/native-Yee control pass. General primitives,
+internal PEC contacts and broader scattering qualification remain open.
 
 ## 2. Nonuniform base mesh
 
@@ -259,3 +266,4 @@ numerical change invalidates their prior qualification.
 | 2026-11-12 | R01/R04/R05, independent axis ratios | `bd214a3` | [Axis-ratio controls](tests/test_cartesian_subgrid.cpp) and [API regression](python/Tests/test_CartesianSubgrid.py) |
 | 2026-11-12 | R02/R04–R09, multiple separate regions | `9073917` | [Multi-region controls](tests/test_cartesian_subgrid.cpp) and [native integration](python/Tests/Cartesian_Subgrid.py); R09 is source availability, R10 remains unexecuted |
 | 2026-11-12 | M01–M04, nonuniform base lines | This PR, graded-mesh increment | [Physical geometry and numerical tests](tests/test_cartesian_subgrid_mesh.cpp), [native source/translation controls](python/Tests/Cartesian_Subgrid.py), [results](CARTESIAN_SUBGRID.md#tests-and-observed-accuracy); serial homogeneous CPU only |
+| 2026-11-12 | G02; partial G01/G04/G06 | This PR, lossless-material increment | [Material/occupancy/invariant/cavity controls](tests/test_cartesian_subgrid_material.cpp), [graded native Yee](tests/test_cartesian_subgrid_mesh.cpp), [native priorities/units/guards](python/Tests/Cartesian_Subgrid_Materials.py); serial CPU, cell-aligned isotropic lossless boxes only; internal PEC and broad scattering still open |

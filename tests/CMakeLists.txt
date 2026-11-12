@@ -9,6 +9,7 @@ set(TESTS
   test_cell_model
   test_cartesian_subgrid
   test_cartesian_subgrid_mesh
+  test_cartesian_subgrid_material
 )
 
 foreach(test ${TESTS})

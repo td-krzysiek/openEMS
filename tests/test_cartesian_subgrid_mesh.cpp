@@ -1,4 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
+#include "CSPrimBox.h"
+#include "CSPropMaterial.h"
 #include "ContinuousStructure.h"
 #include "FDTD/cartesian_subgrid.h"
 #include "FDTD/engine.h"
@@ -183,14 +185,31 @@ static void CoordinatesAndTranslation(unsigned int steps)
 			  << divcurl << ", translation E/H " << errorE / peakE << '/' << errorH / peakH << '\n';
 }
 
-static void NativeGradedYee()
+static void NativeGradedYee(bool dielectric = false)
 {
 	const auto lines = Graded({6, 6, 6}, {.001, -.002, .003}, {.008, .008, .008});
 	const Grid::Index ratio{2, 1, 4};
 	const std::vector<Grid::Region> regions{{{{1, 1, 1}, {5, 5, 5}}, ratio}};
-	Grid compact(lines, epsilon, mu, regions, true);
+	const double boundary = lines[0][3];
+	auto medium = [&](const Grid::Point &start, const Grid::Point &stop)
+	{
+		return Grid::Medium{epsilon * (dielectric && (start[0] + stop[0]) / 2 > boundary ? 3.556 : 1.), mu};
+	};
+	Grid compact(lines, epsilon, mu, regions, true, medium);
 	ContinuousStructure csx;
 	csx.GetGrid()->SetDeltaUnit(1.);
+	if (dielectric)
+	{
+		auto *material = new CSPropMaterial(csx.GetParameterSet());
+		material->SetEpsilon(3.556);
+		csx.AddProperty(material);
+		auto *box = new CSPrimBox(csx.GetParameterSet(), material);
+		for (unsigned int n = 0; n < 3; ++n)
+		{
+			box->SetCoord(2 * n, n == 0 ? boundary : lines[n].front());
+			box->SetCoord(2 * n + 1, lines[n].back());
+		}
+	}
 	Grid::Axes fine;
 	for (unsigned int n = 0; n < 3; ++n)
 	{
@@ -275,7 +294,8 @@ static void NativeGradedYee()
 			}
 		}
 	}
-	std::cout << "graded uniform-fine vs native Yee E/H " << errorE / peakE << '/' << errorH / peakH << '\n';
+	std::cout << "graded uniform-fine " << (dielectric ? "dielectric " : "vacuum ") << "vs native Yee E/H "
+			  << errorE / peakE << '/' << errorH / peakH << '\n';
 	Require(peakE > 0 && peakH > 0 && errorE / peakE < 2e-4 && errorH / peakH < 2e-4,
 			"graded uniform-fine core differs from native Yee");
 }
@@ -381,6 +401,7 @@ int main(int argc, char **argv)
 	{
 		CoordinatesAndTranslation(argc == 2 && std::string(argv[1]) == "--long" ? 100000 : 4000);
 		NativeGradedYee();
+		NativeGradedYee(true);
 		InvalidAxes();
 		const double a = Packet({6, 6, 6}), b = Packet({12, 12, 12}), c = Packet({24, 24, 24}),
 					 d = Packet({36, 36, 36});

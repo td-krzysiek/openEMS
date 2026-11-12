@@ -15,7 +15,7 @@
  *  The same prolongation is used in the curl and in the Galerkin electric
  *  mass, including its off-diagonal interface blocks. No cylindrical code,
  *  global fine field lattice, pointwise current interpolation or subcycling.
- *  Homogeneous isotropic medium and outer PEC only in this numerical core.
+ *  Lossless isotropic media, constant within each leaf, and outer PEC only.
  */
 class CartesianSubgrid
 {
@@ -39,13 +39,25 @@ class CartesianSubgrid
 		std::array<int, 3> lo;
 		std::array<int, 3> size;
 	};
+	struct Medium
+	{
+		double epsilon;
+		double permeability;
+	};
+	//! Setup-only sampler: physical leaf bounds in metres, absolute SI coefficients.
+	using MediumSampler = std::function<Medium(const Point &, const Point &)>;
 
 	CartesianSubgrid(Index cells, Point spacing, Box refined, double epsilon, double permeability,
 					 bool uniformFine = false, Index ratio = {2, 2, 2});
 	CartesianSubgrid(Index cells, Point spacing, double epsilon, double permeability,
 					 const std::vector<Region> &regions, bool uniformFine = false);
-	CartesianSubgrid(const Axes &lines, double epsilon, double permeability, const std::vector<Region> &regions,
-					 bool uniformFine = false);
+	CartesianSubgrid(const Axes &lines, double epsilon, double permeability,
+					 const std::vector<Region> &regions, bool uniformFine = false,
+					 const MediumSampler &medium = MediumSampler());
+	Medium LeafMedium(std::size_t leaf) const
+	{
+		return m_Media.at(leaf);
+	}
 	//! Physical base-grid coordinates; integer Leaf extents index these intervals.
 	const Axes &BaseLines() const
 	{
@@ -131,7 +143,7 @@ class CartesianSubgrid
 	std::size_t RootIndex(const Index &cell) const;
 	std::size_t FindLeaf(const Point &position) const;
 	double TraceValue(const Trace &trace, const std::vector<double> &amplitude) const;
-	void Build();
+	void Build(const MediumSampler &medium);
 	double FactorMass(const std::map<std::pair<std::size_t, std::size_t>, double> &offDiagonal);
 	void Curl(const std::vector<double> &electric, std::vector<double> &magnetic) const;
 	void CurlTranspose(const std::vector<double> &magnetic, std::vector<double> &electric) const;
@@ -149,6 +161,7 @@ class CartesianSubgrid
 	bool m_UniformFine;
 	double m_StableStep = 0;
 	std::vector<Leaf> m_Leaves;
+	std::vector<Medium> m_Media;
 	std::vector<std::size_t> m_RootLeaves;
 	std::vector<Index> m_RootRatios;
 	std::map<Edge, std::size_t> m_EdgeMap;

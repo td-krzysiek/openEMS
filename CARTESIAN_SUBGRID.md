@@ -209,12 +209,46 @@ The energy monitor integrates compact states; it does not estimate energy by
 counting coarse observation samples. Soft E drive is added between the E and
 H half-steps. A source that touches no unconstrained master edge is rejected.
 
-Currently supported: homogeneous positive isotropic, lossless background;
-outer PEC; zero-delay nonperiodic soft E box sources; E/H observations.
-Unsupported requests fail at setup: internal material/metal objects, lumped
+Currently supported: positive isotropic, lossless background and cell-aligned
+material boxes; outer PEC; zero-delay nonperiodic soft E box sources; E/H observations.
+Unsupported requests fail at setup: internal metal objects, lumped
 ports, conducting sheets, dispersion/loss, PML/Mur, periodic sources, transformed
 primitives, other field types and GPU/SSE/new CPU engine selection. Only
 `engine=basic` selects this reference adapter; its execution is serial.
+
+### Lossless material boxes
+
+Use ordinary CSXCAD material properties, with no additional XML attributes:
+
+```python
+slab = csx.AddMaterial('slab', epsilon=3.556, mue=1.0)
+slab.AddBox(start=[0, -8, -8], stop=[8, 8, 8], priority=2)
+```
+
+The native adapter resolves CSXCAD priorities at physical leaf centres after
+checking that each intersecting box contains that whole leaf. Box faces may
+follow fine local boundaries without lying on base lines, and dielectric
+regions may cross coarse/fine interfaces. Boxes may overlap by priority.
+Even a partially hidden box must be leaf-aligned: this conservative prototype
+does not attempt Boolean subtraction to waive that restriction. Curved,
+transformed, zero-volume and subcell objects are rejected, as are anisotropy,
+spatial/non-unit weights, nonpositive/nonfinite coefficients and loss.
+
+The core stores absolute SI epsilon/mu per leaf. Electric quadrature uses
+that epsilon in the complete `P^T D P` mass, including interface terms;
+magnetic reluctance uses the corresponding permeability. The coupled stability
+bound is rebuilt from these coefficients. No material callback, geometry query
+or extra allocation is added to the timestep update. Per-leaf material storage
+adds 16 bytes per leaf on the tested platform; reference storage accounting
+includes it, without claiming production RSS/VRAM savings.
+
+Material-normal fields may jump. Reconstruction uses the positive-coordinate
+leaf at internal cell faces (the last leaf at the domain's upper wall).
+Roundoff-sized coordinate differences are treated consistently during lookup,
+using a tolerance capped at `1e-8` of the local interval. The actual geometry
+and observation position are unchanged; this does not relax material or
+refinement alignment checks. Intentional offsets on either side remain distinct.
+Probe integration and physical ports across discontinuities remain unqualified.
 
 ## Tests and observed accuracy
 
@@ -224,6 +258,7 @@ cmake --build build
 ctest --test-dir build --output-on-failure
 build/tests/test_cartesian_subgrid --long
 build/tests/test_cartesian_subgrid_mesh --long
+build/tests/test_cartesian_subgrid_material --long
 build/tests/test_cartesian_subgrid --mesh > mesh.json
 python3 python/Tests/run_testsuite.py --unittests Cartesian
 ```
@@ -301,7 +336,24 @@ coarser convergence evidence. This is a numerical control, not an antenna
 accuracy claim. Native E/H source/probe and dump checks also compare a graded
 fixture with its translated equivalent; physical port qualification is pending.
 
-Before antenna use: material and PEC geometry mapping, absorbing boundaries,
+Material controls include an analytic two-dielectric TE cavity: the equation
+`k1*cot(k1*a) + k2*cot(k2*b) = 0` imposes tangential E/H continuity for equal
+mu. With epsilon-r 1 and 2.25, base resolutions 6 and 12 reduce the fundamental
+frequency error from 0.939% to 0.238% (fine gate 1%, with improvement required).
+The material interface intersects refinement faces. A 100,000-step random
+heterogeneous epsilon/mu invariant control stays within the `1e-8` gate.
+These are stability/dispersion controls, not broadband reflection qualification.
+
+A graded fully refined dielectric slab agrees with native basic Yee after
+200 steps to about `3.94e-7` / `1.02e-6` of E/H peaks (gate `2e-4`).
+Independent native occupancy checks cover drawing units, nonzero origin and
+overlapping priorities. Python controls reverse insertion order, translate the
+same geometry, change drawing units, exercise local-only alignment and reject
+unsupported media/geometries. They also guard field reconstruction at a
+discontinuous-mu interface; the initial priority-order and boundary-roundoff
+failures were in this experimental adapter/core, not established upstream bugs.
+
+Before antenna use: general material and internal PEC geometry mapping, absorbing boundaries,
 physical port/source qualification and scattering tests.
 Before practical acceleration: structured interior kernels, compact interface
 metadata, memory/RSS and interleaved native benchmarks. Then device kernels,
