@@ -61,6 +61,7 @@ cdef class openEMS:
                             unless a box sets its own ``over_sampling`` (CSXCAD AddDump/AddProbe).
     :param CoordSystem:    choose coordinate system (0 Cartesian, 1 Cylindrical)
     :param MultiGrid:      define a cylindrical sub-grid radius
+    :param CartesianSubgrids: list of independent {box: [...], ratio: [...]} refinement regions
     :param CartesianSubgridRatio: axis ratios [rx,ry,rz], powers of two 1..16 (default [2,2,2])
     :param CartesianSubgridBox: experimental local XYZ refinement [x0,y0,z0,x1,y1,z1]
     :param TimeStep:       force to use a given timestep (dangerous!)
@@ -111,6 +112,11 @@ cdef class openEMS:
         if 'MultiGrid' in kw:
             self.SetMultiGrid(kw['MultiGrid'])
             del kw['MultiGrid']
+        if 'CartesianSubgrids' in kw:
+            if 'CartesianSubgridBox' in kw or 'CartesianSubgridRatio' in kw:
+                raise ValueError('CartesianSubgrid: mixed single- and multi-region configuration')
+            self.SetCartesianSubgrids(kw['CartesianSubgrids'])
+            del kw['CartesianSubgrids']
         if 'CartesianSubgridBox' in kw:
             self.SetCartesianSubgrid(kw['CartesianSubgridBox'])
             del kw['CartesianSubgridBox']
@@ -208,7 +214,8 @@ cdef class openEMS:
 
         Box is [x0,y0,z0,x1,y1,z1] in mesh units, aligned to base lines.
         Optional ratio is [rx,ry,rz], each a power of two from 1 to 16.
-        Omitting ratio preserves the selected ratios (initially [2,2,2]).
+        Replaces the entire region list with one box. Omitting ratio preserves
+        the single-box ratios (initially [2,2,2]; multi-box mode resets this default).
         Experimental serial reference: engine='basic', PEC, homogeneous
         medium and E/H observations only. See CARTESIAN_SUBGRID.md.
         """
@@ -224,6 +231,39 @@ cdef class openEMS:
         self.thisptr.SetupCartesianSubgrid(coordinates)
         if ratio is not None:
             self.SetCartesianSubgridRatio(ratios)
+
+    def _CartesianSubgridBox(self, box):
+        values = np.asarray(box, dtype=float)
+        if values.shape != (6,) or not np.isfinite(values).all():
+            raise ValueError('CartesianSubgrid: expected six finite coordinates')
+        if not (values[:3] < values[3:]).all():
+            raise ValueError('CartesianSubgrid: box start must be below stop')
+        return values.tolist()
+
+    def SetCartesianSubgrids(self, regions):
+        """Replace all regions with a list of {'box': [...], 'ratio': [...]}.
+
+        Ratios default to [2,2,2] per entry. Boxes must be aligned to base
+        lines, inside the domain, and separated by at least one base cell.
+        Overlap, nesting and touching are rejected, including no-op ratios.
+        """
+        entries = list(regions)
+        if not 1 <= len(entries) <= 64:
+            raise ValueError('CartesianSubgrid: expected 1 through 64 regions')
+        cdef vector[vector[double]] boxes
+        cdef vector[vector[unsigned int]] ratios
+        for entry in entries:
+            if not isinstance(entry, dict) or 'box' not in entry or set(entry) - {'box', 'ratio'}:
+                raise ValueError('CartesianSubgrid: expected region dictionaries with box/ratio keys')
+            boxes.push_back(self._CartesianSubgridBox(entry['box']))
+            ratios.push_back(self._CartesianSubgridRatio(entry.get('ratio', [2,2,2])))
+        self.thisptr.SetupCartesianSubgrids(boxes, ratios)
+
+    def AddCartesianSubgrid(self, box, ratio=(2, 2, 2)):
+        """Append an independent region; validation failure leaves the list intact."""
+        cdef vector[double] coordinates = self._CartesianSubgridBox(box)
+        cdef vector[unsigned int] values = self._CartesianSubgridRatio(ratio)
+        self.thisptr.AddCartesianSubgrid(coordinates, values)
 
     def _CartesianSubgridRatio(self, ratio):
         values = np.asarray(ratio, dtype=float)

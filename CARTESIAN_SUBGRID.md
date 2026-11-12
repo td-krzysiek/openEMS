@@ -5,8 +5,8 @@ children. `CartesianSubgridRatio` independently selects the refinement on
 X, Y and Z: each factor is 1, 2, 4, 8 or 16. The default `[2,2,2]` retains
 the original eight-child behaviour; `[1,2,8]` makes 16 children while leaving
 X unchanged, and `[2,4,8]` makes 64 children. Spacing on each axis is divided
-by its selected factor inside one aligned box. Outside the box
-the coarse cells remain. This is a separate Cartesian numerical core, not
+by its selected factor inside each selected box. Several separate boxes
+can have different axis ratios; outside them the coarse cells remain. This is a separate Cartesian numerical core, not
 angular interpolation or a slab copied from cylindrical multi-grid.
 
 It is a **serial CPU reference implementation**, suitable for numerical
@@ -15,12 +15,15 @@ production antenna engine.
 
 ## Geometry, storage and execution
 
-- One refinement level with configurable axis ratios and one rectangular box, strictly inside the domain.
-  Each box face coincides with a base-grid line; at least one base cell remains
-  between the box and each outer boundary.
+- One refinement level and 1 through 64 independent rectangular boxes, each
+  with its own configurable axis ratios, strictly inside the domain. Every
+  face coincides with a base-grid line. At least one base cell remains between
+  each box and the outer boundary, and a full base-cell gap separates every
+  pair of boxes on at least one axis. Face/edge/corner touching, overlap and
+  nesting are rejected; touching blocks cannot yet be used as a transition.
 - A Cartesian base mesh, uniform on each axis; the three axis spacings may
-  differ. Arbitrary nonuniform lines, multiple/nested blocks and moving
-  refinement are not implemented.
+  differ. Arbitrary nonuniform lines, nested blocks and moving refinement
+  are not implemented.
 - Coarse cells covered by the box are removed. Only leaf cells and independent
   electric edges are stored. There is **no global fine parent E/H lattice**.
 - One common timestep bounded by the coupled operator, not local subcycling.
@@ -29,10 +32,15 @@ production antenna engine.
   factors. This favours inspectability, not production speed. Regular
   interiors need native structured kernels before a fair performance claim.
 
-For base count N, M selected base cells and `R=rx*ry*rz`, the leaf count is
-`N + (R-1) M`. A fully fine grid has `R N` cells. In the test with 8x8x8 base cells and a
+For base count N, M_i selected base cells and `R_i=rx_i*ry_i*rz_i` in region i,
+the leaf count is `N + sum_i (R_i-1) M_i`. A fully fine control uses the maximum
+requested factor on each axis: `N * max(rx_i) * max(ry_i) * max(rz_i)`.
+The maximum factors define a common integer coordinate lattice; they do not
+refine unselected cells or override any region's ratio. No full lattice of
+field states is allocated. `LatticeRatio()` (and compatibility alias `Ratio()`)
+reports this coordinate scale, while `Regions()` reports each local ratio. In the test with 8x8x8 base cells and a
 4x4x4 selected block, the counts are 960 versus 4096. Accounted persistent
-storage is about 1.09 versus 4.36 MB **for this same reference core**. These
+storage is about 1.10 versus 4.40 MB **for this same reference core**. These
 numbers are not process RSS, peak setup memory or a comparison with the
 optimized native Yee/GPU storage. Sparse topology, double fields, duplicated
 face quadrature histories and map nodes have significant overhead.
@@ -111,6 +119,56 @@ FDTD = InitFDTD('CartesianSubgridBox', '-4,-4,-4,4,4,4', ...
 FDTD = SetBoundaryCond(FDTD, repmat({'PEC'}, 1, 6));
 ```
 
+Several separate blocks in Python (the example fits the -8:2:8 base mesh):
+
+```python
+fdtd.SetCartesianSubgrids([
+    {'box': [-6,-4,-4,-2,4,4], 'ratio': [2,2,4]},
+    {'box': [ 2,-4,-4, 6,4,4], 'ratio': [4,1,2]},
+])
+# Or append one region to an existing single- or multi-region setup:
+# fdtd.AddCartesianSubgrid(box, ratio=[2,4,8])
+```
+
+`CartesianSubgrids=[...]` is also a constructor keyword. The list setter
+replaces all regions; validation failure leaves the existing list intact.
+Each entry requires `box` and defaults its own `ratio` to `[2,2,2]`.
+The old singular setter explicitly replaces the list with one region.
+`SetCartesianSubgridRatio` rejects multi-region mode as ambiguous. The
+constructor rejects mixing singular and plural keywords.
+
+Matlab/Octave provides a numeric matrix helper:
+
+```matlab
+FDTD = SetCartesianSubgrids(FDTD, ...
+    [-6,-4,-4,-2,4,4; 2,-4,-4,6,4,4], [2,2,4; 4,1,2]);
+```
+
+It removes legacy single-box attributes before serializing the region list.
+It checks box ordering, separation and ratios; the solver checks exact base
+alignment, cell margins and resource guards. The helper has a Matlab test,
+but Matlab/Octave execution is not part of the local macOS qualification.
+
+For C++, `SetupCartesianSubgrids(boxes, ratios)` replaces all regions and
+`AddCartesianSubgrid(box, ratio)` appends one. The compact core accepts
+`CartesianSubgrid(cells, spacing, epsilon, mu, vector<Region>, uniformFine)`.
+The single-box constructor remains source compatible.
+
+Multiple regions use an optional FDTD child (one-box serialization remains
+compatible with the legacy attributes):
+
+```xml
+<CartesianSubgrids>
+  <Region Box="-6,-4,-4,-2,4,4" Ratio="2,2,4"/>
+  <Region Box="2,-4,-4,6,4,4" Ratio="4,1,2"/>
+</CartesianSubgrids>
+```
+
+Mixed legacy/list definitions, duplicate containers, unknown Region attributes,
+empty lists, malformed coordinates, invalid ratios, touching, overlapping and
+nested boxes are rejected. `ReadFromXML` resets previous region state. A
+single Region without Ratio defaults to 2/2/2.
+
 Python also supports `SetCartesianSubgrid(box, ratio=[2,4,8])` and the
 separate `SetCartesianSubgridRatio([2,4,8])`. Changing the box alone preserves
 the selected ratios. Ratio and box inputs are checked before a combined setter
@@ -186,7 +244,8 @@ allocation success are not accuracy qualification. Staged/nested transitions
 and local timesteps remain future work.
 
 The prototype has explicit allocation guards: at most 1024 base cells per
-axis, 20 million base cells, one million leaves and 1024 coupled edges per
+axis, one million base cells, one million leaves summed across all regions,
+64 regions and 1024 coupled edges per
 dense interface factor. These are implementation safeguards, not physical
 limits of subgridding. Increasing them requires memory accounting and a
 sparser/scalable interface solve, rather than merely removing assertions.
@@ -203,10 +262,20 @@ Python tests cover ratio validation, XML round-trip/legacy reset and an actual
 unequal-ratio E/H run. These are small-model controls, not a blanket accuracy
 claim for all factor combinations or large interfaces.
 
+The multi-region tests use two different anisotropic blocks: counts, local
+sizes, all twelve box faces, div(curl), a 100k-step invariant and invariance
+under region-order reversal. A 64-block control checks valid admission;
+invalid overlap/nesting/touching and the combined leaf budget are rejected.
+A packet traversing both blocks is compared with a fully fine control at the
+same timestep. For base resolutions 6, 12, 24, 36, errors are about 61.0%,
+37.2%, 9.42%, 4.37%; cyclic permutations agree at 6 and 12. Coarse results
+remain unsuitable for design. Native multi-region soft-source/E/H probe and
+FD dump checks plus API/XML round-trip/reset controls accompany the core tests.
+
 Before antenna use: material and PEC geometry mapping, nonuniform base lines,
 absorbing boundaries, physical port/source qualification and scattering tests.
 Before practical acceleration: structured interior kernels, compact interface
 metadata, memory/RSS and interleaved native benchmarks. Then device kernels,
 domain partitioning and communication can reuse this numerical contract.
-Multiple refinement levels and local subcycling are separate changes. No
+Nested refinement levels and local subcycling are separate changes. No
 running or frozen production model should adopt this prototype silently.

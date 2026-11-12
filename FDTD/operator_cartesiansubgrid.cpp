@@ -94,19 +94,60 @@ class Engine_CartesianSubgrid : public Engine
 };
 } // namespace
 
-Operator_CartesianSubgrid::Operator_CartesianSubgrid(const std::vector<double> &box, CartesianSubgrid::Index ratio)
-	: m_Box(box), m_Ratio(ratio)
+Operator_CartesianSubgrid::Operator_CartesianSubgrid(const std::vector<std::vector<double>> &boxes,
+													 const std::vector<CartesianSubgrid::Index> &ratios)
+	: m_Boxes(boxes), m_Ratios(ratios)
 {
 }
 
 Operator_CartesianSubgrid *Operator_CartesianSubgrid::New(const std::vector<double> &box, CartesianSubgrid::Index ratio)
 {
-	if (box.size() != 6 || !std::all_of(box.begin(), box.end(), [](double v) { return std::isfinite(v); }))
+	return NewRegions({box}, {ratio});
+}
+
+void Operator_CartesianSubgrid::ValidateRegions(const std::vector<std::vector<double>> &boxes,
+												const std::vector<CartesianSubgrid::Index> &ratios)
+{
+	if (boxes.empty() || boxes.size() > 64 || boxes.size() != ratios.size())
 	{
-		throw std::invalid_argument("CartesianSubgrid: expected six finite box coordinates: x0,y0,z0,x1,y1,z1");
+		throw std::invalid_argument("CartesianSubgrid: expected 1 through 64 boxes and matching axis ratios");
 	}
-	std::unique_ptr<Operator_CartesianSubgrid> op(new Operator_CartesianSubgrid(box, ratio));
-	CartesianSubgrid::ValidateRatio(ratio);
+	for (std::size_t i = 0; i < boxes.size(); ++i)
+	{
+		const auto &box = boxes[i];
+		if (box.size() != 6 || !std::all_of(box.begin(), box.end(), [](double v) { return std::isfinite(v); }))
+		{
+			throw std::invalid_argument("CartesianSubgrid: expected six finite box coordinates: x0,y0,z0,x1,y1,z1");
+		}
+		CartesianSubgrid::ValidateRatio(ratios[i]);
+		for (unsigned int n = 0; n < 3; ++n)
+		{
+			if (box[n] >= box[n + 3])
+			{
+				throw std::invalid_argument("CartesianSubgrid: box start must be below stop on every axis");
+			}
+		}
+		for (std::size_t j = 0; j < i; ++j)
+		{
+			bool separated = false;
+			for (unsigned int n = 0; n < 3; ++n)
+			{
+				separated = separated || box[n + 3] < boxes[j][n] || boxes[j][n + 3] < box[n];
+			}
+			if (!separated)
+			{
+				throw std::invalid_argument(
+					"CartesianSubgrid: regions must be separated; touching, overlap and nesting are unsupported");
+			}
+		}
+	}
+}
+
+Operator_CartesianSubgrid *Operator_CartesianSubgrid::NewRegions(const std::vector<std::vector<double>> &boxes,
+																 const std::vector<CartesianSubgrid::Index> &ratios)
+{
+	ValidateRegions(boxes, ratios);
+	std::unique_ptr<Operator_CartesianSubgrid> op(new Operator_CartesianSubgrid(boxes, ratios));
 	op->Init();
 	return op.release();
 }
@@ -234,23 +275,32 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 	}
 	CartesianSubgrid::Index cells;
 	CartesianSubgrid::Point spacing;
-	CartesianSubgrid::Box refined;
 	for (unsigned int n = 0; n < 3; ++n)
 	{
 		cells[n] = numLines[n] - 1;
 		spacing[n] = (discLines[n][1] - discLines[n][0]) * gridDelta;
-		for (unsigned int side = 0; side < 2; ++side)
-		{
-			const double value = (m_Box[n + 3 * side] - discLines[n][0]) * gridDelta / spacing[n];
-			if (!std::isfinite(value) || value < 0 || value > cells[n] || std::abs(value - std::round(value)) > 1e-8)
-			{
-				throw std::invalid_argument("CartesianSubgrid: box faces must coincide with exact base-grid lines");
-			}
-			(side ? refined.stop[n] : refined.start[n]) = unsigned(std::llround(value));
-		}
 	}
-	m_Grid.reset(new CartesianSubgrid(cells, spacing, refined, GetBackgroundEpsR() * EPS0, GetBackgroundMueR() * MUE0,
-									  false, m_Ratio));
+	std::vector<CartesianSubgrid::Region> regions;
+	for (std::size_t i = 0; i < m_Boxes.size(); ++i)
+	{
+		CartesianSubgrid::Region region;
+		region.ratio = m_Ratios[i];
+		for (unsigned int n = 0; n < 3; ++n)
+		{
+			for (unsigned int side = 0; side < 2; ++side)
+			{
+				const double value = (m_Boxes[i][n + 3 * side] - discLines[n][0]) * gridDelta / spacing[n];
+				if (!std::isfinite(value) || value < 0 || value > cells[n] ||
+					std::abs(value - std::round(value)) > 1e-8)
+				{
+					throw std::invalid_argument("CartesianSubgrid: box faces must coincide with exact base-grid lines");
+				}
+				(side ? region.box.stop[n] : region.box.start[n]) = unsigned(std::llround(value));
+			}
+		}
+		regions.push_back(region);
+	}
+	m_Grid.reset(new CartesianSubgrid(cells, spacing, GetBackgroundEpsR() * EPS0, GetBackgroundMueR() * MUE0, regions));
 	const double limit = m_Grid->StableTimestep();
 	if (dT == 0)
 	{
@@ -355,7 +405,12 @@ double Operator_CartesianSubgrid::GetNumberCells() const
 
 void Operator_CartesianSubgrid::ShowStat() const
 {
-	std::cout << "Experimental compact Cartesian XYZ " << m_Ratio[0] << 'x' << m_Ratio[1] << 'x' << m_Ratio[2]
-			  << " subgrid; serial host reference; " << m_Grid->CellCount() << " leaf cells; " << m_Grid->StorageBytes()
-			  << " accounted bytes; full fine parent arrays: none" << std::endl;
+	std::cout << "Experimental compact Cartesian XYZ subgrid; " << m_Boxes.size()
+			  << " region(s); serial host reference; " << m_Grid->CellCount() << " leaf cells; "
+			  << m_Grid->StorageBytes() << " accounted bytes; full fine parent arrays: none" << std::endl;
+	for (std::size_t i = 0; i < m_Ratios.size(); ++i)
+	{
+		std::cout << "  region " << i << ": ratio " << m_Ratios[i][0] << 'x' << m_Ratios[i][1] << 'x' << m_Ratios[i][2]
+				  << std::endl;
+	}
 }

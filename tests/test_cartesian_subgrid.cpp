@@ -333,6 +333,14 @@ static void CheckAdapterRatio()
 	Require(op->CalcECOperator() == 0, "adapter ratio operator failed");
 	Require(op->Grid().Ratio() == Grid::Index{1, 2, 8} && op->GetNumberCells() == 1472,
 			"adapter dropped selected axis ratios");
+	std::unique_ptr<Operator_CartesianSubgrid> multi(
+		Operator_CartesianSubgrid::NewRegions({{1, 1, 1, 3, 4, 4}, {5, 1, 1, 7, 4, 4}}, {{2, 2, 4}, {4, 1, 2}}));
+	multi->SetEngineType(Engine::BASIC);
+	multi->SetExcitationSignal(&excitation);
+	Require(multi->SetGeometryCSX(&csx), "multiple-region adapter geometry failed");
+	multi->SetBoundaryCondition(boundaries);
+	Require(multi->CalcECOperator() == 0 && multi->GetNumberCells() == 908 && multi->Grid().Regions().size() == 2,
+			"native adapter dropped a refinement region");
 }
 
 static void CheckRatioGuards()
@@ -350,6 +358,233 @@ static void CheckRatioGuards()
 		}
 		Require(rejected, "invalid refinement ratio accepted");
 	}
+}
+
+static std::vector<Grid::Region> SeparateRegions()
+{
+	return {{{{1, 2, 2}, {4, 6, 6}}, {2, 2, 4}}, {{{7, 2, 2}, {10, 6, 6}}, {4, 1, 2}}};
+}
+
+static void CheckMultipleRegions(unsigned int steps)
+{
+	const Grid::Index cells{12, 8, 8};
+	const Grid::Point spacing{.001, .001, .001};
+	auto regions = SeparateRegions();
+	Grid grid(cells, spacing, epsilon, mu, regions);
+	Require(grid.CellCount() == 1824 && grid.LatticeRatio() == Grid::Index{4, 2, 4},
+			"multiple region count/lattice failed");
+	double volume = 0;
+	for (const auto &leaf : grid.Leaves())
+	{
+		const auto lattice = grid.LatticeRatio();
+		Grid::Index root;
+		for (unsigned int n = 0; n < 3; ++n)
+		{
+			root[n] = unsigned(leaf.lo[n]) / lattice[n];
+		}
+		Grid::Index expected{1, 1, 1};
+		for (const auto &region : regions)
+		{
+			bool inside = true;
+			for (unsigned int n = 0; n < 3; ++n)
+			{
+				inside = inside && root[n] >= region.box.start[n] && root[n] < region.box.stop[n];
+			}
+			if (inside)
+			{
+				expected = region.ratio;
+			}
+		}
+		double local = 1;
+		for (unsigned int n = 0; n < 3; ++n)
+		{
+			Require(leaf.size[n] == int(lattice[n] / expected[n]), "a region inherited another region's refinement");
+			local *= spacing[n] * leaf.size[n] / lattice[n];
+		}
+		volume += local;
+	}
+	Require(std::abs(volume / (.012 * .008 * .008) - 1) < 1e-12, "regions do not tile the physical domain");
+	grid.SetElectric(RandomField);
+	grid.SetMagnetic([](unsigned int n, const Grid::Point &p) { return RandomField(n, p) / 376.730313668; });
+	double jump = 0;
+	for (const auto &region : regions)
+	{
+		for (unsigned int normal = 0; normal < 3; ++normal)
+		{
+			for (unsigned int side = 0; side < 2; ++side)
+			{
+				for (unsigned int tangent = 0; tangent < 3; ++tangent)
+				{
+					if (normal == tangent)
+					{
+						continue;
+					}
+					for (unsigned int sample = 0; sample < 8; ++sample)
+					{
+						Grid::Point a;
+						for (unsigned int n = 0; n < 3; ++n)
+						{
+							a[n] = spacing[n] * (region.box.start[n] +
+												 (.17 + .07 * sample) * (region.box.stop[n] - region.box.start[n]));
+						}
+						a[normal] = spacing[normal] * (side ? region.box.stop[normal] : region.box.start[normal]);
+						Grid::Point b = a;
+						a[normal] -= 1e-12;
+						b[normal] += 1e-12;
+						jump = std::max(jump, std::abs(grid.Electric(tangent, a) - grid.Electric(tangent, b)));
+					}
+				}
+			}
+		}
+	}
+	const double residual = grid.CurlDivergenceResidual(RandomField);
+	Require(jump < 1e-7 && residual < 1e-13, "multi-region trace or divergence of curl failed");
+	// Region insertion order must not change propagation or interface ownership.
+	std::reverse(regions.begin(), regions.end());
+	Grid reversed(cells, spacing, epsilon, mu, regions);
+	reversed.SetElectric(RandomField);
+	reversed.SetMagnetic([](unsigned int n, const Grid::Point &p) { return RandomField(n, p) / 376.730313668; });
+	const double dt = .8 * grid.StableTimestep();
+	const double initial = grid.Energy(dt);
+	double drift = 0;
+	for (unsigned int step = 0; step < steps; ++step)
+	{
+		grid.Step(dt);
+		if (step < 2000)
+		{
+			reversed.Step(dt);
+			for (unsigned int n = 0; n < 3; ++n)
+			{
+				const Grid::Point p{.00817, .00327, .00461};
+				Require(std::abs(grid.Electric(n, p) - reversed.Electric(n, p)) < 1e-12 &&
+							std::abs(grid.Magnetic(n, p) - reversed.Magnetic(n, p)) < 1e-12,
+						"region order changes sampled propagation");
+			}
+		}
+		if (step % 100 == 0)
+		{
+			drift = std::max(drift, std::abs(grid.Energy(dt) / initial - 1));
+			Require(std::isfinite(drift) && drift < 1e-8, "multi-region invariant is not conserved");
+		}
+	}
+	std::cout << "multiple regions: cells " << grid.CellCount() << ", trace jump " << jump << ", D curl " << residual
+			  << ", steps " << steps << ", invariant drift " << drift << '\n';
+}
+
+static void CheckManyRegionsAndBudget()
+{
+	std::vector<Grid::Region> regions;
+	for (unsigned int x : {1u, 3u, 5u, 7u})
+	{
+		for (unsigned int y : {1u, 3u, 5u, 7u})
+		{
+			for (unsigned int z : {1u, 3u, 5u, 7u})
+			{
+				regions.push_back({{{x, y, z}, {x + 1, y + 1, z + 1}}, {2, 2, 2}});
+			}
+		}
+	}
+	Grid grid({10, 10, 10}, {.001, .001, .001}, epsilon, mu, regions);
+	Require(grid.CellCount() == 1000 + 64 * 7, "64 independent regions have the wrong leaf count");
+	Require(grid.CurlDivergenceResidual(RandomField) < 1e-13, "64-region divergence of curl failed");
+	bool rejected = false;
+	try
+	{
+		// Either block alone fits the guard. Their combined leaves do not.
+		const std::vector<Grid::Region> oversized{{{{1, 1, 1}, {30, 31, 31}}, {2, 2, 4}},
+												  {{{33, 1, 1}, {62, 31, 31}}, {2, 4, 4}}};
+		Grid bad({64, 32, 32}, {.001, .001, .001}, epsilon, mu, oversized);
+	}
+	catch (const std::invalid_argument &)
+	{
+		rejected = true;
+	}
+	Require(rejected, "combined region allocation guard was not enforced");
+}
+
+static void CheckRegionGuards()
+{
+	const Grid::Region first{{{1, 2, 2}, {4, 6, 6}}, {2, 2, 4}};
+	const std::vector<Grid::Region> invalid{
+		{{{3, 2, 2}, {5, 6, 6}}, {2, 2, 2}},  // volume overlap
+		{{{2, 3, 3}, {3, 4, 4}}, {2, 2, 2}},  // nested
+		{{{4, 2, 2}, {6, 6, 6}}, {2, 2, 2}},  // face contact
+		{{{4, 6, 6}, {6, 7, 7}}, {2, 2, 2}},  // corner contact
+		{{{7, 2, 2}, {10, 6, 6}}, {3, 2, 2}}, // invalid ratio
+		{{{0, 2, 2}, {1, 6, 6}}, {2, 2, 2}}	  // outer boundary
+	};
+	for (const auto &second : invalid)
+	{
+		bool rejected = false;
+		try
+		{
+			Grid bad({12, 8, 8}, {.001, .001, .001}, epsilon, mu, {first, second});
+		}
+		catch (const std::invalid_argument &)
+		{
+			rejected = true;
+		}
+		Require(rejected, "invalid region interaction accepted");
+	}
+	for (const std::size_t count : {0u, 65u})
+	{
+		bool rejected = false;
+		try
+		{
+			Grid bad({12, 8, 8}, {.001, .001, .001}, epsilon, mu, std::vector<Grid::Region>(count, first));
+		}
+		catch (const std::invalid_argument &)
+		{
+			rejected = true;
+		}
+		Require(rejected, "invalid region count accepted");
+	}
+}
+
+static double MultipleRegionPulse(unsigned int cells, unsigned int propagation)
+{
+	constexpr double length = .012;
+	const Grid::Point spacing{length / cells, length / cells, length / cells};
+	Grid::Index ratioA{2, 2, 2}, ratioB{2, 2, 2};
+	ratioA[propagation] = 2;
+	ratioB[propagation] = 4;
+	ratioB[(propagation + 2) % 3] = 1;
+	Grid::Box a{{cells / 3, cells / 3, cells / 3}, {2 * cells / 3, 2 * cells / 3, 2 * cells / 3}};
+	Grid::Box b = a;
+	a.start[propagation] = cells / 6;
+	a.stop[propagation] = cells / 3;
+	b.start[propagation] = 2 * cells / 3;
+	b.stop[propagation] = 5 * cells / 6;
+	const std::vector<Grid::Region> regions{{a, ratioA}, {b, ratioB}};
+	Grid grid({cells, cells, cells}, spacing, epsilon, mu, regions);
+	Grid reference({cells, cells, cells}, spacing, epsilon, mu, regions, true);
+	const unsigned int polarization = (propagation + 1) % 3;
+	auto seed = [&](unsigned int n, const Grid::Point &p)
+	{
+		return n == polarization ? std::exp(-std::pow((p[propagation] - .003) / .002, 2)) *
+									   std::sin(std::acos(-1.) * p[propagation] / length) *
+									   std::sin(std::acos(-1.) * p[(propagation + 2) % 3] / length)
+								 : 0.;
+	};
+	grid.SetElectric(seed);
+	reference.SetElectric(seed);
+	const double dt = .8 * std::min(grid.StableTimestep(), reference.StableTimestep());
+	Grid::Point probe{.006, .006, .006};
+	probe[propagation] = .011;
+	const unsigned int steps = unsigned(1.1 * length * std::sqrt(epsilon * mu) / dt);
+	double error = 0, peak = 0;
+	for (unsigned int step = 0; step < steps; ++step)
+	{
+		grid.Step(dt);
+		reference.Step(dt);
+		const double value = reference.Electric(polarization, probe);
+		peak = std::max(peak, std::abs(value));
+		error = std::max(error, std::abs(value - grid.Electric(polarization, probe)));
+	}
+	Require(peak > 1e-3, "no packet beyond both refinement regions");
+	std::cout << "multiple-region packet: axis " << propagation << ", base " << cells << ", error " << error / peak
+			  << '\n';
+	return error / peak;
 }
 
 int main(int argc, char **argv)
@@ -394,6 +629,20 @@ int main(int argc, char **argv)
 		}
 		CheckTraceAndStorage();
 		const bool longRun = argc == 2 && std::string(argv[1]) == "--long";
+		CheckMultipleRegions(longRun ? 100000 : 2000);
+		CheckRegionGuards();
+		CheckManyRegionsAndBudget();
+		for (unsigned int n = 0; n < 3; ++n)
+		{
+			const double a = MultipleRegionPulse(6, n);
+			const double b = MultipleRegionPulse(12, n);
+			Require(b < a, "multi-region packet does not converge");
+		}
+		const double multiFine = MultipleRegionPulse(24, 0);
+		Require(multiFine < .1, "multi-region packet at resolution 24 differs by more than ten percent");
+		const double multiResolved = MultipleRegionPulse(36, 0);
+		Require(multiResolved < multiFine && multiResolved < .05,
+				"resolved multi-region packet differs by more than five percent");
 		const double anisotropicCoarse = CavityFrequency(6, 2, {2, 4, 8});
 		const double anisotropicFine = CavityFrequency(12, 2, {2, 4, 8});
 		Require(std::abs(anisotropicFine) < .005 && std::abs(anisotropicFine) < .75 * std::abs(anisotropicCoarse),

@@ -69,6 +69,26 @@ for name in ('received', 'magnetic'):
     data = np.loadtxt(os.path.join(Sim_Path, 'unequal', name), comments='%')
     assert np.isfinite(data).all() and np.max(np.abs(data[:, 1:])) > 1e-7
 
+fdtd, csx = fixture()
+fdtd.SetCartesianSubgrids([
+    {'box': [-6, -4, -4, -2, 4, 4], 'ratio': [2, 2, 4]},
+    {'box': [2, -4, -4, 6, 4, 4], 'ratio': [4, 1, 2]},
+])
+csx.AddDump('multi_ef', dump_type=10, file_type=1, frequency=[13e9]).AddBox([-6, -4, 0], [6, 4, 0])
+csx.AddDump('multi_hf', dump_type=11, file_type=1, frequency=[13e9]).AddBox([-6, -4, 0], [6, 4, 0])
+run(fdtd, 'multiple', engine='basic')
+for name in ('received', 'magnetic'):
+    data = np.loadtxt(os.path.join(Sim_Path, 'multiple', name), comments='%')
+    assert np.isfinite(data).all() and np.max(np.abs(data[:, 1:])) > 1e-7
+for name in ('multi_ef.h5', 'multi_hf.h5'):
+    assert os.path.getsize(os.path.join(Sim_Path, 'multiple', name)) > 100
+rejected('multi-unaligned', lambda f,c: f.SetCartesianSubgrids([
+    {'box': [-6, -4, -4, -2.1, 4, 4]}, {'box': [2, -4, -4, 6, 4, 4]}]))
+rejected('multi-boundary', lambda f,c: f.SetCartesianSubgrids([
+    {'box': [-8, -4, -4, -2, 4, 4]}, {'box': [2, -4, -4, 6, 4, 4]}]))
+rejected('multi-gpu', lambda f,c: f.SetCartesianSubgrids([
+    {'box': [-6, -4, -4, -2, 4, 4]}, {'box': [2, -4, -4, 6, 4, 4]}]), engine='gpu')
+
 rejected('pml', lambda f, c: f.SetBoundaryCond(['PML_2'] * 6))
 rejected('sse', lambda f, c: None, engine='sse')
 rejected('gpu', lambda f, c: None, engine='gpu')

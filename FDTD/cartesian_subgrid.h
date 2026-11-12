@@ -28,6 +28,11 @@ class CartesianSubgrid
 		Index start;
 		Index stop;
 	};
+	struct Region
+	{
+		Box box;
+		Index ratio;
+	};
 	struct Leaf
 	{
 		std::array<int, 3> lo;
@@ -36,7 +41,20 @@ class CartesianSubgrid
 
 	CartesianSubgrid(Index cells, Point spacing, Box refined, double epsilon, double permeability,
 					 bool uniformFine = false, Index ratio = {2, 2, 2});
+	CartesianSubgrid(Index cells, Point spacing, double epsilon, double permeability,
+					 const std::vector<Region> &regions, bool uniformFine = false);
 	static void ValidateRatio(const Index &ratio);
+	//! Finest integer coordinate lattice; not the refinement of every region.
+	Index LatticeRatio() const
+	{
+		return m_Ratio;
+	}
+	const std::vector<Region> &Regions() const
+	{
+		return m_Regions;
+	}
+	//! Compatibility alias for the single-region reference.
+
 	Index Ratio() const
 	{
 		return m_Ratio;
@@ -98,6 +116,7 @@ class CartesianSubgrid
 	Edge LocalEdge(const Leaf &cell, unsigned int axis, unsigned int first, unsigned int second) const;
 	bool Boundary(const Edge &edge) const;
 	bool Hanging(const Edge &edge) const;
+	const Box *InterfaceBox(const Edge &edge) const;
 	Trace Restrict(const Edge &edge) const;
 	std::size_t RootIndex(const Index &cell) const;
 	std::size_t FindLeaf(const Point &position) const;
@@ -112,13 +131,14 @@ class CartesianSubgrid
 	Index m_Cells;
 	Index m_Ratio;
 	Point m_Spacing;
-	Box m_Box;
+	std::vector<Region> m_Regions;
 	double m_Epsilon;
 	double m_Mu;
 	bool m_UniformFine;
 	double m_StableStep = 0;
 	std::vector<Leaf> m_Leaves;
 	std::vector<std::size_t> m_RootLeaves;
+	std::vector<Index> m_RootRatios;
 	std::map<Edge, std::size_t> m_EdgeMap;
 	std::vector<Edge> m_Edges;
 	std::vector<double> m_SqrtMass, m_SqrtReluctance;

@@ -26,29 +26,61 @@ bool CartesianSubgrid::Edge::operator<(const Edge &other) const
 
 CartesianSubgrid::CartesianSubgrid(Index cells, Point spacing, Box refined, double epsilon, double permeability,
 								   bool uniformFine, Index ratio)
-	: m_Cells(cells), m_Ratio(ratio), m_Spacing(spacing), m_Box(refined), m_Epsilon(epsilon), m_Mu(permeability),
+	: CartesianSubgrid(cells, spacing, epsilon, permeability, {{refined, ratio}}, uniformFine)
+{
+}
+
+CartesianSubgrid::CartesianSubgrid(Index cells, Point spacing, double epsilon, double permeability,
+								   const std::vector<Region> &regions, bool uniformFine)
+	: m_Cells(cells), m_Ratio{1, 1, 1}, m_Spacing(spacing), m_Epsilon(epsilon), m_Mu(permeability),
 	  m_UniformFine(uniformFine)
 {
-	ValidateRatio(ratio);
 	Require(epsilon > 0 && std::isfinite(epsilon) && permeability > 0 && std::isfinite(permeability),
 			"CartesianSubgrid: positive finite homogeneous epsilon and mu required");
+	Require(!regions.empty() && regions.size() <= 64, "CartesianSubgrid: expected 1 through 64 regions");
 	std::size_t count = 1;
 	for (unsigned int n = 0; n < 3; ++n)
 	{
 		Require(cells[n] >= 4 && cells[n] <= 1024 && spacing[n] > 0 && std::isfinite(spacing[n]),
 				"CartesianSubgrid: invalid base dimensions or spacing");
-		Require(refined.start[n] >= 1 && refined.start[n] < refined.stop[n] && refined.stop[n] < cells[n],
-				"CartesianSubgrid: refinement box must have a base-cell margin on all six sides");
 		count *= cells[n];
 	}
-	Require(count <= 20000000, "CartesianSubgrid: prototype base-cell limit exceeded");
-	const std::size_t refinedCells = std::size_t(refined.stop[0] - refined.start[0]) *
-									 (refined.stop[1] - refined.start[1]) * (refined.stop[2] - refined.start[2]);
-	const std::size_t children = std::size_t(ratio[0]) * ratio[1] * ratio[2];
-	// Divide before multiplying so this guard is safe on 32-bit size_t too.
-	Require(count <= 1000000 &&
-				(uniformFine ? count <= 1000000 / children : children - 1 <= (1000000 - count) / refinedCells),
+	Require(count <= 1000000, "CartesianSubgrid: prototype allocation guard exceeds one million leaf cells");
+	std::size_t leaves = count;
+	for (std::size_t i = 0; i < regions.size(); ++i)
+	{
+		const Region &region = regions[i];
+		ValidateRatio(region.ratio);
+		std::size_t selected = 1;
+		for (unsigned int n = 0; n < 3; ++n)
+		{
+			Require(region.box.start[n] >= 1 && region.box.start[n] < region.box.stop[n] &&
+						region.box.stop[n] < cells[n],
+					"CartesianSubgrid: refinement box must have a base-cell margin on all six sides");
+			m_Ratio[n] = std::max(m_Ratio[n], region.ratio[n]);
+			selected *= region.box.stop[n] - region.box.start[n];
+		}
+		for (std::size_t j = 0; j < i; ++j)
+		{
+			bool separated = false;
+			for (unsigned int n = 0; n < 3; ++n)
+			{
+				separated = separated || region.box.stop[n] < regions[j].box.start[n] ||
+							regions[j].box.stop[n] < region.box.start[n];
+			}
+			Require(separated, "CartesianSubgrid: regions require a full base-cell gap; touching, overlap and nesting "
+							   "are unsupported");
+		}
+		const std::size_t children = std::size_t(region.ratio[0]) * region.ratio[1] * region.ratio[2];
+		// Divide before multiplying; the accumulated budget covers all regions.
+		Require(children - 1 <= (1000000 - leaves) / selected,
+				"CartesianSubgrid: prototype allocation guard exceeds one million leaf cells");
+		leaves += (children - 1) * selected;
+	}
+	const std::size_t fineChildren = std::size_t(m_Ratio[0]) * m_Ratio[1] * m_Ratio[2];
+	Require(!uniformFine || count <= 1000000 / fineChildren,
 			"CartesianSubgrid: prototype allocation guard exceeds one million leaf cells");
+	m_Regions = regions;
 	Build();
 }
 
@@ -89,9 +121,14 @@ bool CartesianSubgrid::Boundary(const Edge &edge) const
 
 bool CartesianSubgrid::Hanging(const Edge &edge) const
 {
+	return InterfaceBox(edge) != nullptr;
+}
+
+const CartesianSubgrid::Box *CartesianSubgrid::InterfaceBox(const Edge &edge) const
+{
 	if (m_UniformFine)
 	{
-		return false;
+		return nullptr;
 	}
 	bool coarse = edge.size == int(m_Ratio[edge.axis]);
 	for (unsigned int n = 0; n < 3; ++n)
@@ -100,17 +137,24 @@ bool CartesianSubgrid::Hanging(const Edge &edge) const
 	}
 	if (coarse)
 	{
-		return false;
+		return nullptr;
 	}
-	for (unsigned int n = 0; n < 3; ++n)
+	for (const Region &region : m_Regions)
 	{
-		if (n != unsigned(edge.axis) &&
-			(edge.lo[n] == int(m_Ratio[n] * m_Box.start[n]) || edge.lo[n] == int(m_Ratio[n] * m_Box.stop[n])))
+		bool inside = true, boundary = false;
+		for (unsigned int n = 0; n < 3; ++n)
 		{
-			return true;
+			const int lo = int(m_Ratio[n] * region.box.start[n]);
+			const int hi = int(m_Ratio[n] * region.box.stop[n]);
+			inside = inside && edge.lo[n] >= lo && edge.lo[n] + (n == unsigned(edge.axis) ? edge.size : 0) <= hi;
+			boundary = boundary || (n != unsigned(edge.axis) && (edge.lo[n] == lo || edge.lo[n] == hi));
+		}
+		if (inside && boundary)
+		{
+			return &region.box;
 		}
 	}
-	return false;
+	return nullptr;
 }
 
 CartesianSubgrid::Trace CartesianSubgrid::Restrict(const Edge &edge) const
@@ -120,7 +164,8 @@ CartesianSubgrid::Trace CartesianSubgrid::Restrict(const Edge &edge) const
 	{
 		return trace;
 	}
-	if (!Hanging(edge))
+	const Box *box = InterfaceBox(edge);
+	if (!box)
 	{
 		trace.weights.emplace_back(m_EdgeMap.at(edge), 1.);
 		return trace;
@@ -138,14 +183,14 @@ CartesianSubgrid::Trace CartesianSubgrid::Restrict(const Edge &edge) const
 	}
 	for (unsigned int n : {a, b})
 	{
-		if (edge.lo[n] == int(m_Ratio[n] * m_Box.start[n]))
+		if (edge.lo[n] == int(m_Ratio[n] * box->start[n]))
 		{
-			root[n] = m_Box.start[n] - 1;
+			root[n] = box->start[n] - 1;
 			break;
 		}
-		if (edge.lo[n] == int(m_Ratio[n] * m_Box.stop[n]))
+		if (edge.lo[n] == int(m_Ratio[n] * box->stop[n]))
 		{
-			root[n] = m_Box.stop[n];
+			root[n] = box->stop[n];
 			break;
 		}
 	}
@@ -174,7 +219,9 @@ CartesianSubgrid::Trace CartesianSubgrid::Restrict(const Edge &edge) const
 
 void CartesianSubgrid::Build()
 {
-	m_RootLeaves.resize(std::size_t(m_Cells[0]) * m_Cells[1] * m_Cells[2]);
+	const std::size_t roots = std::size_t(m_Cells[0]) * m_Cells[1] * m_Cells[2];
+	m_RootLeaves.resize(roots);
+	m_RootRatios.resize(roots, Index{1, 1, 1});
 	for (unsigned int x = 0; x < m_Cells[0]; ++x)
 	{
 		for (unsigned int y = 0; y < m_Cells[1]; ++y)
@@ -182,24 +229,42 @@ void CartesianSubgrid::Build()
 			for (unsigned int z = 0; z < m_Cells[2]; ++z)
 			{
 				const Index root{x, y, z};
-				bool refined = m_UniformFine;
-				bool inside = true;
-				for (unsigned int n = 0; n < 3; ++n)
+				Index ratio{1, 1, 1};
+				if (m_UniformFine)
 				{
-					inside = inside && root[n] >= m_Box.start[n] && root[n] < m_Box.stop[n];
+					ratio = m_Ratio;
 				}
-				refined = refined || inside;
-				m_RootLeaves[RootIndex(root)] = m_Leaves.size();
-				for (int i = 0; i < (refined ? int(m_Ratio[0]) : 1); ++i)
+				else
 				{
-					for (int j = 0; j < (refined ? int(m_Ratio[1]) : 1); ++j)
+					for (const Region &region : m_Regions)
 					{
-						for (int k = 0; k < (refined ? int(m_Ratio[2]) : 1); ++k)
+						bool inside = true;
+						for (unsigned int n = 0; n < 3; ++n)
+						{
+							inside = inside && root[n] >= region.box.start[n] && root[n] < region.box.stop[n];
+						}
+						if (inside)
+						{
+							ratio = region.ratio;
+							break;
+						}
+					}
+				}
+				const std::size_t index = RootIndex(root);
+				m_RootLeaves[index] = m_Leaves.size();
+				m_RootRatios[index] = ratio;
+				const std::array<int, 3> size{int(m_Ratio[0] / ratio[0]), int(m_Ratio[1] / ratio[1]),
+											  int(m_Ratio[2] / ratio[2])};
+				for (unsigned int i = 0; i < ratio[0]; ++i)
+				{
+					for (unsigned int j = 0; j < ratio[1]; ++j)
+					{
+						for (unsigned int k = 0; k < ratio[2]; ++k)
 						{
 							m_Leaves.push_back(
-								{{int(m_Ratio[0] * x) + i, int(m_Ratio[1] * y) + j, int(m_Ratio[2] * z) + k},
-								 {refined ? 1 : int(m_Ratio[0]), refined ? 1 : int(m_Ratio[1]),
-								  refined ? 1 : int(m_Ratio[2])}});
+								{{int(m_Ratio[0] * x) + int(i) * size[0], int(m_Ratio[1] * y) + int(j) * size[1],
+								  int(m_Ratio[2] * z) + int(k) * size[2]},
+								 size});
 						}
 					}
 				}
@@ -563,17 +628,15 @@ std::size_t CartesianSubgrid::FindLeaf(const Point &position) const
 				"CartesianSubgrid: sample outside domain");
 		root[n] = std::min(unsigned(position[n] / m_Spacing[n]), m_Cells[n] - 1);
 	}
-	const std::size_t first = m_RootLeaves[RootIndex(root)];
-	if (m_Leaves[first].size == std::array<int, 3>{int(m_Ratio[0]), int(m_Ratio[1]), int(m_Ratio[2])})
-	{
-		return first;
-	}
+	const std::size_t index = RootIndex(root);
+	const std::size_t first = m_RootLeaves[index];
+	const Index &ratio = m_RootRatios[index];
 	Index child;
 	for (unsigned int n = 0; n < 3; ++n)
 	{
-		child[n] = std::min(unsigned(m_Ratio[n] * (position[n] / m_Spacing[n] - root[n])), m_Ratio[n] - 1);
+		child[n] = std::min(unsigned(ratio[n] * (position[n] / m_Spacing[n] - root[n])), ratio[n] - 1);
 	}
-	return first + (std::size_t(child[0]) * m_Ratio[1] + child[1]) * m_Ratio[2] + child[2];
+	return first + (std::size_t(child[0]) * ratio[1] + child[1]) * ratio[2] + child[2];
 }
 
 double CartesianSubgrid::TraceValue(const Trace &trace, const std::vector<double> &amplitude) const
@@ -679,7 +742,8 @@ std::size_t CartesianSubgrid::StorageBytes() const
 {
 	std::size_t bytes =
 		sizeof(*this) + m_Leaves.capacity() * sizeof(Leaf) + m_RootLeaves.capacity() * sizeof(std::size_t);
-	bytes += m_Edges.capacity() * sizeof(Edge);
+	bytes += m_Edges.capacity() * sizeof(Edge) + m_RootRatios.capacity() * sizeof(Index) +
+			 m_Regions.capacity() * sizeof(Region);
 	// std::map node overhead is implementation-specific; this is an approximate
 	// accounting estimate, not a measurement of allocator or process RSS.
 	bytes += m_EdgeMap.size() * (sizeof(Edge) + sizeof(std::size_t) + 4 * sizeof(void *));

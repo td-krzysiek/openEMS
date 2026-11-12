@@ -15,6 +15,7 @@ function FDTD = InitFDTD(varargin)
 %                   'OverSampling' via CSXCAD's AddDump/AddProbe.
 % - CoordSystem:    choose coordinate system (0 Cartesian, 1 Cylindrical)
 % - MultiGrid:      define a cylindrical sub-grid radius
+% - Multiple Cartesian regions: use SetCartesianSubgrids after InitFDTD.
 % - CartesianSubgridRatio: independent X/Y/Z powers of two 1..16, supplied as
 %   a comma-separated string (default '2,2,2'); requires CartesianSubgridBox.
 % - CartesianSubgridBox: experimental local XYZ refinement, supplied as a
