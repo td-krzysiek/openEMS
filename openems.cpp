@@ -19,11 +19,13 @@
 #include <iomanip>
 #include <iostream>
 #include <fstream>
+#include <cmath>
 #include "tools/signal.h"
 #include "tools/useful.h"
 #include "tools/denormal.h"
 #include "FDTD/operator_cylinder.h"
 #include "FDTD/operator_cylindermultigrid.h"
+#include "FDTD/operator_cartesianmultigrid.h"
 #include "FDTD/engine_sse.h"
 #include "FDTD/extensions/operator_ext_excitation.h"
 #include "FDTD/extensions/operator_ext_tfsf.h"
@@ -129,6 +131,8 @@ void openEMS::Reset()
 
 	CylinderCoords = false;
 	m_CC_MultiGrid.clear();
+	m_CartesianMultiGrid = false;
+	m_CartesianSplitX = 0;
 	m_CellConstantMaterial=false;
 	endCrit = 1e-6;
 	m_OverSampling = 4;
@@ -824,6 +828,16 @@ void openEMS::SetupCylinderMultiGrid(std::string val)
 	m_CC_MultiGrid = SplitString2Double(val,',');
 }
 
+void openEMS::SetupCartesianMultiGrid(double splitX)
+{
+	if (!std::isfinite(splitX))
+	{
+		throw std::invalid_argument("CartesianMultiGrid: split X must be finite");
+	}
+	m_CartesianMultiGrid = true;
+	m_CartesianSplitX = splitX;
+}
+
 bool openEMS::SetupOperator()
 {
 	// what defaults to AvailableThreads() (GPU operator build, field dumps, SAR, nf2ff) honours numThreads
@@ -850,6 +864,10 @@ bool openEMS::SetupOperator()
 
 	// the GPU backend first: without a usable device the operator is not worth building
 	const bool gpu = (type==Engine::GPU);
+	if (m_CartesianMultiGrid && (CylinderCoords || gpu))
+	{
+		throw std::invalid_argument("CartesianMultiGrid requires Cartesian coordinates and a host engine");
+	}
 	GPU_Backend* gpu_backend = NULL;
 	if (gpu)
 	{
@@ -884,6 +902,11 @@ bool openEMS::SetupOperator()
 			cout << "Create cylindrical FDTD operator (" << name << ")" << endl;
 		}
 		FDTD_Op = op_cyl;
+	}
+	else if (m_CartesianMultiGrid)
+	{
+		cout << "Create experimental Cartesian multi-grid FDTD operator (" << name << ")" << endl;
+		FDTD_Op = Operator_CartesianMultiGrid::New(m_CartesianSplitX, m_engine_numThreads);
 	}
 	else
 	{
@@ -986,6 +1009,14 @@ bool openEMS::Parse_XML_FDTDSetup(TiXmlElement* FDTD_Opts)
 		this->SetNumberOfTimeSteps((unsigned int)(dhelp>INT_MAX ? INT_MAX : dhelp));
 
 	int ihelp = 0;
+	if (FDTD_Opts->Attribute("CartesianMultiGridX"))
+	{
+		if (FDTD_Opts->QueryDoubleAttribute("CartesianMultiGridX", &dhelp) != TIXML_SUCCESS)
+		{
+			throw std::invalid_argument("CartesianMultiGridX must be a finite X coordinate");
+		}
+		SetupCartesianMultiGrid(dhelp);
+	}
 	FDTD_Opts->QueryIntAttribute("CylinderCoords",&ihelp);
 	if (ihelp==1)
 	{
@@ -1132,6 +1163,10 @@ bool openEMS::Write2XML(TiXmlNode* rootNode)
 
 	TiXmlElement fdtd("FDTD");
 	fdtd.SetAttribute("NumberOfTimesteps", this->NrTS);
+	if (m_CartesianMultiGrid)
+	{
+		fdtd.SetDoubleAttribute("CartesianMultiGridX", m_CartesianSplitX);
+	}
 
 	if (this->CylinderCoords)
 	{

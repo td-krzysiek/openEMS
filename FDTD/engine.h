@@ -111,7 +111,7 @@ public:
 	const ArrayLib::ArrayNIJK<FDTD_FLOAT>* GetVoltageArray() const {return volt_ptr;}
 	const ArrayLib::ArrayNIJK<FDTD_FLOAT>* GetCurrentArray() const {return curr_ptr;}
 
-	//! The sub-grid of a cylindrical multi-grid level: its engine (of the same type) and the coupling of the two, both taken over; before the first IterateTS(), throws after
+	//! The sub-grid engine (same type) and its half-step coupling, both taken over; before the first IterateTS(), throws after
 	void SetSubGrid(Engine* sub, Engine_SubGridCoupling* coupling);
 	//! The engine of the sub-grid, NULL without one; this engine steps it right after itself in every half step (the threads of Engine_ThreadPool, or Engine_GPU)
 	Engine* GetSubGridEngine() const {return m_SubGrid;}

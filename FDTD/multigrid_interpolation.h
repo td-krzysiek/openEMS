@@ -21,13 +21,15 @@
 
 #include <vector>
 
-//! The interpolation of a cylindrical multi-grid level from its sub-grid (Operator_CylinderMultiGrid::GetInterpolation())
+//! Processing reconstruction maps for cylindrical and experimental planar Cartesian multi-grid.
 /*!
   The sub-grid has the same r and z lines as the base grid (up to its size) and
   every other alpha line. For each alpha line a of the base grid and direction n
   (0: r and z components, 1: alpha component), a field of the base grid is
   interpolated from the sub-grid alpha lines pos_2p[n][a] and pos_2pp[n][a] with
   the weights w_2p[n][a] and w_2pp[n][a] (_v: voltages, _i: currents).
+  For the Cartesian prototype replace r/alpha with X/Y. Its conservative
+  interface transfer is separate from these processing weights.
   Independent of the engine: each coupling (Engine_SubGridCoupling,
   GPU_MultiGridLink) takes it into its own layout.
   */

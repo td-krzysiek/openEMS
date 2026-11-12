@@ -16,6 +16,9 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Added
 
+- An experimental planar Cartesian multi-grid, `CartesianMultiGridX`: 2:1
+  Y coarsening on one side of an X plane, with host engines and PEC boundaries.
+  This prototype retains full parent field storage; it is not a 3-D local mesh.
 - **A GPU engine**, `--engine=gpu` (`engine='gpu'` from Python), for AMD and
   NVIDIA GPUs (HIP/CUDA) and on macOS (Metal), with Cartesian and cylindrical
   meshes and the usual extensions. `--gpu-device=N` picks one of the GPUs
