@@ -15,6 +15,9 @@ function FDTD = InitFDTD(varargin)
 %                   'OverSampling' via CSXCAD's AddDump/AddProbe.
 % - CoordSystem:    choose coordinate system (0 Cartesian, 1 Cylindrical)
 % - MultiGrid:      define a cylindrical sub-grid radius
+% - CartesianMultiGridX: experimental planar 2:1 Y coarsening below this X
+%                   mesh line; host engines, PEC boundaries and empty interface
+%                   collar only. Not a 3-D refinement box; see CARTESIAN_MULTIGRID.md.
 % - TimeStep:       force to use a given timestep (dangerous!)
 % - TimeStepFactor: reduce the timestep by a given factor (>0 to <=1)
 % - TimeStepMethod: 1 or 3 chose timestep method (1=CFL, 3=Rennigs (default))

@@ -74,6 +74,8 @@ public:
 	void SetCylinderCoords(bool val) {CylinderCoords=val;}
 	void SetupCylinderMultiGrid(std::vector<double> val) {m_CC_MultiGrid=val;}
 	void SetupCylinderMultiGrid(std::string val);
+	//! Experimental host-only planar 2:1 Y coarsening at an exact Cartesian X line.
+	void SetupCartesianMultiGrid(double splitX);
 
 	void SetTimeStepMethod(int val) {m_TS_method=val;}
 	void SetTimeStep(double val) {m_TS=val;}
@@ -135,6 +137,8 @@ protected:
 
 	bool CylinderCoords;
 	std::vector<double> m_CC_MultiGrid;
+	bool m_CartesianMultiGrid;
+	double m_CartesianSplitX;
 
 	ContinuousStructure* m_CSX;
 

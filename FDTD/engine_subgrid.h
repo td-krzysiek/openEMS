@@ -34,14 +34,15 @@ class Engine_GPU;
 class GPU_MultiGridLink;
 class Operator_CylinderMultiGrid;
 
-//! The coupling of a cylindrical multi-grid level (base grid) and its sub-grid, see Engine::SetSubGrid()
+//! Half-step coupling contract for a base grid and its sub-grid, see Engine::SetSubGrid().
 /*!
-  The sub-grid has the same r and z lines as the base grid up to the split
+  The existing cylindrical implementation has the same r and z lines up to the split
   radius, and every other alpha line. After the voltage half step of both grids
   the base voltages on the split radius go to the sub-grid, after the current
   half step the sub-grid currents next to it go to the base grid; at the end of
   a batch the base grid is filled inside the split radius from the sub-grid.
-  One implementation per field layout of the engines.
+  One implementation per field layout of the engines. The experimental Cartesian
+  implementation supplies its own transfer through the same virtual contract.
   */
 class Engine_SubGridCoupling
 {
