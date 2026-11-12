@@ -12,10 +12,38 @@
 #include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <limits>
 #include <stdexcept>
 
 namespace
 {
+unsigned int BaseLineIndex(const double *lines, unsigned int count, double value)
+{
+	if (!std::isfinite(value))
+	{
+		throw std::invalid_argument("CartesianSubgrid: finite refinement coordinates required");
+	}
+	const double *next = std::lower_bound(lines, lines + count, value);
+	unsigned int index = next == lines + count ? count - 1 : unsigned(next - lines);
+	if (index > 0 && std::abs(lines[index - 1] - value) < std::abs(lines[index] - value))
+	{
+		--index;
+	}
+	const double step = index == 0 ? lines[1] - lines[0]
+						: index + 1 == count
+							? lines[index] - lines[index - 1]
+							: std::min(lines[index] - lines[index - 1], lines[index + 1] - lines[index]);
+	const double roundoff =
+		32 * std::numeric_limits<double>::epsilon() * std::max({std::abs(value), std::abs(lines[index]), step});
+	// Permit only coordinate roundoff, additionally bounded by local spacing.
+	// This is not geometric snapping to the nearest line.
+	if (std::abs(value - lines[index]) > std::min(roundoff, step * 1e-8))
+	{
+		throw std::invalid_argument("CartesianSubgrid: box faces must coincide with exact base-grid lines");
+	}
+	return index;
+}
+
 //! Serial reference execution; field sampling does not allocate a full lattice.
 class Engine_CartesianSubgrid : public Engine
 {
@@ -196,17 +224,11 @@ bool Operator_CartesianSubgrid::SetGeometryCSX(ContinuousStructure *geometry)
 	}
 	for (unsigned int n = 0; n < 3; ++n)
 	{
-		const double spacing = discLines[n][1] - discLines[n][0];
-		if (!(spacing > 0) || !std::isfinite(spacing))
+		for (unsigned int i = 0; i < numLines[n]; ++i)
 		{
-			throw std::invalid_argument("CartesianSubgrid: positive finite base spacing required");
-		}
-		for (unsigned int i = 1; i + 1 < numLines[n]; ++i)
-		{
-			if (std::abs(discLines[n][i + 1] - discLines[n][i] - spacing) > 1e-9 * spacing)
+			if (!std::isfinite(discLines[n][i]) || (i > 0 && !(discLines[n][i] > discLines[n][i - 1])))
 			{
-				throw std::invalid_argument(
-					"CartesianSubgrid: this reference requires uniform base spacing on each axis");
+				throw std::invalid_argument("CartesianSubgrid: strictly increasing finite base coordinates required");
 			}
 		}
 	}
@@ -273,12 +295,13 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 	{
 		throw std::invalid_argument("CartesianSubgrid: rectangular operator debug dumps are not supported");
 	}
-	CartesianSubgrid::Index cells;
-	CartesianSubgrid::Point spacing;
+	CartesianSubgrid::Axes lines;
 	for (unsigned int n = 0; n < 3; ++n)
 	{
-		cells[n] = numLines[n] - 1;
-		spacing[n] = (discLines[n][1] - discLines[n][0]) * gridDelta;
+		for (unsigned int i = 0; i < numLines[n]; ++i)
+		{
+			lines[n].push_back((discLines[n][i] - discLines[n][0]) * gridDelta);
+		}
 	}
 	std::vector<CartesianSubgrid::Region> regions;
 	for (std::size_t i = 0; i < m_Boxes.size(); ++i)
@@ -289,18 +312,13 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 		{
 			for (unsigned int side = 0; side < 2; ++side)
 			{
-				const double value = (m_Boxes[i][n + 3 * side] - discLines[n][0]) * gridDelta / spacing[n];
-				if (!std::isfinite(value) || value < 0 || value > cells[n] ||
-					std::abs(value - std::round(value)) > 1e-8)
-				{
-					throw std::invalid_argument("CartesianSubgrid: box faces must coincide with exact base-grid lines");
-				}
-				(side ? region.box.stop[n] : region.box.start[n]) = unsigned(std::llround(value));
+				(side ? region.box.stop[n] : region.box.start[n]) =
+					BaseLineIndex(discLines[n], numLines[n], m_Boxes[i][n + 3 * side]);
 			}
 		}
 		regions.push_back(region);
 	}
-	m_Grid.reset(new CartesianSubgrid(cells, spacing, GetBackgroundEpsR() * EPS0, GetBackgroundMueR() * MUE0, regions));
+	m_Grid.reset(new CartesianSubgrid(lines, GetBackgroundEpsR() * EPS0, GetBackgroundMueR() * MUE0, regions));
 	const double limit = m_Grid->StableTimestep();
 	if (dT == 0)
 	{

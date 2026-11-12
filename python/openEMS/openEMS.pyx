@@ -210,7 +210,7 @@ cdef class openEMS:
         self.thisptr.SetupCylinderMultiGrid(grid_str.encode('UTF-8'))
 
     def SetCartesianSubgrid(self, box, ratio=None):
-        """Local XYZ refinement, on a uniform Cartesian base mesh.
+        """Local XYZ refinement on a Cartesian mesh with increasing base lines.
 
         Box is [x0,y0,z0,x1,y1,z1] in mesh units, aligned to base lines.
         Optional ratio is [rx,ry,rz], each a power of two from 1 to 16.

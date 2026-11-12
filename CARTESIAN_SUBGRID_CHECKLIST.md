@@ -12,11 +12,13 @@ separate tasks; a passing test on one engine does not qualify another engine.
 - Development: [fork draft PR #29](https://github.com/td-krzysiek/openEMS/pull/29),
   branch `feature/cartesian-local-subgrid-20261112`. Keep subsequent increments
   in this PR rather than opening one PR per checklist item.
-- Current qualified prototype commit: `907391792b55bee2a557c498eb6774812306e28d`.
+- Initial multi-region prototype commit: `907391792b55bee2a557c498eb6774812306e28d`.
+  Subsequent qualified increments are recorded in the completion log below.
 - Pinned master baseline: `1d710c210920908a143b573f2babca05455f5479`.
   Reconcile this inventory explicitly when adopting newer upstream commits.
 - Public numerical summary and reproduction commands: [CARTESIAN_SUBGRID.md](CARTESIAN_SUBGRID.md).
 - Executable controls: [C++ tests](tests/test_cartesian_subgrid.cpp),
+  [graded-mesh controls](tests/test_cartesian_subgrid_mesh.cpp),
   [Python API tests](python/Tests/test_CartesianSubgrid.py),
   [native integration tests](python/Tests/Cartesian_Subgrid.py), and
   [Matlab/Octave test source](TESTSUITE/unittests/cartesian_subgrids.m).
@@ -97,13 +99,13 @@ The current outer PEC-wall tests do not complete internal PEC mapping.
 
 ## 2. Nonuniform base mesh
 
-- [ ] **M01** Replace constant per-axis spacing assumptions with the actual
+- [x] **M01** Replace constant per-axis spacing assumptions with the actual
   base-grid line coordinates and local physical edge/face/volume measures.
-- [ ] **M02** Subdivide each selected base cell using its own dimensions,
+- [x] **M02** Subdivide each selected base cell using its own dimensions,
   while retaining the agreed corner-alignment and separation rules.
-- [ ] **M03** Update point lookup, reconstruction, interface coefficients,
+- [x] **M03** Update point lookup, reconstruction, interface coefficients,
   source placement and timestep calculation for nonuniform base intervals.
-- [ ] **M04** Test graded meshes, small spacings, stretched cells and region
+- [x] **M04** Test graded meshes, small spacings, stretched cells and region
   boundaries against matched regular-grid references.
 
 Acceptance: no hidden coordinate snapping, unexpected geometry change or
@@ -240,8 +242,9 @@ their own integration checks; master parity does not automatically qualify them.
 Suggested first implementation sequence: isotropic materials and internal PEC,
 50-ohm line/port, absorbing boundaries and small-antenna NF2FF, scalable
 interiors and one GPU, then lossy antenna validation and remaining parity work.
-Nonuniform base geometry must be completed before claiming compatibility with
-existing nonuniform application meshes. These are dependency gates, not a
+Nonuniform base geometry is implemented and qualified on small homogeneous
+controls; application compatibility still requires the material, port and
+boundary gates above. These are dependency gates, not a
 commitment that every master feature must precede the first useful PEC model.
 
 ## Completion log
@@ -255,3 +258,4 @@ numerical change invalidates their prior qualification.
 | 2026-11-12 | R01 (XYZ portion), R03/R07/R08, initial reference | `7bade0c` | [Numerical summary](CARTESIAN_SUBGRID.md#tests-and-observed-accuracy); homogeneous CPU/PEC-wall tests only |
 | 2026-11-12 | R01/R04/R05, independent axis ratios | `bd214a3` | [Axis-ratio controls](tests/test_cartesian_subgrid.cpp) and [API regression](python/Tests/test_CartesianSubgrid.py) |
 | 2026-11-12 | R02/R04–R09, multiple separate regions | `9073917` | [Multi-region controls](tests/test_cartesian_subgrid.cpp) and [native integration](python/Tests/Cartesian_Subgrid.py); R09 is source availability, R10 remains unexecuted |
+| 2026-11-12 | M01–M04, nonuniform base lines | This PR, graded-mesh increment | [Physical geometry and numerical tests](tests/test_cartesian_subgrid_mesh.cpp), [native source/translation controls](python/Tests/Cartesian_Subgrid.py), [results](CARTESIAN_SUBGRID.md#tests-and-observed-accuracy); serial homogeneous CPU only |

@@ -8,6 +8,7 @@ set(TESTS
   test_engine_plan
   test_cell_model
   test_cartesian_subgrid
+  test_cartesian_subgrid_mesh
 )
 
 foreach(test ${TESTS})

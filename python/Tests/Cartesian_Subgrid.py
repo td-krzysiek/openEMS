@@ -29,6 +29,31 @@ def fixture(ratio=None):
     return fdtd, csx
 
 
+def graded_fixture(offset=(0, 0, 0)):
+    shift = np.asarray(offset)
+    fdtd = openEMS(NrTS=2048, EndCriteria=0, TimeStepFactor=0.8,
+                  CartesianSubgridBox=(np.array([-4,-4,-4,4,4,4]) + np.tile(shift, 2)).tolist(),
+                  CartesianSubgridRatio=[2, 1, 4])
+    fdtd.SetGaussExcite(13e9, 9e9)
+    fdtd.SetBoundaryCond(['PEC'] * 6)
+    csx = ContinuousStructure()
+    fdtd.SetCSX(csx)
+    grid = csx.GetGrid()
+    grid.SetDeltaUnit(1e-3)
+    axes = [[-8,-6.2,-4,-1,0,2.8,4,6,8],
+            [-8,-6,-4,-2.3,0,1.2,4,6,8],
+            [-8,-6,-4,-2,0,2.5,4,6,8]]
+    for n, axis in enumerate('xyz'):
+        grid.SetLines(axis, (np.array(axes[n]) + shift[n]).tolist())
+    csx.AddExcitation('source', exc_type=0, exc_val=[0,0,1]).AddBox(
+        (np.array([-6.2,0,-2])+shift).tolist(), (np.array([-6.2,0,2.5])+shift).tolist())
+    csx.AddProbe('received', p_type=2).AddPoint((np.array([2.8,1.2,2.5])+shift).tolist())
+    csx.AddProbe('magnetic', p_type=3).AddPoint((np.array([2.8,1.2,2.5])+shift).tolist())
+    csx.AddDump('graded_ef', dump_type=10, file_type=1, frequency=[13e9]).AddBox(
+        (np.array([-4,-4,0])+shift).tolist(), (np.array([4,4,0])+shift).tolist())
+    return fdtd, csx
+
+
 def run(fdtd, name, **options):
     previous = os.getcwd()
     try:
@@ -89,10 +114,24 @@ rejected('multi-boundary', lambda f,c: f.SetCartesianSubgrids([
 rejected('multi-gpu', lambda f,c: f.SetCartesianSubgrids([
     {'box': [-6, -4, -4, -2, 4, 4]}, {'box': [2, -4, -4, 6, 4, 4]}]), engine='gpu')
 
+# Nonuniform mesh, physical source placement and coordinate-origin invariance.
+for label, offset in [('graded', [0,0,0]), ('graded-shifted', [31,-23,17])]:
+    fdtd, csx = graded_fixture(offset)
+    run(fdtd, label, engine='basic')
+    assert os.path.getsize(os.path.join(Sim_Path, label, 'graded_ef.h5')) > 100
+for name in ('received', 'magnetic'):
+    a = np.loadtxt(os.path.join(Sim_Path, 'graded', name), comments='%')
+    b = np.loadtxt(os.path.join(Sim_Path, 'graded-shifted', name), comments='%')
+    assert a.shape == b.shape and np.isfinite(a).all() and np.isfinite(b).all()
+    np.testing.assert_allclose(a[:,0], b[:,0], rtol=1e-11, atol=0)
+    peak = np.max(np.abs(a[:,1:]))
+    assert peak > 1e-7 and np.max(np.abs(a[:,1:]-b[:,1:])) / peak < 1e-8
+# Finite offsets are not accepted merely because they are near a mesh line.
+rejected('almost-aligned', lambda f,c: f.SetCartesianSubgrid([-4,-4,-4,4+1e-9,4,4]))
+
 rejected('pml', lambda f, c: f.SetBoundaryCond(['PML_2'] * 6))
 rejected('sse', lambda f, c: None, engine='sse')
 rejected('gpu', lambda f, c: None, engine='gpu')
-rejected('nonuniform', lambda f, c: c.GetGrid().SetLines('z', np.arange(9) ** 1.1))
 rejected('unaligned', lambda f, c: f.SetCartesianSubgrid([-3.9, -4, -4, 4, 4, 4]))
 rejected('boundary-box', lambda f, c: f.SetCartesianSubgrid([-8, -4, -4, 4, 4, 4]))
 rejected('material', lambda f, c: c.AddMaterial('slab', epsilon=2).AddBox([-1]*3, [1]*3))

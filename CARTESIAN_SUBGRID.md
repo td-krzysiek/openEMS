@@ -24,9 +24,15 @@ tracks the completed controls and remaining feature/engine milestones in PR #29.
   each box and the outer boundary, and a full base-cell gap separates every
   pair of boxes on at least one axis. Face/edge/corner touching, overlap and
   nesting are rejected; touching blocks cannot yet be used as a transition.
-- A Cartesian base mesh, uniform on each axis; the three axis spacings may
-  differ. Arbitrary nonuniform lines, nested blocks and moving refinement
-  are not implemented.
+- A Cartesian base mesh with finite, strictly increasing lines on each axis.
+  Nonuniform intervals and a nonzero origin are supported. Each selected base
+  interval is divided by its region's ratio; physical widths, faces, volumes,
+  lookup and field reconstruction use those actual coordinates. Nested blocks
+  and moving refinement remain unsupported.
+- Region bounds must match supplied base lines. Only floating-point coordinate
+  roundoff is tolerated (32 machine epsilons of coordinate scale, additionally
+  limited to 1e-8 of adjacent spacing); geometric snapping is not performed.
+  Unrepresentable child boundaries or sample centres fail at setup.
 - Coarse cells covered by the box are removed. Only leaf cells and independent
   electric edges are stored. There is **no global fine parent E/H lattice**.
 - One common timestep bounded by the coupled operator, not local subcycling.
@@ -109,7 +115,7 @@ Python, with coordinates in the base mesh's drawing units:
 fdtd = openEMS(CartesianSubgridBox=[-4, -4, -4, 4, 4, 4],
                CartesianSubgridRatio=[1, 2, 8], TimeStepFactor=0.8)
 fdtd.SetBoundaryCond(['PEC'] * 6)
-# Supply a uniform Cartesian CSX grid; e.g. -8:2:8 on every axis.
+# Supply finite, strictly increasing Cartesian lines; spacing may vary.
 # Add a zero-delay soft E box source and E/H probes or dumps.
 fdtd.Run('simulation', engine='basic', numThreads=1)
 ```
@@ -154,8 +160,13 @@ but Matlab/Octave execution is not part of the local macOS qualification.
 
 For C++, `SetupCartesianSubgrids(boxes, ratios)` replaces all regions and
 `AddCartesianSubgrid(box, ratio)` appends one. The compact core accepts
-`CartesianSubgrid(cells, spacing, epsilon, mu, vector<Region>, uniformFine)`.
-The single-box constructor remains source compatible.
+`CartesianSubgrid(lines, epsilon, mu, vector<Region>, uniformFine)` accepts
+three vectors of physical coordinates, including nonzero origins. Existing
+constant-spacing and single-box constructors remain source compatible and
+construct their own base lines. `BaseLines()` preserves supplied coordinates;
+`LeafStart()` / `LeafLengths()` expose actual physical leaf geometry. Integer
+Leaf coordinates still index subdivisions of base intervals; dividing them
+by LatticeRatio alone does not give physical coordinates on a nonuniform mesh.
 
 Multiple regions use an optional FDTD child (one-box serialization remains
 compatible with the legacy attributes):
@@ -212,6 +223,7 @@ cmake -S . -B build -DOPENEMS_BUILD_TESTS=ON
 cmake --build build
 ctest --test-dir build --output-on-failure
 build/tests/test_cartesian_subgrid --long
+build/tests/test_cartesian_subgrid_mesh --long
 build/tests/test_cartesian_subgrid --mesh > mesh.json
 python3 python/Tests/run_testsuite.py --unittests Cartesian
 ```
@@ -275,8 +287,22 @@ same timestep. For base resolutions 6, 12, 24, 36, errors are about 61.0%,
 remain unsuitable for design. Native multi-region soft-source/E/H probe and
 FD dump checks plus API/XML round-trip/reset controls accompany the core tests.
 
-Before antenna use: material and PEC geometry mapping, nonuniform base lines,
-absorbing boundaries, physical port/source qualification and scattering tests.
+Nonuniform controls (`test_cartesian_subgrid_mesh`) cover actual local geometry,
+volume, twelve box faces, div(curl), coordinate-origin translation and long-run
+invariant stability. An anisotropic, fully refined graded grid agrees with
+native basic Yee after 200 steps within 2e-4 peak-relative gates. A valid thin
+interval reduces the common step; malformed and unrepresentable grids fail.
+
+The graded two-region packet errors at 6/12/24/36 base cells per axis are
+58.1%, 36.6%, 10.9%, 5.21%. The 36 case initially missed the 5% gate and is
+not relabelled as sufficiently accurate. Increasing propagation resolution to
+42x36x36 reduces error to 3.77%, retaining the 5% resolved-case gate and the
+coarser convergence evidence. This is a numerical control, not an antenna
+accuracy claim. Native E/H source/probe and dump checks also compare a graded
+fixture with its translated equivalent; physical port qualification is pending.
+
+Before antenna use: material and PEC geometry mapping, absorbing boundaries,
+physical port/source qualification and scattering tests.
 Before practical acceleration: structured interior kernels, compact interface
 metadata, memory/RSS and interleaved native benchmarks. Then device kernels,
 domain partitioning and communication can reuse this numerical contract.

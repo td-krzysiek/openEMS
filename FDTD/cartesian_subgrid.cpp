@@ -17,6 +17,35 @@ void Require(bool condition, const char *message)
 		throw std::invalid_argument(message);
 	}
 }
+CartesianSubgrid::Axes UniformLines(CartesianSubgrid::Index cells, CartesianSubgrid::Point spacing)
+{
+	CartesianSubgrid::Axes lines;
+	for (unsigned int n = 0; n < 3; ++n)
+	{
+		Require(cells[n] >= 4 && cells[n] <= 1024 && spacing[n] > 0 && std::isfinite(spacing[n]),
+				"CartesianSubgrid: invalid base dimensions or spacing");
+		for (unsigned int i = 0; i <= cells[n]; ++i)
+		{
+			lines[n].push_back(i * spacing[n]);
+		}
+	}
+	return lines;
+}
+
+void CheckSubdivision(double lo, double hi, unsigned int ratio)
+{
+	const double width = hi - lo;
+	// Sampling uses edge/face centres too. Reject unrepresentable local
+	// positions rather than silently collapsing distinct cells or centres.
+	double previous = lo;
+	for (unsigned int i = 1; i <= 2 * ratio; ++i)
+	{
+		const double next = i == 2 * ratio ? hi : lo + width * (double(i) / (2 * ratio));
+		Require(std::isfinite(next) && next > previous,
+				"CartesianSubgrid: subdivision or sample centre is not representable at this coordinate scale");
+		previous = next;
+	}
+}
 } // namespace
 
 bool CartesianSubgrid::Edge::operator<(const Edge &other) const
@@ -32,8 +61,13 @@ CartesianSubgrid::CartesianSubgrid(Index cells, Point spacing, Box refined, doub
 
 CartesianSubgrid::CartesianSubgrid(Index cells, Point spacing, double epsilon, double permeability,
 								   const std::vector<Region> &regions, bool uniformFine)
-	: m_Cells(cells), m_Ratio{1, 1, 1}, m_Spacing(spacing), m_Epsilon(epsilon), m_Mu(permeability),
-	  m_UniformFine(uniformFine)
+	: CartesianSubgrid(UniformLines(cells, spacing), epsilon, permeability, regions, uniformFine)
+{
+}
+
+CartesianSubgrid::CartesianSubgrid(const Axes &lines, double epsilon, double permeability,
+								   const std::vector<Region> &regions, bool uniformFine)
+	: m_Ratio{1, 1, 1}, m_Epsilon(epsilon), m_Mu(permeability), m_UniformFine(uniformFine)
 {
 	Require(epsilon > 0 && std::isfinite(epsilon) && permeability > 0 && std::isfinite(permeability),
 			"CartesianSubgrid: positive finite homogeneous epsilon and mu required");
@@ -41,9 +75,21 @@ CartesianSubgrid::CartesianSubgrid(Index cells, Point spacing, double epsilon, d
 	std::size_t count = 1;
 	for (unsigned int n = 0; n < 3; ++n)
 	{
-		Require(cells[n] >= 4 && cells[n] <= 1024 && spacing[n] > 0 && std::isfinite(spacing[n]),
-				"CartesianSubgrid: invalid base dimensions or spacing");
-		count *= cells[n];
+		Require(lines[n].size() >= 5 && lines[n].size() <= 1025,
+				"CartesianSubgrid: expected 4 through 1024 base intervals per axis");
+		m_Cells[n] = unsigned(lines[n].size() - 1);
+		for (double value : lines[n])
+		{
+			Require(std::isfinite(value), "CartesianSubgrid: finite base coordinates required");
+		}
+		for (unsigned int i = 0; i < m_Cells[n]; ++i)
+		{
+			const double width = lines[n][i + 1] - lines[n][i];
+			Require(width > 0 && std::isfinite(width),
+					"CartesianSubgrid: strictly increasing finite base intervals required");
+			CheckSubdivision(lines[n][i], lines[n][i + 1], 1);
+		}
+		count *= m_Cells[n];
 	}
 	Require(count <= 1000000, "CartesianSubgrid: prototype allocation guard exceeds one million leaf cells");
 	std::size_t leaves = count;
@@ -55,9 +101,13 @@ CartesianSubgrid::CartesianSubgrid(Index cells, Point spacing, double epsilon, d
 		for (unsigned int n = 0; n < 3; ++n)
 		{
 			Require(region.box.start[n] >= 1 && region.box.start[n] < region.box.stop[n] &&
-						region.box.stop[n] < cells[n],
+						region.box.stop[n] < m_Cells[n],
 					"CartesianSubgrid: refinement box must have a base-cell margin on all six sides");
 			m_Ratio[n] = std::max(m_Ratio[n], region.ratio[n]);
+			for (unsigned int k = region.box.start[n]; k < region.box.stop[n]; ++k)
+			{
+				CheckSubdivision(lines[n][k], lines[n][k + 1], region.ratio[n]);
+			}
 			selected *= region.box.stop[n] - region.box.start[n];
 		}
 		for (std::size_t j = 0; j < i; ++j)
@@ -80,7 +130,18 @@ CartesianSubgrid::CartesianSubgrid(Index cells, Point spacing, double epsilon, d
 	const std::size_t fineChildren = std::size_t(m_Ratio[0]) * m_Ratio[1] * m_Ratio[2];
 	Require(!uniformFine || count <= 1000000 / fineChildren,
 			"CartesianSubgrid: prototype allocation guard exceeds one million leaf cells");
+	if (uniformFine)
+	{
+		for (unsigned int n = 0; n < 3; ++n)
+		{
+			for (unsigned int k = 0; k < m_Cells[n]; ++k)
+			{
+				CheckSubdivision(lines[n][k], lines[n][k + 1], m_Ratio[n]);
+			}
+		}
+	}
 	m_Regions = regions;
+	m_Lines = lines;
 	Build();
 }
 
@@ -296,7 +357,7 @@ void CartesianSubgrid::Build()
 		Point length;
 		for (unsigned int n = 0; n < 3; ++n)
 		{
-			length[n] = m_Spacing[n] * cell.size[n] / m_Ratio[n];
+			length[n] = Length(cell, n);
 		}
 		const double volume = length[0] * length[1] * length[2];
 		// Assemble P^T M_e P, not independent field interpolation. Keep the
@@ -568,13 +629,46 @@ void CartesianSubgrid::Step(double timestep, double sourceAmplitude)
 	}
 }
 
+double CartesianSubgrid::Coordinate(unsigned int axis, double lattice) const
+{
+	const unsigned int root = std::min(unsigned(lattice / m_Ratio[axis]), m_Cells[axis] - 1);
+	const double fraction = (lattice - double(root) * m_Ratio[axis]) / m_Ratio[axis];
+	if (fraction == 0)
+	{
+		return m_Lines[axis][root];
+	}
+	if (fraction == 1)
+	{
+		return m_Lines[axis][root + 1];
+	}
+	return m_Lines[axis][root] + fraction * (m_Lines[axis][root + 1] - m_Lines[axis][root]);
+}
+
+double CartesianSubgrid::Length(const Leaf &leaf, unsigned int axis) const
+{
+	const unsigned int root = unsigned(leaf.lo[axis]) / m_Ratio[axis];
+	return (m_Lines[axis][root + 1] - m_Lines[axis][root]) * leaf.size[axis] / m_Ratio[axis];
+}
+
+CartesianSubgrid::Point CartesianSubgrid::LeafStart(std::size_t leaf) const
+{
+	const auto &cell = m_Leaves.at(leaf);
+	return {Coordinate(0, cell.lo[0]), Coordinate(1, cell.lo[1]), Coordinate(2, cell.lo[2])};
+}
+
+CartesianSubgrid::Point CartesianSubgrid::LeafLengths(std::size_t leaf) const
+{
+	const auto &cell = m_Leaves.at(leaf);
+	return {Length(cell, 0), Length(cell, 1), Length(cell, 2)};
+}
+
 CartesianSubgrid::Point CartesianSubgrid::EdgePosition(std::size_t edge) const
 {
 	const Edge &key = m_Edges.at(edge);
 	Point position;
 	for (unsigned int n = 0; n < 3; ++n)
 	{
-		position[n] = m_Spacing[n] / m_Ratio[n] * (key.lo[n] + (n == unsigned(key.axis) ? key.size / 2. : 0));
+		position[n] = Coordinate(n, key.lo[n] + (n == unsigned(key.axis) ? key.size / 2. : 0));
 	}
 	return position;
 }
@@ -606,10 +700,9 @@ void CartesianSubgrid::SetMagnetic(const Field &field)
 				Point position;
 				for (unsigned int k = 0; k < 3; ++k)
 				{
-					position[k] = m_Spacing[k] / m_Ratio[k] * (leaf.lo[k] + leaf.size[k] * (n == k ? side : .5));
+					position[k] = Coordinate(k, leaf.lo[k] + leaf.size[k] * (n == k ? side : .5));
 				}
-				const double area = m_Spacing[(n + 1) % 3] * m_Spacing[(n + 2) % 3] * double(leaf.size[(n + 1) % 3]) /
-									m_Ratio[(n + 1) % 3] * leaf.size[(n + 2) % 3] / m_Ratio[(n + 2) % 3];
+				const double area = Length(leaf, (n + 1) % 3) * Length(leaf, (n + 2) % 3);
 				const std::size_t index = 6 * cell + 2 * n + side;
 				const double value = field(n, position);
 				Require(std::isfinite(value), "CartesianSubgrid: nonfinite initial magnetic field");
@@ -624,9 +717,10 @@ std::size_t CartesianSubgrid::FindLeaf(const Point &position) const
 	Index root;
 	for (unsigned int n = 0; n < 3; ++n)
 	{
-		Require(std::isfinite(position[n]) && position[n] >= 0 && position[n] <= m_Spacing[n] * m_Cells[n],
+		Require(std::isfinite(position[n]) && position[n] >= m_Lines[n].front() && position[n] <= m_Lines[n].back(),
 				"CartesianSubgrid: sample outside domain");
-		root[n] = std::min(unsigned(position[n] / m_Spacing[n]), m_Cells[n] - 1);
+		const auto next = std::upper_bound(m_Lines[n].begin(), m_Lines[n].end(), position[n]);
+		root[n] = std::min(unsigned(next - m_Lines[n].begin() - 1), m_Cells[n] - 1);
 	}
 	const std::size_t index = RootIndex(root);
 	const std::size_t first = m_RootLeaves[index];
@@ -634,7 +728,9 @@ std::size_t CartesianSubgrid::FindLeaf(const Point &position) const
 	Index child;
 	for (unsigned int n = 0; n < 3; ++n)
 	{
-		child[n] = std::min(unsigned(ratio[n] * (position[n] / m_Spacing[n] - root[n])), ratio[n] - 1);
+		child[n] = std::min(unsigned(ratio[n] * ((position[n] - m_Lines[n][root[n]]) /
+												 (m_Lines[n][root[n] + 1] - m_Lines[n][root[n]]))),
+							ratio[n] - 1);
 	}
 	return first + (std::size_t(child[0]) * ratio[1] + child[1]) * ratio[2] + child[2];
 }
@@ -654,8 +750,8 @@ double CartesianSubgrid::Electric(unsigned int n, const Point &position) const
 	Require(n < 3, "CartesianSubgrid: invalid component");
 	const Leaf &cell = m_Leaves[FindLeaf(position)];
 	const unsigned int a = (n + 1) % 3, b = (n + 2) % 3;
-	const double u = (position[a] / m_Spacing[a] * m_Ratio[a] - cell.lo[a]) / cell.size[a];
-	const double v = (position[b] / m_Spacing[b] * m_Ratio[b] - cell.lo[b]) / cell.size[b];
+	const double u = (position[a] - Coordinate(a, cell.lo[a])) / Length(cell, a);
+	const double v = (position[b] - Coordinate(b, cell.lo[b])) / Length(cell, b);
 	double value = 0;
 	for (unsigned int i = 0; i < 2; ++i)
 	{
@@ -672,9 +768,8 @@ double CartesianSubgrid::Magnetic(unsigned int n, const Point &position) const
 	Require(n < 3, "CartesianSubgrid: invalid component");
 	const std::size_t index = FindLeaf(position);
 	const Leaf &cell = m_Leaves[index];
-	const double t = (position[n] / m_Spacing[n] * m_Ratio[n] - cell.lo[n]) / cell.size[n];
-	const double area = m_Spacing[(n + 1) % 3] * m_Spacing[(n + 2) % 3] * double(cell.size[(n + 1) % 3]) /
-						m_Ratio[(n + 1) % 3] * cell.size[(n + 2) % 3] / m_Ratio[(n + 2) % 3];
+	const double t = (position[n] - Coordinate(n, cell.lo[n])) / Length(cell, n);
+	const double area = Length(cell, (n + 1) % 3) * Length(cell, (n + 2) % 3);
 	const std::size_t first = 6 * index + 2 * n;
 	return ((1 - t) * m_Magnetic[first] / m_SqrtReluctance[first] +
 			t * m_Magnetic[first + 1] / m_SqrtReluctance[first + 1]) /
@@ -742,6 +837,10 @@ std::size_t CartesianSubgrid::StorageBytes() const
 {
 	std::size_t bytes =
 		sizeof(*this) + m_Leaves.capacity() * sizeof(Leaf) + m_RootLeaves.capacity() * sizeof(std::size_t);
+	for (const auto &axis : m_Lines)
+	{
+		bytes += axis.capacity() * sizeof(double);
+	}
 	bytes += m_Edges.capacity() * sizeof(Edge) + m_RootRatios.capacity() * sizeof(Index) +
 			 m_Regions.capacity() * sizeof(Region);
 	// std::map node overhead is implementation-specific; this is an approximate

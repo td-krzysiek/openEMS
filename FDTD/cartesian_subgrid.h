@@ -22,6 +22,7 @@ class CartesianSubgrid
   public:
 	using Point = std::array<double, 3>;
 	using Index = std::array<unsigned int, 3>;
+	using Axes = std::array<std::vector<double>, 3>;
 	using Field = std::function<double(unsigned int, const Point &)>;
 	struct Box
 	{
@@ -43,6 +44,15 @@ class CartesianSubgrid
 					 bool uniformFine = false, Index ratio = {2, 2, 2});
 	CartesianSubgrid(Index cells, Point spacing, double epsilon, double permeability,
 					 const std::vector<Region> &regions, bool uniformFine = false);
+	CartesianSubgrid(const Axes &lines, double epsilon, double permeability, const std::vector<Region> &regions,
+					 bool uniformFine = false);
+	//! Physical base-grid coordinates; integer Leaf extents index these intervals.
+	const Axes &BaseLines() const
+	{
+		return m_Lines;
+	}
+	Point LeafStart(std::size_t leaf) const;
+	Point LeafLengths(std::size_t leaf) const;
 	static void ValidateRatio(const Index &ratio);
 	//! Finest integer coordinate lattice; not the refinement of every region.
 	Index LatticeRatio() const
@@ -127,10 +137,12 @@ class CartesianSubgrid
 	void CurlTranspose(const std::vector<double> &magnetic, std::vector<double> &electric) const;
 	void SolveMass(std::vector<double> &values) const;
 	void CheckStep(double timestep) const;
+	double Coordinate(unsigned int axis, double lattice) const;
+	double Length(const Leaf &leaf, unsigned int axis) const;
 
 	Index m_Cells;
 	Index m_Ratio;
-	Point m_Spacing;
+	Axes m_Lines;
 	std::vector<Region> m_Regions;
 	double m_Epsilon;
 	double m_Mu;
