@@ -1,7 +1,11 @@
 # Experimental compact Cartesian XYZ subgridding
 
-`CartesianSubgridBox` replaces selected base cells with **eight** children:
-the spacing is halved in X, Y and Z inside one aligned box. Outside the box
+`CartesianSubgridBox` replaces selected base cells with `rx * ry * rz`
+children. `CartesianSubgridRatio` independently selects the refinement on
+X, Y and Z: each factor is 1, 2, 4, 8 or 16. The default `[2,2,2]` retains
+the original eight-child behaviour; `[1,2,8]` makes 16 children while leaving
+X unchanged, and `[2,4,8]` makes 64 children. Spacing on each axis is divided
+by its selected factor inside one aligned box. Outside the box
 the coarse cells remain. This is a separate Cartesian numerical core, not
 angular interpolation or a slab copied from cylindrical multi-grid.
 
@@ -11,7 +15,7 @@ production antenna engine.
 
 ## Geometry, storage and execution
 
-- One 2:1 level and one rectangular refinement box, strictly inside the domain.
+- One refinement level with configurable axis ratios and one rectangular box, strictly inside the domain.
   Each box face coincides with a base-grid line; at least one base cell remains
   between the box and each outer boundary.
 - A Cartesian base mesh, uniform on each axis; the three axis spacings may
@@ -25,8 +29,8 @@ production antenna engine.
   factors. This favours inspectability, not production speed. Regular
   interiors need native structured kernels before a fair performance claim.
 
-For base count N and M selected base cells the leaf count is `N + 7 M`.
-A fully fine grid has `8 N` cells. In the test with 8x8x8 base cells and a
+For base count N, M selected base cells and `R=rx*ry*rz`, the leaf count is
+`N + (R-1) M`. A fully fine grid has `R N` cells. In the test with 8x8x8 base cells and a
 4x4x4 selected block, the counts are 960 versus 4096. Accounted persistent
 storage is about 1.09 versus 4.36 MB **for this same reference core**. These
 numbers are not process RSS, peak setup memory or a comparison with the
@@ -92,7 +96,7 @@ Python, with coordinates in the base mesh's drawing units:
 
 ```python
 fdtd = openEMS(CartesianSubgridBox=[-4, -4, -4, 4, 4, 4],
-               TimeStepFactor=0.8)
+               CartesianSubgridRatio=[1, 2, 8], TimeStepFactor=0.8)
 fdtd.SetBoundaryCond(['PEC'] * 6)
 # Supply a uniform Cartesian CSX grid; e.g. -8:2:8 on every axis.
 # Add a zero-delay soft E box source and E/H probes or dumps.
@@ -103,12 +107,25 @@ Matlab/Octave uses its generic attribute serialization:
 
 ```matlab
 FDTD = InitFDTD('CartesianSubgridBox', '-4,-4,-4,4,4,4', ...
-                'TimeStepFactor', 0.8);
+                'CartesianSubgridRatio', '1,2,8', 'TimeStepFactor', 0.8);
 FDTD = SetBoundaryCond(FDTD, repmat({'PEC'}, 1, 6));
 ```
 
-The C++ setter is `SetupCartesianSubgrid(vector<double>)`. XML uses an optional
-FDTD attribute `CartesianSubgridBox="x0,y0,z0,x1,y1,z1"`; malformed tokens,
+Python also supports `SetCartesianSubgrid(box, ratio=[2,4,8])` and the
+separate `SetCartesianSubgridRatio([2,4,8])`. Changing the box alone preserves
+the selected ratios. Ratio and box inputs are checked before a combined setter
+changes either setting. A ratio of 1 is a valid no-refinement direction;
+`[1,1,1]` is a regular coarse-grid control.
+
+The C++ setters are `SetupCartesianSubgrid(vector<double>)` and
+`SetupCartesianSubgridRatio(vector<unsigned int>)`. The compact core accepts
+an optional final `Index ratio` argument after `uniformFine` (default 2x2x2).
+Leaf sizes are now per-axis integer extents on that selected finest lattice;
+electric edge length is still a scalar along its own direction.
+
+XML uses optional FDTD attributes `CartesianSubgridBox="x0,y0,z0,x1,y1,z1"`
+and `CartesianSubgridRatio="rx,ry,rz"`. A legacy file without a ratio retains
+2x2x2. A ratio attribute requires a box. Malformed tokens,
 trailing text and extra coordinates are rejected. Without this attribute the
 normal operator and backend selection are unchanged. `Cartesian_Subgrid.py`
 in `python/Tests` is a complete small model.
@@ -140,9 +157,9 @@ python3 python/Tests/run_testsuite.py --unittests Cartesian
 
 The C++ test verifies six-face tangential continuity, cancellation of divergence
 of curl, compact allocation, and uniform-grid agreement with the native basic
-Yee engine. At 200 steps the observed peak-normalized differences were about
-3.5e-7 for E and 9.5e-7 for H (test tolerance 2e-4, allowing float native
-fields versus this double reference). A random three-component field state
+Yee engine. At 200 steps the current three-component seed gives peak-normalized E/H
+differences below 4e-6 for both cubic and anisotropic uniform grids (test
+tolerance 2e-4, allowing float native fields versus this double reference). A random three-component field state
 preserved the discrete invariant through one million steps within 1e-8.
 
 For a fixed physical cavity, increasing the base resolution from 6 to 12 cells
@@ -161,11 +178,30 @@ are retained separately as development evidence, not relabelled as passes.
 
 ## Resource guards and remaining work
 
+The prototype accepts powers of two from 1 through 16 independently per axis;
+this ratio cap is an implementation/validation guard, not a physical maximum.
+A large direct resolution jump can increase interface error and shrink the
+common timestep, even if it conserves the discrete energy. Conservation and
+allocation success are not accuracy qualification. Staged/nested transitions
+and local timesteps remain future work.
+
 The prototype has explicit allocation guards: at most 1024 base cells per
 axis, 20 million base cells, one million leaves and 1024 coupled edges per
 dense interface factor. These are implementation safeguards, not physical
 limits of subgridding. Increasing them requires memory accounting and a
 sparser/scalable interface solve, rather than merely removing assertions.
+
+Additional ratio checks cover 1x1x1, 1x2x8 and axis permutations, 2x4x8,
+4x4x4 and 1x1x16: leaf counts, six-face traces, div(curl) and energy invariants.
+Uniform 1x2x4 (and permutations) recovers native Yee E/H propagation. A
+1x2x4 packet family is compared against its own anisotropic uniform fine
+reference at the same timestep, not against the cubic 2x2x2 dataset. In cyclic
+axis permutations its error falls from 2.46% to 0.81% as the base resolution
+goes from 6 to 12; the 2x4x8 cavity error falls from 1.18% to 0.30%. A
+100,000-step 2x4x8 invariant check drifts by less than 1e-8 (observed ~5e-15).
+Python tests cover ratio validation, XML round-trip/legacy reset and an actual
+unequal-ratio E/H run. These are small-model controls, not a blanket accuracy
+claim for all factor combinations or large interfaces.
 
 Before antenna use: material and PEC geometry mapping, nonuniform base lines,
 absorbing boundaries, physical port/source qualification and scattering tests.

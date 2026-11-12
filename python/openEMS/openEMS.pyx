@@ -61,7 +61,8 @@ cdef class openEMS:
                             unless a box sets its own ``over_sampling`` (CSXCAD AddDump/AddProbe).
     :param CoordSystem:    choose coordinate system (0 Cartesian, 1 Cylindrical)
     :param MultiGrid:      define a cylindrical sub-grid radius
-    :param CartesianSubgridBox: experimental local 2:1 XYZ refinement [x0,y0,z0,x1,y1,z1]
+    :param CartesianSubgridRatio: axis ratios [rx,ry,rz], powers of two 1..16 (default [2,2,2])
+    :param CartesianSubgridBox: experimental local XYZ refinement [x0,y0,z0,x1,y1,z1]
     :param TimeStep:       force to use a given timestep (dangerous!)
     :param TimeStepFactor: reduce the timestep by a given factor (>0 to <=1)
     :param TimeStepMethod: 1 or 3 chose timestep method (1=CFL, 3=Rennigs (default))
@@ -113,6 +114,9 @@ cdef class openEMS:
         if 'CartesianSubgridBox' in kw:
             self.SetCartesianSubgrid(kw['CartesianSubgridBox'])
             del kw['CartesianSubgridBox']
+        if 'CartesianSubgridRatio' in kw:
+            self.SetCartesianSubgridRatio(kw['CartesianSubgridRatio'])
+            del kw['CartesianSubgridRatio']
 
         assert len(kw)==0, 'Unknown keyword arguments: "{}"'.format(kw)
 
@@ -199,10 +203,12 @@ cdef class openEMS:
         grid_str = ','.join(['{}'.format(x) for x in radii])
         self.thisptr.SetupCylinderMultiGrid(grid_str.encode('UTF-8'))
 
-    def SetCartesianSubgrid(self, box):
-        """Local 2:1 refinement in XYZ, on a uniform Cartesian base mesh.
+    def SetCartesianSubgrid(self, box, ratio=None):
+        """Local XYZ refinement, on a uniform Cartesian base mesh.
 
         Box is [x0,y0,z0,x1,y1,z1] in mesh units, aligned to base lines.
+        Optional ratio is [rx,ry,rz], each a power of two from 1 to 16.
+        Omitting ratio preserves the selected ratios (initially [2,2,2]).
         Experimental serial reference: engine='basic', PEC, homogeneous
         medium and E/H observations only. See CARTESIAN_SUBGRID.md.
         """
@@ -210,7 +216,27 @@ cdef class openEMS:
         if values.shape != (6,) or not np.isfinite(values).all():
             raise ValueError('CartesianSubgrid: expected six finite coordinates')
         cdef vector[double] coordinates = values.tolist()
+        # Validate both arguments before changing either native setting.
+        if ratio is not None:
+            ratios = self._CartesianSubgridRatio(ratio)
+        if not (values[:3] < values[3:]).all():
+            raise ValueError('CartesianSubgrid: box start must be below stop')
         self.thisptr.SetupCartesianSubgrid(coordinates)
+        if ratio is not None:
+            self.SetCartesianSubgridRatio(ratios)
+
+    def _CartesianSubgridRatio(self, ratio):
+        values = np.asarray(ratio, dtype=float)
+        if values.shape != (3,) or not np.isfinite(values).all():
+            raise ValueError('CartesianSubgrid: expected three finite axis ratios')
+        if not np.isin(values, [1, 2, 4, 8, 16]).all():
+            raise ValueError('CartesianSubgrid: axis ratios must be powers of two from 1 to 16')
+        return values.astype(int).tolist()
+
+    def SetCartesianSubgridRatio(self, ratio):
+        """Set independent X/Y/Z refinement ratios; 1 leaves an axis unchanged."""
+        cdef vector[unsigned int] values = self._CartesianSubgridRatio(ratio)
+        self.thisptr.SetupCartesianSubgridRatio(values)
 
     def SetCylinderCoords(self):
         """ SetCylinderCoords()

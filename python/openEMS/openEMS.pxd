@@ -38,6 +38,7 @@ cdef extern from "openEMS/openems.h":
         void SetCylinderCoords(bool val)
         void SetupCylinderMultiGrid(string val)
         void SetupCartesianSubgrid(vector[double] box) except +
+        void SetupCartesianSubgridRatio(vector[unsigned int] ratio) except +
 
         void SetTimeStepMethod(int val)
         void SetTimeStep(double val)

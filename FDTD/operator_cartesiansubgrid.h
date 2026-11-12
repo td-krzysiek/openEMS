@@ -10,7 +10,7 @@
 class Operator_CartesianSubgrid : public Operator
 {
   public:
-	static Operator_CartesianSubgrid *New(const std::vector<double> &box);
+	static Operator_CartesianSubgrid *New(const std::vector<double> &box, CartesianSubgrid::Index ratio = {2, 2, 2});
 	void SetEngineType(Engine_Types::EngineType type) override;
 	bool SetGeometryCSX(ContinuousStructure *geometry) override;
 	void SetBoundaryCondition(int *conditions) override;
@@ -30,10 +30,11 @@ class Operator_CartesianSubgrid : public Operator
 	}
 
   private:
-	explicit Operator_CartesianSubgrid(const std::vector<double> &box);
+	Operator_CartesianSubgrid(const std::vector<double> &box, CartesianSubgrid::Index ratio);
 	void ValidateProperties() const;
 	void PrepareSources();
 	std::vector<double> m_Box;
+	CartesianSubgrid::Index m_Ratio;
 	std::unique_ptr<CartesianSubgrid> m_Grid;
 };
 #endif

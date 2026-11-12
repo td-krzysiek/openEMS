@@ -10,7 +10,7 @@
 #include <vector>
 
 //! Experimental compact, one-level Cartesian XYZ refinement with a conforming edge trace.
-/*! A refined base cell is replaced by eight leaves. Hanging tangential E
+/*! A refined base cell is replaced by ratio[0]*ratio[1]*ratio[2] leaves. Hanging tangential E
  *  values are constrained by the neighbouring coarse hexahedron's edge basis.
  *  The same prolongation is used in the curl and in the Galerkin electric
  *  mass, including its off-diagonal interface blocks. No cylindrical code,
@@ -31,11 +31,16 @@ class CartesianSubgrid
 	struct Leaf
 	{
 		std::array<int, 3> lo;
-		int size;
+		std::array<int, 3> size;
 	};
 
 	CartesianSubgrid(Index cells, Point spacing, Box refined, double epsilon, double permeability,
-					 bool uniformFine = false);
+					 bool uniformFine = false, Index ratio = {2, 2, 2});
+	static void ValidateRatio(const Index &ratio);
+	Index Ratio() const
+	{
+		return m_Ratio;
+	}
 	double StableTimestep() const
 	{
 		return m_StableStep;
@@ -105,6 +110,7 @@ class CartesianSubgrid
 	void CheckStep(double timestep) const;
 
 	Index m_Cells;
+	Index m_Ratio;
 	Point m_Spacing;
 	Box m_Box;
 	double m_Epsilon;

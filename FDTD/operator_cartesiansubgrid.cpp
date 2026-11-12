@@ -94,15 +94,19 @@ class Engine_CartesianSubgrid : public Engine
 };
 } // namespace
 
-Operator_CartesianSubgrid::Operator_CartesianSubgrid(const std::vector<double> &box) : m_Box(box) {}
+Operator_CartesianSubgrid::Operator_CartesianSubgrid(const std::vector<double> &box, CartesianSubgrid::Index ratio)
+	: m_Box(box), m_Ratio(ratio)
+{
+}
 
-Operator_CartesianSubgrid *Operator_CartesianSubgrid::New(const std::vector<double> &box)
+Operator_CartesianSubgrid *Operator_CartesianSubgrid::New(const std::vector<double> &box, CartesianSubgrid::Index ratio)
 {
 	if (box.size() != 6 || !std::all_of(box.begin(), box.end(), [](double v) { return std::isfinite(v); }))
 	{
 		throw std::invalid_argument("CartesianSubgrid: expected six finite box coordinates: x0,y0,z0,x1,y1,z1");
 	}
-	std::unique_ptr<Operator_CartesianSubgrid> op(new Operator_CartesianSubgrid(box));
+	std::unique_ptr<Operator_CartesianSubgrid> op(new Operator_CartesianSubgrid(box, ratio));
+	CartesianSubgrid::ValidateRatio(ratio);
 	op->Init();
 	return op.release();
 }
@@ -245,7 +249,8 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 			(side ? refined.stop[n] : refined.start[n]) = unsigned(std::llround(value));
 		}
 	}
-	m_Grid.reset(new CartesianSubgrid(cells, spacing, refined, GetBackgroundEpsR() * EPS0, GetBackgroundMueR() * MUE0));
+	m_Grid.reset(new CartesianSubgrid(cells, spacing, refined, GetBackgroundEpsR() * EPS0, GetBackgroundMueR() * MUE0,
+									  false, m_Ratio));
 	const double limit = m_Grid->StableTimestep();
 	if (dT == 0)
 	{
@@ -350,7 +355,7 @@ double Operator_CartesianSubgrid::GetNumberCells() const
 
 void Operator_CartesianSubgrid::ShowStat() const
 {
-	std::cout << "Experimental compact Cartesian XYZ 2:1 subgrid; serial host reference; " << m_Grid->CellCount()
-			  << " leaf cells; " << m_Grid->StorageBytes() << " accounted bytes; full fine parent arrays: none"
-			  << std::endl;
+	std::cout << "Experimental compact Cartesian XYZ " << m_Ratio[0] << 'x' << m_Ratio[1] << 'x' << m_Ratio[2]
+			  << " subgrid; serial host reference; " << m_Grid->CellCount() << " leaf cells; " << m_Grid->StorageBytes()
+			  << " accounted bytes; full fine parent arrays: none" << std::endl;
 }

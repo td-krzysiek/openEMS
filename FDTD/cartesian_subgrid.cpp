@@ -25,10 +25,11 @@ bool CartesianSubgrid::Edge::operator<(const Edge &other) const
 }
 
 CartesianSubgrid::CartesianSubgrid(Index cells, Point spacing, Box refined, double epsilon, double permeability,
-								   bool uniformFine)
-	: m_Cells(cells), m_Spacing(spacing), m_Box(refined), m_Epsilon(epsilon), m_Mu(permeability),
+								   bool uniformFine, Index ratio)
+	: m_Cells(cells), m_Ratio(ratio), m_Spacing(spacing), m_Box(refined), m_Epsilon(epsilon), m_Mu(permeability),
 	  m_UniformFine(uniformFine)
 {
+	ValidateRatio(ratio);
 	Require(epsilon > 0 && std::isfinite(epsilon) && permeability > 0 && std::isfinite(permeability),
 			"CartesianSubgrid: positive finite homogeneous epsilon and mu required");
 	std::size_t count = 1;
@@ -43,9 +44,21 @@ CartesianSubgrid::CartesianSubgrid(Index cells, Point spacing, Box refined, doub
 	Require(count <= 20000000, "CartesianSubgrid: prototype base-cell limit exceeded");
 	const std::size_t refinedCells = std::size_t(refined.stop[0] - refined.start[0]) *
 									 (refined.stop[1] - refined.start[1]) * (refined.stop[2] - refined.start[2]);
-	Require((uniformFine ? 8 * count : count + 7 * refinedCells) <= 1000000,
+	const std::size_t children = std::size_t(ratio[0]) * ratio[1] * ratio[2];
+	// Divide before multiplying so this guard is safe on 32-bit size_t too.
+	Require(count <= 1000000 &&
+				(uniformFine ? count <= 1000000 / children : children - 1 <= (1000000 - count) / refinedCells),
 			"CartesianSubgrid: prototype allocation guard exceeds one million leaf cells");
 	Build();
+}
+
+void CartesianSubgrid::ValidateRatio(const Index &ratio)
+{
+	for (unsigned int value : ratio)
+	{
+		Require(value >= 1 && value <= 16 && (value & (value - 1)) == 0,
+				"CartesianSubgrid: axis ratios must be powers of two from 1 to 16");
+	}
 }
 
 std::size_t CartesianSubgrid::RootIndex(const Index &cell) const
@@ -56,9 +69,9 @@ std::size_t CartesianSubgrid::RootIndex(const Index &cell) const
 CartesianSubgrid::Edge CartesianSubgrid::LocalEdge(const Leaf &cell, unsigned int axis, unsigned int first,
 												   unsigned int second) const
 {
-	Edge edge{int(axis), cell.lo, cell.size};
-	edge.lo[(axis + 1) % 3] += first * cell.size;
-	edge.lo[(axis + 2) % 3] += second * cell.size;
+	Edge edge{int(axis), cell.lo, cell.size[axis]};
+	edge.lo[(axis + 1) % 3] += first * cell.size[(axis + 1) % 3];
+	edge.lo[(axis + 2) % 3] += second * cell.size[(axis + 2) % 3];
 	return edge;
 }
 
@@ -66,7 +79,7 @@ bool CartesianSubgrid::Boundary(const Edge &edge) const
 {
 	for (unsigned int n = 0; n < 3; ++n)
 	{
-		if (n != unsigned(edge.axis) && (edge.lo[n] == 0 || edge.lo[n] == int(2 * m_Cells[n])))
+		if (n != unsigned(edge.axis) && (edge.lo[n] == 0 || edge.lo[n] == int(m_Ratio[n] * m_Cells[n])))
 		{
 			return true;
 		}
@@ -76,13 +89,23 @@ bool CartesianSubgrid::Boundary(const Edge &edge) const
 
 bool CartesianSubgrid::Hanging(const Edge &edge) const
 {
-	if (m_UniformFine || edge.size != 1)
+	if (m_UniformFine)
+	{
+		return false;
+	}
+	bool coarse = edge.size == int(m_Ratio[edge.axis]);
+	for (unsigned int n = 0; n < 3; ++n)
+	{
+		coarse = coarse && edge.lo[n] % int(m_Ratio[n]) == 0;
+	}
+	if (coarse)
 	{
 		return false;
 	}
 	for (unsigned int n = 0; n < 3; ++n)
 	{
-		if (n != unsigned(edge.axis) && (edge.lo[n] == int(2 * m_Box.start[n]) || edge.lo[n] == int(2 * m_Box.stop[n])))
+		if (n != unsigned(edge.axis) &&
+			(edge.lo[n] == int(m_Ratio[n] * m_Box.start[n]) || edge.lo[n] == int(m_Ratio[n] * m_Box.stop[n])))
 		{
 			return true;
 		}
@@ -111,25 +134,26 @@ CartesianSubgrid::Trace CartesianSubgrid::Restrict(const Edge &edge) const
 	Index root;
 	for (unsigned int n = 0; n < 3; ++n)
 	{
-		root[n] = std::min(unsigned(edge.lo[n] / 2), m_Cells[n] - 1);
+		root[n] = std::min(unsigned(edge.lo[n] / int(m_Ratio[n])), m_Cells[n] - 1);
 	}
 	for (unsigned int n : {a, b})
 	{
-		if (edge.lo[n] == int(2 * m_Box.start[n]))
+		if (edge.lo[n] == int(m_Ratio[n] * m_Box.start[n]))
 		{
 			root[n] = m_Box.start[n] - 1;
 			break;
 		}
-		if (edge.lo[n] == int(2 * m_Box.stop[n]))
+		if (edge.lo[n] == int(m_Ratio[n] * m_Box.stop[n]))
 		{
 			root[n] = m_Box.stop[n];
 			break;
 		}
 	}
-	const double u = edge.lo[a] / 2. - root[a];
-	const double v = edge.lo[b] / 2. - root[b];
+	const double u = double(edge.lo[a]) / m_Ratio[a] - root[a];
+	const double v = double(edge.lo[b]) / m_Ratio[b] - root[b];
 	Require(u >= 0 && u <= 1 && v >= 0 && v <= 1, "CartesianSubgrid: invalid hanging-edge coordinates");
-	Leaf coarse{{int(2 * root[0]), int(2 * root[1]), int(2 * root[2])}, 2};
+	Leaf coarse{{int(m_Ratio[0] * root[0]), int(m_Ratio[1] * root[1]), int(m_Ratio[2] * root[2])},
+				{int(m_Ratio[0]), int(m_Ratio[1]), int(m_Ratio[2])}};
 	for (unsigned int i = 0; i < 2; ++i)
 	{
 		for (unsigned int j = 0; j < 2; ++j)
@@ -166,13 +190,16 @@ void CartesianSubgrid::Build()
 				}
 				refined = refined || inside;
 				m_RootLeaves[RootIndex(root)] = m_Leaves.size();
-				for (int i = 0; i < (refined ? 2 : 1); ++i)
+				for (int i = 0; i < (refined ? int(m_Ratio[0]) : 1); ++i)
 				{
-					for (int j = 0; j < (refined ? 2 : 1); ++j)
+					for (int j = 0; j < (refined ? int(m_Ratio[1]) : 1); ++j)
 					{
-						for (int k = 0; k < (refined ? 2 : 1); ++k)
+						for (int k = 0; k < (refined ? int(m_Ratio[2]) : 1); ++k)
 						{
-							m_Leaves.push_back({{int(2 * x) + i, int(2 * y) + j, int(2 * z) + k}, refined ? 1 : 2});
+							m_Leaves.push_back(
+								{{int(m_Ratio[0] * x) + i, int(m_Ratio[1] * y) + j, int(m_Ratio[2] * z) + k},
+								 {refined ? 1 : int(m_Ratio[0]), refined ? 1 : int(m_Ratio[1]),
+								  refined ? 1 : int(m_Ratio[2])}});
 						}
 					}
 				}
@@ -204,7 +231,7 @@ void CartesianSubgrid::Build()
 		Point length;
 		for (unsigned int n = 0; n < 3; ++n)
 		{
-			length[n] = m_Spacing[n] * cell.size / 2.;
+			length[n] = m_Spacing[n] * cell.size[n] / m_Ratio[n];
 		}
 		const double volume = length[0] * length[1] * length[2];
 		// Assemble P^T M_e P, not independent field interpolation. Keep the
@@ -240,9 +267,9 @@ void CartesianSubgrid::Build()
 				std::map<std::size_t, double> row;
 				auto edge = [&](unsigned int direction, unsigned int crossAxis, unsigned int high, double sign)
 				{
-					Edge local{int(direction), cell.lo, cell.size};
-					local.lo[n] += side * cell.size;
-					local.lo[crossAxis] += high * cell.size;
+					Edge local{int(direction), cell.lo, cell.size[direction]};
+					local.lo[n] += side * cell.size[n];
+					local.lo[crossAxis] += high * cell.size[crossAxis];
 					for (const auto &term : Restrict(local).weights)
 					{
 						row[term.first] += sign * length[direction] * term.second;
@@ -482,7 +509,7 @@ CartesianSubgrid::Point CartesianSubgrid::EdgePosition(std::size_t edge) const
 	Point position;
 	for (unsigned int n = 0; n < 3; ++n)
 	{
-		position[n] = m_Spacing[n] * (key.lo[n] / 2. + (n == unsigned(key.axis) ? key.size / 4. : 0));
+		position[n] = m_Spacing[n] / m_Ratio[n] * (key.lo[n] + (n == unsigned(key.axis) ? key.size / 2. : 0));
 	}
 	return position;
 }
@@ -514,9 +541,10 @@ void CartesianSubgrid::SetMagnetic(const Field &field)
 				Point position;
 				for (unsigned int k = 0; k < 3; ++k)
 				{
-					position[k] = m_Spacing[k] * (leaf.lo[k] / 2. + leaf.size / 2. * (n == k ? side : .5));
+					position[k] = m_Spacing[k] / m_Ratio[k] * (leaf.lo[k] + leaf.size[k] * (n == k ? side : .5));
 				}
-				const double area = m_Spacing[(n + 1) % 3] * m_Spacing[(n + 2) % 3] * leaf.size * leaf.size / 4.;
+				const double area = m_Spacing[(n + 1) % 3] * m_Spacing[(n + 2) % 3] * double(leaf.size[(n + 1) % 3]) /
+									m_Ratio[(n + 1) % 3] * leaf.size[(n + 2) % 3] / m_Ratio[(n + 2) % 3];
 				const std::size_t index = 6 * cell + 2 * n + side;
 				const double value = field(n, position);
 				Require(std::isfinite(value), "CartesianSubgrid: nonfinite initial magnetic field");
@@ -536,16 +564,16 @@ std::size_t CartesianSubgrid::FindLeaf(const Point &position) const
 		root[n] = std::min(unsigned(position[n] / m_Spacing[n]), m_Cells[n] - 1);
 	}
 	const std::size_t first = m_RootLeaves[RootIndex(root)];
-	if (m_Leaves[first].size == 2)
+	if (m_Leaves[first].size == std::array<int, 3>{int(m_Ratio[0]), int(m_Ratio[1]), int(m_Ratio[2])})
 	{
 		return first;
 	}
 	Index child;
 	for (unsigned int n = 0; n < 3; ++n)
 	{
-		child[n] = std::min(unsigned(2 * (position[n] / m_Spacing[n] - root[n])), 1u);
+		child[n] = std::min(unsigned(m_Ratio[n] * (position[n] / m_Spacing[n] - root[n])), m_Ratio[n] - 1);
 	}
-	return first + 4 * child[0] + 2 * child[1] + child[2];
+	return first + (std::size_t(child[0]) * m_Ratio[1] + child[1]) * m_Ratio[2] + child[2];
 }
 
 double CartesianSubgrid::TraceValue(const Trace &trace, const std::vector<double> &amplitude) const
@@ -563,8 +591,8 @@ double CartesianSubgrid::Electric(unsigned int n, const Point &position) const
 	Require(n < 3, "CartesianSubgrid: invalid component");
 	const Leaf &cell = m_Leaves[FindLeaf(position)];
 	const unsigned int a = (n + 1) % 3, b = (n + 2) % 3;
-	const double u = (position[a] / m_Spacing[a] * 2 - cell.lo[a]) / cell.size;
-	const double v = (position[b] / m_Spacing[b] * 2 - cell.lo[b]) / cell.size;
+	const double u = (position[a] / m_Spacing[a] * m_Ratio[a] - cell.lo[a]) / cell.size[a];
+	const double v = (position[b] / m_Spacing[b] * m_Ratio[b] - cell.lo[b]) / cell.size[b];
 	double value = 0;
 	for (unsigned int i = 0; i < 2; ++i)
 	{
@@ -581,8 +609,9 @@ double CartesianSubgrid::Magnetic(unsigned int n, const Point &position) const
 	Require(n < 3, "CartesianSubgrid: invalid component");
 	const std::size_t index = FindLeaf(position);
 	const Leaf &cell = m_Leaves[index];
-	const double t = (position[n] / m_Spacing[n] * 2 - cell.lo[n]) / cell.size;
-	const double area = m_Spacing[(n + 1) % 3] * m_Spacing[(n + 2) % 3] * cell.size * cell.size / 4.;
+	const double t = (position[n] / m_Spacing[n] * m_Ratio[n] - cell.lo[n]) / cell.size[n];
+	const double area = m_Spacing[(n + 1) % 3] * m_Spacing[(n + 2) % 3] * double(cell.size[(n + 1) % 3]) /
+						m_Ratio[(n + 1) % 3] * cell.size[(n + 2) % 3] / m_Ratio[(n + 2) % 3];
 	const std::size_t first = 6 * index + 2 * n;
 	return ((1 - t) * m_Magnetic[first] / m_SqrtReluctance[first] +
 			t * m_Magnetic[first + 1] / m_SqrtReluctance[first + 1]) /

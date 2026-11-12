@@ -10,9 +10,11 @@ from CSXCAD import ContinuousStructure
 from openEMS import openEMS
 
 
-def fixture():
+def fixture(ratio=None):
     fdtd = openEMS(NrTS=2048, EndCriteria=0, TimeStepFactor=0.8,
                   CartesianSubgridBox=[-4, -4, -4, 4, 4, 4])
+    if ratio is not None:
+        fdtd.SetCartesianSubgridRatio(ratio)
     fdtd.SetGaussExcite(13e9, 9e9)
     fdtd.SetBoundaryCond(['PEC'] * 6)
     csx = ContinuousStructure()
@@ -59,6 +61,13 @@ for name in ('received', 'magnetic'):
     assert np.max(np.abs(data[:, 1:])) > 1e-7, 'no propagated field at probe'
 for name in ('ef.h5', 'hf.h5'):
     assert os.path.getsize(os.path.join(Sim_Path, 'valid', name)) > 100, 'field dump missing'
+
+# Exercise actual adapter propagation and E/H processing with unequal ratios.
+fdtd, csx = fixture([1, 2, 4])
+run(fdtd, 'unequal', engine='basic')
+for name in ('received', 'magnetic'):
+    data = np.loadtxt(os.path.join(Sim_Path, 'unequal', name), comments='%')
+    assert np.isfinite(data).all() and np.max(np.abs(data[:, 1:])) > 1e-7
 
 rejected('pml', lambda f, c: f.SetBoundaryCond(['PML_2'] * 6))
 rejected('sse', lambda f, c: None, engine='sse')

@@ -76,6 +76,7 @@ public:
 	void SetupCylinderMultiGrid(std::string val);
 	//! Experimental compact XYZ refinement box, x0,y0,z0,x1,y1,z1 in mesh units.
 	void SetupCartesianSubgrid(std::vector<double> box);
+	void SetupCartesianSubgridRatio(std::vector<unsigned int> ratio);
 
 	void SetTimeStepMethod(int val) {m_TS_method=val;}
 	void SetTimeStep(double val) {m_TS=val;}
@@ -138,6 +139,7 @@ protected:
 	bool CylinderCoords;
 	std::vector<double> m_CC_MultiGrid;
 	std::vector<double> m_CartesianSubgridBox;
+	std::vector<unsigned int> m_CartesianSubgridRatio;
 
 	ContinuousStructure* m_CSX;
 

@@ -17,7 +17,8 @@ to what a user notices, in a few lines; the details belong in the commit.
 ### Added
 
 - Experimental local Cartesian subgridding, `CartesianSubgridBox`: selected
-  cells split 2:1 in X, Y and Z with compact storage and a shared timestep.
+  cells split independently in X/Y/Z using `CartesianSubgridRatio` (powers
+  of two from 1 to 16, default 2/2/2), with compact storage and a shared timestep.
   The serial reference requires `engine=basic`, outer PEC and a homogeneous
   medium; material objects, ports, PML and GPU execution are not supported yet.
 - **A GPU engine**, `--engine=gpu` (`engine='gpu'` from Python), for AMD and
