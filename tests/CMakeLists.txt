@@ -7,6 +7,7 @@ set(TESTS
   test_arraylib
   test_engine_plan
   test_cell_model
+  test_cartesian_subgrid
 )
 
 foreach(test ${TESTS})

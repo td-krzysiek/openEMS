@@ -61,6 +61,7 @@ cdef class openEMS:
                             unless a box sets its own ``over_sampling`` (CSXCAD AddDump/AddProbe).
     :param CoordSystem:    choose coordinate system (0 Cartesian, 1 Cylindrical)
     :param MultiGrid:      define a cylindrical sub-grid radius
+    :param CartesianSubgridBox: experimental local 2:1 XYZ refinement [x0,y0,z0,x1,y1,z1]
     :param TimeStep:       force to use a given timestep (dangerous!)
     :param TimeStepFactor: reduce the timestep by a given factor (>0 to <=1)
     :param TimeStepMethod: 1 or 3 chose timestep method (1=CFL, 3=Rennigs (default))
@@ -109,6 +110,9 @@ cdef class openEMS:
         if 'MultiGrid' in kw:
             self.SetMultiGrid(kw['MultiGrid'])
             del kw['MultiGrid']
+        if 'CartesianSubgridBox' in kw:
+            self.SetCartesianSubgrid(kw['CartesianSubgridBox'])
+            del kw['CartesianSubgridBox']
 
         assert len(kw)==0, 'Unknown keyword arguments: "{}"'.format(kw)
 
@@ -194,6 +198,19 @@ cdef class openEMS:
 
         grid_str = ','.join(['{}'.format(x) for x in radii])
         self.thisptr.SetupCylinderMultiGrid(grid_str.encode('UTF-8'))
+
+    def SetCartesianSubgrid(self, box):
+        """Local 2:1 refinement in XYZ, on a uniform Cartesian base mesh.
+
+        Box is [x0,y0,z0,x1,y1,z1] in mesh units, aligned to base lines.
+        Experimental serial reference: engine='basic', PEC, homogeneous
+        medium and E/H observations only. See CARTESIAN_SUBGRID.md.
+        """
+        values = np.asarray(box, dtype=float)
+        if values.shape != (6,) or not np.isfinite(values).all():
+            raise ValueError('CartesianSubgrid: expected six finite coordinates')
+        cdef vector[double] coordinates = values.tolist()
+        self.thisptr.SetupCartesianSubgrid(coordinates)
 
     def SetCylinderCoords(self):
         """ SetCylinderCoords()

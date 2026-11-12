@@ -16,6 +16,10 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Added
 
+- Experimental local Cartesian subgridding, `CartesianSubgridBox`: selected
+  cells split 2:1 in X, Y and Z with compact storage and a shared timestep.
+  The serial reference requires `engine=basic`, outer PEC and a homogeneous
+  medium; material objects, ports, PML and GPU execution are not supported yet.
 - **A GPU engine**, `--engine=gpu` (`engine='gpu'` from Python), for AMD and
   NVIDIA GPUs (HIP/CUDA) and on macOS (Metal), with Cartesian and cylindrical
   meshes and the usual extensions. `--gpu-device=N` picks one of the GPUs

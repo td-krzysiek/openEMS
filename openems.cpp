@@ -24,6 +24,8 @@
 #include "tools/denormal.h"
 #include "FDTD/operator_cylinder.h"
 #include "FDTD/operator_cylindermultigrid.h"
+#include "FDTD/operator_cartesiansubgrid.h"
+#include <cmath>
 #include "FDTD/engine_sse.h"
 #include "FDTD/extensions/operator_ext_excitation.h"
 #include "FDTD/extensions/operator_ext_tfsf.h"
@@ -129,6 +131,7 @@ void openEMS::Reset()
 
 	CylinderCoords = false;
 	m_CC_MultiGrid.clear();
+	m_CartesianSubgridBox.clear();
 	m_CellConstantMaterial=false;
 	endCrit = 1e-6;
 	m_OverSampling = 4;
@@ -824,6 +827,22 @@ void openEMS::SetupCylinderMultiGrid(std::string val)
 	m_CC_MultiGrid = SplitString2Double(val,',');
 }
 
+void openEMS::SetupCartesianSubgrid(std::vector<double> box)
+{
+	if (box.size()!=6 || !std::all_of(box.begin(),box.end(),[](double v){return std::isfinite(v);}))
+	{
+		throw std::invalid_argument("CartesianSubgrid: expected six finite box coordinates");
+	}
+	for (unsigned int n=0;n<3;++n)
+	{
+		if (box[n]>=box[n+3])
+		{
+			throw std::invalid_argument("CartesianSubgrid: box start must be below stop on every axis");
+		}
+	}
+	m_CartesianSubgridBox=box;
+}
+
 bool openEMS::SetupOperator()
 {
 	// what defaults to AvailableThreads() (GPU operator build, field dumps, SAR, nf2ff) honours numThreads
@@ -850,6 +869,10 @@ bool openEMS::SetupOperator()
 
 	// the GPU backend first: without a usable device the operator is not worth building
 	const bool gpu = (type==Engine::GPU);
+	if (!m_CartesianSubgridBox.empty() && (CylinderCoords || !m_CC_MultiGrid.empty() || type!=Engine::BASIC))
+	{
+		throw std::invalid_argument("CartesianSubgrid: use Cartesian coordinates and explicit engine=basic");
+	}
 	GPU_Backend* gpu_backend = NULL;
 	if (gpu)
 	{
@@ -884,6 +907,11 @@ bool openEMS::SetupOperator()
 			cout << "Create cylindrical FDTD operator (" << name << ")" << endl;
 		}
 		FDTD_Op = op_cyl;
+	}
+	else if (!m_CartesianSubgridBox.empty())
+	{
+		cout << "Create experimental compact Cartesian XYZ subgrid operator" << endl;
+		FDTD_Op = Operator_CartesianSubgrid::New(m_CartesianSubgridBox);
 	}
 	else
 	{
@@ -986,6 +1014,28 @@ bool openEMS::Parse_XML_FDTDSetup(TiXmlElement* FDTD_Opts)
 		this->SetNumberOfTimeSteps((unsigned int)(dhelp>INT_MAX ? INT_MAX : dhelp));
 
 	int ihelp = 0;
+	if (const char *box = FDTD_Opts->Attribute("CartesianSubgridBox"))
+	{
+		std::istringstream input(box);
+		std::vector<double> coordinates(6);
+		for (size_t i=0;i<6;++i)
+		{
+			if (!(input >> coordinates[i]))
+			{
+				throw std::invalid_argument("CartesianSubgrid: invalid box coordinate");
+			}
+			input >> std::ws;
+			if (i<5 && input.get()!=',')
+			{
+				throw std::invalid_argument("CartesianSubgrid: expected six comma-separated coordinates");
+			}
+		}
+		if (!input.eof())
+		{
+			throw std::invalid_argument("CartesianSubgrid: extra box coordinates or invalid suffix");
+		}
+		SetupCartesianSubgrid(coordinates);
+	}
 	FDTD_Opts->QueryIntAttribute("CylinderCoords",&ihelp);
 	if (ihelp==1)
 	{
@@ -1132,6 +1182,20 @@ bool openEMS::Write2XML(TiXmlNode* rootNode)
 
 	TiXmlElement fdtd("FDTD");
 	fdtd.SetAttribute("NumberOfTimesteps", this->NrTS);
+	if (!m_CartesianSubgridBox.empty())
+	{
+		std::ostringstream box;
+		box << std::setprecision(17);
+		for (size_t i=0;i<m_CartesianSubgridBox.size();++i)
+		{
+			if (i!=0)
+			{
+				box << ',';
+			}
+			box << m_CartesianSubgridBox[i];
+		}
+		fdtd.SetAttribute("CartesianSubgridBox",box.str());
+	}
 
 	if (this->CylinderCoords)
 	{

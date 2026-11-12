@@ -53,6 +53,8 @@ set(SOURCES
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_cpu.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_cpu_kernels.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/operator.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/cartesian_subgrid.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/operator_cartesiansubgrid.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/operator_coeffs.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/operator_cylinder.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_sse.cpp
