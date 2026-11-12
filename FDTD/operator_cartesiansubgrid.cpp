@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include "operator_cartesiansubgrid.h"
 #include "CSPrimBox.h"
+#include "CSPrimCylinder.h"
+#include "CSPrimCylindricalShell.h"
 #include "CSPropDumpBox.h"
 #include "CSPropExcitation.h"
 #include "CSPropMaterial.h"
@@ -265,11 +267,12 @@ void Operator_CartesianSubgrid::ValidateProperties() const
 	for (CSProperties *property : CSX->GetPropertyByType(CSProperties::ANY))
 	{
 		const int type = property->GetType();
-		if (type != CSProperties::MATERIAL &&
+		if (type != CSProperties::MATERIAL && type != CSProperties::METAL &&
 			(type & ~(CSProperties::EXCITATION | CSProperties::PROBEBOX | CSProperties::DUMPBOX)))
 		{
-			throw std::invalid_argument("CartesianSubgrid: only lossless isotropic materials, soft E sources "
-										"and E/H observations are supported");
+			throw std::invalid_argument(
+				"CartesianSubgrid: only lossless isotropic materials, PEC, soft E sources "
+				"and E/H observations are supported");
 		}
 		if (type == CSProperties::MATERIAL)
 		{
@@ -328,15 +331,55 @@ void Operator_CartesianSubgrid::ValidateProperties() const
 		}
 		for (CSPrimitives *primitive : property->GetAllPrimitives())
 		{
+			if (type == CSProperties::METAL)
+			{
+				auto *cylinder = dynamic_cast<CSPrimCylinder *>(primitive);
+				if (!dynamic_cast<CSPrimBox *>(primitive) && !cylinder)
+				{
+					throw std::invalid_argument(
+						"CartesianSubgrid: PEC supports boxes, sheets and axis-aligned cylinders/shells");
+				}
+				if (cylinder)
+				{
+					unsigned int directions = 0;
+					for (unsigned int n = 0; n < 3; ++n)
+					{
+						if (!std::isfinite(cylinder->GetCoord(2 * n)) ||
+							!std::isfinite(cylinder->GetCoord(2 * n + 1)))
+						{
+							throw std::invalid_argument(
+								"CartesianSubgrid: finite PEC cylinder coordinates required");
+						}
+						directions += cylinder->GetCoord(2 * n) != cylinder->GetCoord(2 * n + 1);
+					}
+					if (directions != 1 || !(cylinder->GetRadius() > 0) ||
+						!std::isfinite(cylinder->GetRadius()))
+					{
+						throw std::invalid_argument("CartesianSubgrid: PEC cylinders require one finite "
+													"nonzero axis and positive radius");
+					}
+					if (auto *shell = dynamic_cast<CSPrimCylindricalShell *>(cylinder))
+					{
+						if (!(shell->GetShellWidth() > 0) || !std::isfinite(shell->GetShellWidth()) ||
+							shell->GetShellWidth() >= 2 * cylinder->GetRadius())
+						{
+							throw std::invalid_argument(
+								"CartesianSubgrid: PEC shell requires positive wall and bore dimensions");
+						}
+					}
+				}
+			}
 			if (type == CSProperties::MATERIAL && !dynamic_cast<CSPrimBox *>(primitive))
 			{
 				throw std::invalid_argument(
 					"CartesianSubgrid: material objects must use axis-aligned volume boxes");
 			}
-			if (type == CSProperties::MATERIAL && primitive->GetCoordinateSystem() != UNDEFINED_CS &&
+			if ((type == CSProperties::MATERIAL || type == CSProperties::METAL) &&
+				primitive->GetCoordinateSystem() != UNDEFINED_CS &&
 				primitive->GetCoordinateSystem() != CARTESIAN)
 			{
-				throw std::invalid_argument("CartesianSubgrid: material boxes require Cartesian coordinates");
+				throw std::invalid_argument(
+					"CartesianSubgrid: material/PEC primitives require Cartesian coordinates");
 			}
 			if ((type & CSProperties::EXCITATION) && !dynamic_cast<CSPrimBox *>(primitive))
 			{
@@ -358,6 +401,19 @@ void Operator_CartesianSubgrid::ValidateProperties() const
 						throw std::invalid_argument(
 							"CartesianSubgrid: material boxes must have positive volume");
 					}
+				}
+			}
+			if (type == CSProperties::METAL && dynamic_cast<CSPrimBox *>(primitive))
+			{
+				unsigned int zero = 0;
+				for (unsigned int n = 0; n < 3; ++n)
+				{
+					zero += box[2 * n] == box[2 * n + 1];
+				}
+				if (zero > 1)
+				{
+					throw std::invalid_argument(
+						"CartesianSubgrid: PEC boxes require volume or one planar sheet, not wires/points");
 				}
 			}
 		}
@@ -396,9 +452,30 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 	// The primitive-list lookup stops at its first hit; CSXCAD requires this
 	// list to be sorted by descending priority, not property insertion order.
 	const auto primitives = CSX->GetAllPrimitives(true, CSProperties::MATERIAL);
+	const auto geometry = CSX->GetAllPrimitives(
+		true, (CSProperties::PropertyType)(CSProperties::MATERIAL | CSProperties::METAL));
 	std::vector<std::array<double, 6>> bounds;
-	for (CSPrimitives *primitive : primitives)
+	std::vector<std::pair<unsigned int, std::array<double, 6>>> cylinders;
+	for (CSPrimitives *primitive : geometry)
 	{
+		if (!dynamic_cast<CSPrimBox *>(primitive))
+		{
+			auto *cylinder = dynamic_cast<CSPrimCylinder *>(primitive);
+			if (!cylinder)
+			{
+				throw std::invalid_argument("CartesianSubgrid: unsupported geometry added after validation");
+			}
+			std::array<double, 6> box;
+			cylinder->GetBoundBox(box.data());
+			for (unsigned int n = 0; n < 3; ++n)
+			{
+				if (cylinder->GetCoord(2 * n) != cylinder->GetCoord(2 * n + 1))
+				{
+					cylinders.push_back({n, box});
+				}
+			}
+			continue;
+		}
 		std::array<double, 6> box;
 		primitive->GetBoundBox(box.data());
 		bounds.push_back(box);
@@ -426,8 +503,24 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 		for (const auto &box : bounds)
 		{
 			bool intersects = true, contains = true;
+			int normal = -1;
 			for (unsigned int n = 0; n < 3; ++n)
 			{
+				if (box[2 * n] == box[2 * n + 1])
+				{
+					normal = int(n);
+				}
+			}
+			for (unsigned int n = 0; n < 3; ++n)
+			{
+				if (int(n) == normal)
+				{
+					intersects = intersects && box[2 * n] >= lo[n] - tolerance[n] &&
+								 box[2 * n] <= hi[n] + tolerance[n];
+					contains = contains && (std::abs(box[2 * n] - lo[n]) <= tolerance[n] ||
+											std::abs(box[2 * n] - hi[n]) <= tolerance[n]);
+					continue;
+				}
 				intersects =
 					intersects && box[2 * n] < hi[n] - tolerance[n] && box[2 * n + 1] > lo[n] + tolerance[n];
 				contains =
@@ -435,8 +528,32 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 			}
 			if (intersects && !contains)
 			{
-				throw std::invalid_argument("CartesianSubgrid: material boundary cuts a leaf; align material "
-											"faces to local cell boundaries");
+				throw std::invalid_argument(
+					"CartesianSubgrid: material/PEC box boundary cuts a leaf; align box "
+					"faces to local cell boundaries");
+			}
+		}
+		for (const auto &cylinder : cylinders)
+		{
+			const unsigned int axis = cylinder.first;
+			const auto &box = cylinder.second;
+			bool overlaps = true;
+			for (unsigned int n = 0; n < 3; ++n)
+			{
+				if (n != axis)
+				{
+					overlaps = overlaps && box[2 * n] < hi[n] - tolerance[n] &&
+							   box[2 * n + 1] > lo[n] + tolerance[n];
+				}
+			}
+			for (unsigned int side = 0; side < 2; ++side)
+			{
+				const double end = box[2 * axis + side];
+				if (overlaps && end > lo[axis] + tolerance[axis] && end < hi[axis] - tolerance[axis])
+				{
+					throw std::invalid_argument("CartesianSubgrid: PEC cylinder end cuts a leaf; align axial "
+												"contacts to local boundaries");
+				}
 			}
 		}
 		auto *property = CSX->GetPropertyByCoordPriority(centre, primitives, true);
@@ -444,8 +561,25 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 		return CartesianSubgrid::Medium{(material ? material->GetEpsilon() : GetBackgroundEpsR()) * EPS0,
 										(material ? material->GetMue() : GetBackgroundMueR()) * MUE0};
 	};
-	m_Grid.reset(new CartesianSubgrid(lines, GetBackgroundEpsR() * EPS0, GetBackgroundMueR() * MUE0, regions,
-									  false, sample));
+	auto pec = [&](unsigned int, const CartesianSubgrid::Point &start, const CartesianSubgrid::Point &stop)
+	{
+		double centre[3];
+		for (unsigned int n = 0; n < 3; ++n)
+		{
+			centre[n] = (start[n] + stop[n]) / (2 * gridDelta) + discLines[n][0];
+		}
+		auto *property = CSX->GetPropertyByCoordPriority(centre, geometry, true);
+		return property && property->GetType() == CSProperties::METAL;
+	};
+	const bool hasMetal = CSX->GetQtyPrimitives(CSProperties::METAL) != 0;
+	m_Grid.reset(new CartesianSubgrid(
+		lines, GetBackgroundEpsR() * EPS0, GetBackgroundMueR() * MUE0, regions, false, sample,
+		hasMetal ? CartesianSubgrid::PECSelector(pec) : CartesianSubgrid::PECSelector()));
+	if (hasMetal && m_Grid->PECTraceCount() == 0)
+	{
+		throw std::invalid_argument(
+			"CartesianSubgrid: no PEC edge resolved; check geometry, priorities and mesh");
+	}
 	const double limit = m_Grid->StableTimestep();
 	if (dT == 0)
 	{
@@ -552,7 +686,8 @@ void Operator_CartesianSubgrid::ShowStat() const
 {
 	std::cout << "Experimental compact Cartesian XYZ subgrid; " << m_Boxes.size()
 			  << " region(s); serial host reference; " << m_Grid->CellCount() << " leaf cells; "
-			  << m_Grid->StorageBytes() << " accounted bytes; full fine parent arrays: none" << std::endl;
+			  << m_Grid->StorageBytes() << " accounted bytes; " << m_Grid->PECTraceCount()
+			  << " PEC traces; full fine parent arrays: none" << std::endl;
 	for (std::size_t i = 0; i < m_Ratios.size(); ++i)
 	{
 		std::cout << "  region " << i << ": ratio " << m_Ratios[i][0] << 'x' << m_Ratios[i][1] << 'x' << m_Ratios[i][2]

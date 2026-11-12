@@ -67,7 +67,7 @@ CartesianSubgrid::CartesianSubgrid(Index cells, Point spacing, double epsilon, d
 
 CartesianSubgrid::CartesianSubgrid(const Axes &lines, double epsilon, double permeability,
 								   const std::vector<Region> &regions, bool uniformFine,
-								   const MediumSampler &medium)
+								   const MediumSampler &medium, const PECSelector &pec)
 	: m_Ratio{1, 1, 1}, m_Epsilon(epsilon), m_Mu(permeability), m_UniformFine(uniformFine)
 {
 	Require(epsilon > 0 && std::isfinite(epsilon) && permeability > 0 && std::isfinite(permeability),
@@ -143,7 +143,7 @@ CartesianSubgrid::CartesianSubgrid(const Axes &lines, double epsilon, double per
 	}
 	m_Regions = regions;
 	m_Lines = lines;
-	Build(medium);
+	Build(medium, pec);
 }
 
 void CartesianSubgrid::ValidateRatio(const Index &ratio)
@@ -219,10 +219,10 @@ const CartesianSubgrid::Box *CartesianSubgrid::InterfaceBox(const Edge &edge) co
 	return nullptr;
 }
 
-CartesianSubgrid::Trace CartesianSubgrid::Restrict(const Edge &edge) const
+CartesianSubgrid::Trace CartesianSubgrid::Restrict(const Edge &edge, bool ignoreLocalPEC) const
 {
 	Trace trace;
-	if (Boundary(edge))
+	if (Boundary(edge) || (!ignoreLocalPEC && m_PECEdges.count(edge)))
 	{
 		return trace;
 	}
@@ -269,7 +269,7 @@ CartesianSubgrid::Trace CartesianSubgrid::Restrict(const Edge &edge) const
 			if (weight != 0)
 			{
 				const Edge master = LocalEdge(coarse, edge.axis, i, j);
-				if (!Boundary(master))
+				if (!Boundary(master) && !m_PECEdges.count(master))
 				{
 					trace.weights.emplace_back(m_EdgeMap.at(master), weight);
 				}
@@ -279,7 +279,7 @@ CartesianSubgrid::Trace CartesianSubgrid::Restrict(const Edge &edge) const
 	return trace;
 }
 
-void CartesianSubgrid::Build(const MediumSampler &medium)
+void CartesianSubgrid::Build(const MediumSampler &medium, const PECSelector &pec)
 {
 	const std::size_t roots = std::size_t(m_Cells[0]) * m_Cells[1] * m_Cells[2];
 	m_RootLeaves.resize(roots);
@@ -348,6 +348,26 @@ void CartesianSubgrid::Build(const MediumSampler &medium)
 				"CartesianSubgrid: positive finite leaf epsilon and permeability required");
 		m_Media.push_back(value);
 	}
+	if (pec)
+	{
+		for (const Leaf &cell : m_Leaves)
+		{
+			for (unsigned int n = 0; n < 3; ++n)
+			{
+				for (unsigned int i = 0; i < 2; ++i)
+				{
+					for (unsigned int j = 0; j < 2; ++j)
+					{
+						const Edge edge = LocalEdge(cell, n, i, j);
+						if (pec(n, EdgePoint(edge, 0), EdgePoint(edge, 1)))
+						{
+							m_PECEdges.insert(edge);
+						}
+					}
+				}
+			}
+		}
+	}
 	for (const Leaf &cell : m_Leaves)
 	{
 		for (unsigned int n = 0; n < 3; ++n)
@@ -357,9 +377,36 @@ void CartesianSubgrid::Build(const MediumSampler &medium)
 				for (unsigned int j = 0; j < 2; ++j)
 				{
 					const Edge edge = LocalEdge(cell, n, i, j);
-					if (!Boundary(edge) && !Hanging(edge) && m_EdgeMap.emplace(edge, m_Edges.size()).second)
+					if (!Boundary(edge) && !m_PECEdges.count(edge) && !Hanging(edge) &&
+						m_EdgeMap.emplace(edge, m_Edges.size()).second)
 					{
 						m_Edges.push_back(edge);
+					}
+				}
+			}
+		}
+	}
+	Require(!m_Edges.empty(), "CartesianSubgrid: PEC leaves no unconstrained electric edges");
+	if (pec)
+	{
+		// Elimination is exact only when the coarse trace can represent the
+		// same PEC pattern. Do not short an unresolved opening or force an
+		// entire coarse edge to zero for a partly covered fine trace.
+		for (const Leaf &cell : m_Leaves)
+		{
+			for (unsigned int n = 0; n < 3; ++n)
+			{
+				for (unsigned int i = 0; i < 2; ++i)
+				{
+					for (unsigned int j = 0; j < 2; ++j)
+					{
+						const Edge edge = LocalEdge(cell, n, i, j);
+						if (Hanging(edge))
+						{
+							Require(bool(m_PECEdges.count(edge)) == Restrict(edge, true).weights.empty(),
+									"CartesianSubgrid: PEC pattern is not representable by the coarse "
+									"interface trace; move or refine the interface");
+						}
 					}
 				}
 			}
@@ -410,12 +457,16 @@ void CartesianSubgrid::Build(const MediumSampler &medium)
 			for (unsigned int side = 0; side < 2; ++side)
 			{
 				std::map<std::size_t, double> row;
+				bool zeroTrace = true, touchesPEC = false;
 				auto edge = [&](unsigned int direction, unsigned int crossAxis, unsigned int high, double sign)
 				{
 					Edge local{int(direction), cell.lo, cell.size[direction]};
 					local.lo[n] += side * cell.size[n];
 					local.lo[crossAxis] += high * cell.size[crossAxis];
-					for (const auto &term : Restrict(local).weights)
+					const Trace trace = Restrict(local);
+					zeroTrace = zeroTrace && trace.weights.empty();
+					touchesPEC = touchesPEC || m_PECEdges.count(local);
+					for (const auto &term : trace.weights)
 					{
 						row[term.first] += sign * length[direction] * term.second;
 					}
@@ -433,6 +484,7 @@ void CartesianSubgrid::Build(const MediumSampler &medium)
 					}
 				}
 				m_RowStart.push_back(m_Values.size());
+				m_PECFaces.push_back(zeroTrace && touchesPEC);
 				// One half-volume per face. Coincident faces are deliberately
 				// separate quadrature histories, not a global fine H lattice.
 				m_SqrtReluctance.push_back(std::sqrt(volume / (2 * material.permeability * area * area)));
@@ -683,13 +735,24 @@ CartesianSubgrid::Point CartesianSubgrid::LeafLengths(std::size_t leaf) const
 
 CartesianSubgrid::Point CartesianSubgrid::EdgePosition(std::size_t edge) const
 {
-	const Edge &key = m_Edges.at(edge);
+	return EdgePoint(m_Edges.at(edge), .5);
+}
+
+CartesianSubgrid::Point CartesianSubgrid::EdgePoint(const Edge &key, double fraction) const
+{
 	Point position;
 	for (unsigned int n = 0; n < 3; ++n)
 	{
-		position[n] = Coordinate(n, key.lo[n] + (n == unsigned(key.axis) ? key.size / 2. : 0));
+		position[n] = Coordinate(n, key.lo[n] + (n == unsigned(key.axis) ? key.size * fraction : 0));
 	}
 	return position;
+}
+
+bool CartesianSubgrid::LeafEdgeIsPEC(std::size_t leaf, unsigned int axis, unsigned int first,
+									 unsigned int second) const
+{
+	Require(axis < 3 && first < 2 && second < 2, "CartesianSubgrid: invalid local edge");
+	return m_PECEdges.count(LocalEdge(m_Leaves.at(leaf), axis, first, second));
 }
 
 unsigned int CartesianSubgrid::EdgeDirection(std::size_t edge) const
@@ -723,6 +786,11 @@ void CartesianSubgrid::SetMagnetic(const Field &field)
 				}
 				const double area = Length(leaf, (n + 1) % 3) * Length(leaf, (n + 2) % 3);
 				const std::size_t index = 6 * cell + 2 * n + side;
+				if (m_PECFaces[index])
+				{
+					m_Magnetic[index] = 0;
+					continue;
+				}
 				const double value = field(n, position);
 				Require(std::isfinite(value), "CartesianSubgrid: nonfinite initial magnetic field");
 				m_Magnetic[index] = value * m_Media[cell].permeability * area * m_SqrtReluctance[index];
@@ -887,6 +955,7 @@ std::size_t CartesianSubgrid::StorageBytes() const
 	// std::map node overhead is implementation-specific; this is an approximate
 	// accounting estimate, not a measurement of allocator or process RSS.
 	bytes += m_EdgeMap.size() * (sizeof(Edge) + sizeof(std::size_t) + 4 * sizeof(void *));
+	bytes += m_PECEdges.size() * (sizeof(Edge) + 4 * sizeof(void *)) + m_PECFaces.capacity();
 	for (const auto *values :
 		 {&m_SqrtMass, &m_SqrtReluctance, &m_Values, &m_Electric, &m_Magnetic, &m_Increment, &m_Curl})
 	{

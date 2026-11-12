@@ -28,7 +28,8 @@ separate tasks; a passing test on one engine does not qualify another engine.
   of every platform or engine.
 - Current capability is a **serial CPU numerical reference**, with homogeneous
   lossless background, cell-aligned isotropic lossless material boxes and PEC
-  outer walls. It is not an antenna-ready solver.
+  outer walls. Internal PEC boxes/sheets and axis-aligned cylinders/shells have
+  scoped geometry, contact and numerical controls. It is not an antenna-ready solver.
 - The new feature concerns Cartesian coordinates. Preserve the existing
   cylindrical modes and test them for regressions; implementing a new
   cylindrical subgrid is outside this scope.
@@ -87,8 +88,11 @@ universal limits of subgridding. A shared timestep is retained.
   coefficients with a consistent interface mass and stability bound.
   Qualified for lossless, piecewise-constant leaf coefficients on serial CPU;
   native geometry currently accepts only cell-aligned volume boxes.
-- [ ] **G03** Implement internal PEC objects, including finite physical metal
+- [x] **G03** Implement internal PEC objects, including finite physical metal
   height, sheets where supported, vias, gaps and finite-width contacts.
+  Qualified on serial CPU for aligned boxes/sheets and sampled axis-aligned
+  cylinders/hollow barrels with aligned ends; unresolved interface traces fail.
+  This is not general CAD, arbitrary interface/contact or antenna qualification.
 - [ ] **G04** Qualify dielectric and conductor crossings of coarse/fine
   boundaries. Any interim placement restriction must fail explicitly.
 - [ ] **G05** Support the anisotropic material coefficients available in the
@@ -98,11 +102,13 @@ universal limits of subgridding. A shared timestep is retained.
 
 Acceptance: independently inspect material occupancy and contacts, verify
 geometry priorities, and demonstrate convergence and bounded evolution.
-The current outer PEC-wall tests do not complete internal PEC mapping.
 G01/G04/G06 are **partial**: native volume-box priorities, units and leaf
 occupancy, dielectric crossings of refinement faces, analytic layered-cavity
-convergence and a graded dielectric/native-Yee control pass. General primitives,
-internal PEC contacts and broader scattering qualification remain open.
+convergence and a graded dielectric/native-Yee control pass. PEC adds volume,
+sheet and barrel occupancy, resolved/broken Cu18 contacts, supported conductor
+crossings, invariant/closed-cavity tests and four native-Yee shape controls.
+General primitives, arbitrary contact/interface patterns and broader scattering
+qualification remain open; unsupported interface patterns are rejected.
 
 ## 2. Nonuniform base mesh
 
@@ -267,3 +273,4 @@ numerical change invalidates their prior qualification.
 | 2026-11-12 | R02/R04–R09, multiple separate regions | `9073917` | [Multi-region controls](tests/test_cartesian_subgrid.cpp) and [native integration](python/Tests/Cartesian_Subgrid.py); R09 is source availability, R10 remains unexecuted |
 | 2026-11-12 | M01–M04, nonuniform base lines | This PR, graded-mesh increment | [Physical geometry and numerical tests](tests/test_cartesian_subgrid_mesh.cpp), [native source/translation controls](python/Tests/Cartesian_Subgrid.py), [results](CARTESIAN_SUBGRID.md#tests-and-observed-accuracy); serial homogeneous CPU only |
 | 2026-11-12 | G02; partial G01/G04/G06 | This PR, lossless-material increment | [Material/occupancy/invariant/cavity controls](tests/test_cartesian_subgrid_material.cpp), [graded native Yee](tests/test_cartesian_subgrid_mesh.cpp), [native priorities/units/guards](python/Tests/Cartesian_Subgrid_Materials.py); serial CPU, cell-aligned isotropic lossless boxes only; internal PEC and broad scattering still open |
+| 2026-11-12 | G03; extended partial G01/G04/G06 | This PR, internal-PEC increment | [Cu18 contact/PEC invariant/cavity/native-Yee controls](tests/test_cartesian_subgrid_pec.cpp), [native integration and guards](python/Tests/Cartesian_Subgrid_PEC.py); serial CPU, aligned boxes/sheets and sampled axial cylinders/shells; not physical-port, broad scattering or GPU qualification |

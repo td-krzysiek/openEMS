@@ -6,6 +6,7 @@
 #include <cstddef>
 #include <functional>
 #include <map>
+#include <set>
 #include <utility>
 #include <vector>
 
@@ -15,7 +16,7 @@
  *  The same prolongation is used in the curl and in the Galerkin electric
  *  mass, including its off-diagonal interface blocks. No cylindrical code,
  *  global fine field lattice, pointwise current interpolation or subcycling.
- *  Lossless isotropic media, constant within each leaf, and outer PEC only.
+ *  Lossless isotropic media, constant within each leaf, and constrained PEC edges.
  */
 class CartesianSubgrid
 {
@@ -46,6 +47,8 @@ class CartesianSubgrid
 	};
 	//! Setup-only sampler: physical leaf bounds in metres, absolute SI coefficients.
 	using MediumSampler = std::function<Medium(const Point &, const Point &)>;
+	//! Setup-only PEC edge classifier in absolute SI coordinates.
+	using PECSelector = std::function<bool(unsigned int, const Point &, const Point &)>;
 
 	CartesianSubgrid(Index cells, Point spacing, Box refined, double epsilon, double permeability,
 					 bool uniformFine = false, Index ratio = {2, 2, 2});
@@ -53,7 +56,13 @@ class CartesianSubgrid
 					 const std::vector<Region> &regions, bool uniformFine = false);
 	CartesianSubgrid(const Axes &lines, double epsilon, double permeability,
 					 const std::vector<Region> &regions, bool uniformFine = false,
-					 const MediumSampler &medium = MediumSampler());
+					 const MediumSampler &medium = MediumSampler(), const PECSelector &pec = PECSelector());
+	//! Actual local edge classification, including dependent interface traces.
+	bool LeafEdgeIsPEC(std::size_t leaf, unsigned int axis, unsigned int first, unsigned int second) const;
+	std::size_t PECTraceCount() const
+	{
+		return m_PECEdges.size();
+	}
 	Medium LeafMedium(std::size_t leaf) const
 	{
 		return m_Media.at(leaf);
@@ -139,11 +148,12 @@ class CartesianSubgrid
 	bool Boundary(const Edge &edge) const;
 	bool Hanging(const Edge &edge) const;
 	const Box *InterfaceBox(const Edge &edge) const;
-	Trace Restrict(const Edge &edge) const;
+	Trace Restrict(const Edge &edge, bool ignoreLocalPEC = false) const;
 	std::size_t RootIndex(const Index &cell) const;
 	std::size_t FindLeaf(const Point &position) const;
 	double TraceValue(const Trace &trace, const std::vector<double> &amplitude) const;
-	void Build(const MediumSampler &medium);
+	void Build(const MediumSampler &medium, const PECSelector &pec);
+	Point EdgePoint(const Edge &edge, double fraction) const;
 	double FactorMass(const std::map<std::pair<std::size_t, std::size_t>, double> &offDiagonal);
 	void Curl(const std::vector<double> &electric, std::vector<double> &magnetic) const;
 	void CurlTranspose(const std::vector<double> &magnetic, std::vector<double> &electric) const;
@@ -165,6 +175,8 @@ class CartesianSubgrid
 	std::vector<std::size_t> m_RootLeaves;
 	std::vector<Index> m_RootRatios;
 	std::map<Edge, std::size_t> m_EdgeMap;
+	std::set<Edge> m_PECEdges;
+	std::vector<unsigned char> m_PECFaces;
 	std::vector<Edge> m_Edges;
 	std::vector<double> m_SqrtMass, m_SqrtReluctance;
 	std::vector<MassBlock> m_Blocks;

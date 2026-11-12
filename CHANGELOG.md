@@ -25,8 +25,11 @@ to what a user notices, in a few lines; the details belong in the commit.
   region bounds must coincide with base lines, without geometric snapping.
   Lossless isotropic material boxes may follow local cell boundaries, with
   CSXCAD material priorities. A box cutting through a cell is rejected.
-  The serial reference requires `engine=basic` and outer PEC; internal metal,
-  physical ports, PML and GPU execution are not supported yet.
+  Internal PEC supports aligned volume/sheet boxes and axis-aligned cylinders
+  or hollow barrels with mesh-aligned ends. Unrepresentable PEC patterns at a
+  coarse/fine interface are rejected instead of closing unresolved openings.
+  The serial reference requires `engine=basic` and outer PEC; physical ports,
+  PML and GPU execution are not supported yet.
 - **A GPU engine**, `--engine=gpu` (`engine='gpu'` from Python), for AMD and
   NVIDIA GPUs (HIP/CUDA) and on macOS (Metal), with Cartesian and cylindrical
   meshes and the usual extensions. `--gpu-device=N` picks one of the GPUs

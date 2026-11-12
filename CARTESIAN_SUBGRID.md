@@ -211,7 +211,7 @@ H half-steps. A source that touches no unconstrained master edge is rejected.
 
 Currently supported: positive isotropic, lossless background and cell-aligned
 material boxes; outer PEC; zero-delay nonperiodic soft E box sources; E/H observations.
-Unsupported requests fail at setup: internal metal objects, lumped
+Internal PEC supports the geometry and restrictions below. Unsupported requests fail at setup: lumped
 ports, conducting sheets, dispersion/loss, PML/Mur, periodic sources, transformed
 primitives, other field types and GPU/SSE/new CPU engine selection. Only
 `engine=basic` selects this reference adapter; its execution is serial.
@@ -250,6 +250,61 @@ and observation position are unchanged; this does not relax material or
 refinement alignment checks. Intentional offsets on either side remain distinct.
 Probe integration and physical ports across discontinuities remain unqualified.
 
+### Internal PEC geometry and contacts
+
+Ordinary CSXCAD `Metal` properties now constrain local electric traces. No
+new Python/Matlab geometry API or XML attribute is needed. Supported primitives
+are axis-aligned volume/sheet boxes, solid cylinders and cylindrical shells.
+Transforms, tilted cylinders, other curved primitives and wire/point boxes
+remain unsupported. Volume/sheet boxes must follow actual leaf boundaries;
+cylindrical end planes must align for all leaves overlapping their transverse
+bounding box. Hidden boxes still require alignment. A setup with metal but no
+resolved PEC edge fails explicitly.
+
+Cylinder/shell radial contours use native-style edge-centre CSXCAD sampling,
+including material/metal priorities. This is Cartesian EM sampling of the
+continuous primitive, not a new fabrication contour or a conformal curved-cell
+method. Thin walls, bores and gaps require actual occupancy/contact inspection
+and mesh convergence. At least one PEC edge somewhere is not proof that every
+primitive or contact is resolved.
+
+The core eliminates PEC master E unknowns before forming curl and electric
+mass; the same remaining trace is used in both. A dependent fine edge is
+accepted only if its sampled PEC state agrees with the eliminated coarse trace.
+An unresolved fine strip or an opening that the coarse side would close fails
+at setup. Moving an interface, changing the base mesh or refining the whole
+contact neighborhood may be required. This is a deliberate prototype restriction,
+not support for arbitrary PEC/interface crossings.
+
+`LeafEdgeIsPEC` exposes the actual local classification for independent audits;
+`PECTraceCount` counts unique classified local edge keys, not independent
+degrees of freedom. Magnetic flux rows enclosed by zero electric traces and
+touching PEC retain zero initial normal B. `SetMagnetic` projects these rows
+to zero; trapped initial flux is not part of this reference contract. The
+time-step update adds no PEC lookup, allocation, geometry callback or new branch.
+Reference set/face-mask storage remains accounted, not a measured speedup.
+
+Qualification includes finite 18-um top/ground boxes connected by a hollow
+barrel: all 31,488 local-edge samples agree with an independent geometric
+classification. The connected wall is constrained while its bore remains open;
+inserting an 18-um axial gap restores a free electric edge. This is a geometric
+contact control, not a physical-port resistance or S-parameter result.
+
+PEC boxes inside and across a refinement boundary, and a full sheet crossing
+the boundary, preserve the source-free discrete invariant in 100,000-step tests
+with a `1e-8` gate. A sheet splitting a cavity prevents field transmission into
+the unseeded half. The remaining half-cavity frequency error falls from 3.11%
+to 0.784% at base resolutions 6/12 (gate 1%, with improvement required).
+Uniformly refined volume, sheet, cylinder and shell controls agree with regular
+native Yee after 200 steps within `8.1e-7` of E/H peaks (gate `2e-4`).
+
+Native integration controls cover internal field exclusion, a closed wall,
+transmission through a higher-priority dielectric opening, unit/origin and
+property-insertion invariance, sources covered by PEC and explicit rejection
+of unsupported/unresolved geometry. E/H observations remain on the base grid;
+dual-H snapping can put a nominal near-surface observation inside the metal.
+Place observation stencils clear of the surface and inspect snapped coordinates.
+
 ## Tests and observed accuracy
 
 ```sh
@@ -259,6 +314,7 @@ ctest --test-dir build --output-on-failure
 build/tests/test_cartesian_subgrid --long
 build/tests/test_cartesian_subgrid_mesh --long
 build/tests/test_cartesian_subgrid_material --long
+build/tests/test_cartesian_subgrid_pec --long
 build/tests/test_cartesian_subgrid --mesh > mesh.json
 python3 python/Tests/run_testsuite.py --unittests Cartesian
 ```
@@ -353,7 +409,7 @@ unsupported media/geometries. They also guard field reconstruction at a
 discontinuous-mu interface; the initial priority-order and boundary-roundoff
 failures were in this experimental adapter/core, not established upstream bugs.
 
-Before antenna use: general material and internal PEC geometry mapping, absorbing boundaries,
+Before antenna use: broader material/PEC geometry and interface qualification, absorbing boundaries,
 physical port/source qualification and scattering tests.
 Before practical acceleration: structured interior kernels, compact interface
 metadata, memory/RSS and interleaved native benchmarks. Then device kernels,
