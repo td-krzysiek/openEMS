@@ -19,6 +19,8 @@
 #include "processcurrent.h"
 #include "FDTD/engine_interface_fdtd.h"
 #include <iomanip>
+#include <sstream>
+#include "FDTD/operator_cartesiansubgrid.h"
 
 using std::cerr;
 using std::endl;
@@ -41,7 +43,67 @@ std::string ProcessCurrent::GetIntegralName(int row) const
 
 void ProcessCurrent::DefineStartStopCoord(double* dstart, double* dstop)
 {
+	m_LocalIntegral = {};
 	ProcessIntegral::DefineStartStopCoord(dstart, dstop);
+	if (auto *local = dynamic_cast<const Operator_CartesianSubgrid *>(Op))
+	{
+		auto lo = local->DrawingPoint(dstart), hi = local->DrawingPoint(dstop);
+		if (m_normDir < 0)
+		{
+			unsigned int dimensions = 0;
+			for (unsigned int n = 0; n < 3; ++n)
+			{
+				if (lo[n] == hi[n])
+				{
+					m_normDir = n;
+				}
+				else
+				{
+					++dimensions;
+				}
+			}
+			if (dimensions != 2)
+			{
+				throw std::invalid_argument(
+					"CartesianSubgrid: current probe requires an explicit normal or a surface");
+			}
+		}
+		if (m_normDir > 2 || lo[m_normDir] != hi[m_normDir])
+		{
+			throw std::invalid_argument("CartesianSubgrid: current probe has invalid normal/span");
+		}
+		const auto centre = lo;
+		for (unsigned int n = 0; n < 3; ++n)
+		{
+			if (int(n) != m_normDir && lo[n] == hi[n])
+			{
+				const auto bounds = local->Grid().DualBounds(n, centre);
+				lo[n] = bounds.first;
+				hi[n] = bounds.second;
+			}
+		}
+		const auto contour = local->Grid().CurrentContour(m_normDir, lo, hi);
+		m_LocalIntegral = [local, contour]()
+		{
+			return local->Grid().Evaluate(contour);
+		};
+		std::ostringstream description;
+		description << std::setprecision(17)
+					<< "% subgrid physical integral (m); base-index headers above are informational: ";
+		for (unsigned int n = 0; n < 3; ++n)
+		{
+			description << (n ? "," : "(") << lo[n] + local->GetDiscLine(n, 0) * local->GetGridDelta();
+		}
+		description << ") -> (";
+		for (unsigned int n = 0; n < 3; ++n)
+		{
+			description << (n ? "," : "") << hi[n] + local->GetDiscLine(n, 0) * local->GetGridDelta();
+		}
+		description << ")";
+		m_LocalGeometry = description.str();
+
+		return;
+	}
 
 	if ((m_normDir<0) || (m_normDir>2))
 	{
@@ -95,6 +157,10 @@ void ProcessCurrent::DefineStartStopCoord(double* dstart, double* dstop)
 
 double ProcessCurrent::CalcIntegral()
 {
+	if (m_LocalIntegral)
+	{
+		return m_LocalIntegral();
+	}
 	FDTD_FLOAT current=0;
 
 	Engine_Interface_FDTD* EI_FDTD = dynamic_cast<Engine_Interface_FDTD*>(m_Eng_Interface);
@@ -167,4 +233,9 @@ double ProcessCurrent::CalcIntegral()
 	}
 
 	return current;
+}
+
+std::string ProcessCurrent::IntegrationGeometry() const
+{
+	return m_LocalIntegral ? m_LocalGeometry + "\n" : "";
 }

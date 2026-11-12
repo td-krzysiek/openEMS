@@ -136,7 +136,7 @@ rejected('unaligned', lambda f, c: f.SetCartesianSubgrid([-3.9, -4, -4, 4, 4, 4]
 rejected('boundary-box', lambda f, c: f.SetCartesianSubgrid([-8, -4, -4, 4, 4, 4]))
 rejected('subcell-material', lambda f, c: c.AddMaterial('slab', epsilon=2).AddBox([-1.1]*3, [1]*3))
 rejected('subcell-metal', lambda f, c: c.AddMetal('patch').AddBox([-1.1]*3, [1]*3))
-rejected('port', lambda f, c: f.AddLumpedPort(1, 50, [-6, 0, 0], [-6, 0, 2], 'z', 1))
+rejected('distributed-port', lambda f, c: f.AddLumpedPort(1, 50, [-6, -2, 0], [-6, 2, 2], 'z', 1))
 rejected('bad-step', lambda f, c: f.SetTimeStep(1e-8))
 rejected('d-field', lambda f, c: c.AddDump('d', dump_type=4).AddBox([-2]*3, [2]*3))
 rejected('hard-source', lambda f, c: c.AddExcitation('hard', exc_type=1, exc_val=[0, 0, 1]).AddBox([-6, 0, 0], [-6, 0, 2]))

@@ -6,10 +6,12 @@
 #include "CSPropDumpBox.h"
 #include "CSPropExcitation.h"
 #include "CSPropMaterial.h"
+#include "CSPropLumpedElement.h"
 #include "CSPropProbeBox.h"
 #include "engine.h"
 #include "extensions/operator_ext_excitation.h"
 #include "extensions/operator_ext_tfsf.h"
+#include "extensions/operator_ext_lumpedRLC.h"
 #include "tools/constants.h"
 
 #include <algorithm>
@@ -226,7 +228,8 @@ void Operator_CartesianSubgrid::SetBoundaryCondition(int *conditions)
 void Operator_CartesianSubgrid::AddExtension(Operator_Extension *extension)
 {
 	std::unique_ptr<Operator_Extension> owner(extension);
-	if (!dynamic_cast<Operator_Ext_Excitation *>(extension) && !dynamic_cast<Operator_Ext_TFSF *>(extension))
+	if (!dynamic_cast<Operator_Ext_Excitation *>(extension) &&
+		!dynamic_cast<Operator_Ext_TFSF *>(extension) && !dynamic_cast<Operator_Ext_LumpedRLC *>(extension))
 	{
 		throw std::invalid_argument("CartesianSubgrid: unsupported extension " + extension->GetExtensionName());
 	}
@@ -268,11 +271,24 @@ void Operator_CartesianSubgrid::ValidateProperties() const
 	{
 		const int type = property->GetType();
 		if (type != CSProperties::MATERIAL && type != CSProperties::METAL &&
+			type != CSProperties::LUMPED_ELEMENT &&
 			(type & ~(CSProperties::EXCITATION | CSProperties::PROBEBOX | CSProperties::DUMPBOX)))
 		{
 			throw std::invalid_argument(
 				"CartesianSubgrid: only lossless isotropic materials, PEC, soft E sources "
 				"and E/H observations are supported");
+		}
+		if (type == CSProperties::LUMPED_ELEMENT)
+		{
+			const auto *resistor = static_cast<CSPropLumpedElement *>(property);
+			if (!(resistor->GetResistance() > 0) || !std::isfinite(resistor->GetResistance()) ||
+				!std::isnan(resistor->GetInductance()) || !std::isnan(resistor->GetCapacity()) ||
+				resistor->GetDirection() < 0 || resistor->GetDirection() > 2 ||
+				resistor->GetLEtype() != CSPropLumpedElement::PARALLEL)
+			{
+				throw std::invalid_argument(
+					"CartesianSubgrid: lumped elements require a finite positive R only");
+			}
 		}
 		if (type == CSProperties::MATERIAL)
 		{
@@ -324,13 +340,18 @@ void Operator_CartesianSubgrid::ValidateProperties() const
 		}
 		else if (auto *probe = dynamic_cast<CSPropProbeBox *>(property))
 		{
-			if (probe->GetProbeType() != 2 && probe->GetProbeType() != 3)
+			if (probe->GetProbeType() < 0 || probe->GetProbeType() > 3)
 			{
-				throw std::invalid_argument("CartesianSubgrid: only E/H probes are supported, not lumped ports");
+				throw std::invalid_argument(
+					"CartesianSubgrid: only voltage/current and E/H probes are supported");
 			}
 		}
 		for (CSPrimitives *primitive : property->GetAllPrimitives())
 		{
+			if (type == CSProperties::LUMPED_ELEMENT && !dynamic_cast<CSPrimBox *>(primitive))
+			{
+				throw std::invalid_argument("CartesianSubgrid: resistors must use a line box");
+			}
 			if (type == CSProperties::METAL)
 			{
 				auto *cylinder = dynamic_cast<CSPrimCylinder *>(primitive);
@@ -594,6 +615,7 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 		throw std::invalid_argument("CartesianSubgrid: periodic excitation is not yet supported");
 	}
 	m_Exc->Reset(dT);
+	PrepareResistors();
 	PrepareSources();
 	return 0;
 }
@@ -693,4 +715,57 @@ void Operator_CartesianSubgrid::ShowStat() const
 		std::cout << "  region " << i << ": ratio " << m_Ratios[i][0] << 'x' << m_Ratios[i][1] << 'x' << m_Ratios[i][2]
 				  << std::endl;
 	}
+}
+
+CartesianSubgrid::Point Operator_CartesianSubgrid::DrawingPoint(const double *drawing) const
+{
+	CartesianSubgrid::Point point;
+	for (unsigned int n = 0; n < 3; ++n)
+	{
+		point[n] = (drawing[n] - discLines[n][0]) * gridDelta;
+	}
+	return point;
+}
+
+void Operator_CartesianSubgrid::PrepareResistors()
+{
+	std::vector<CartesianSubgrid::Resistor> ports;
+	std::set<std::size_t> occupied;
+	for (auto *property : CSX->GetPropertyByType(CSProperties::LUMPED_ELEMENT))
+	{
+		const auto *resistor = static_cast<CSPropLumpedElement *>(property);
+		for (auto *primitive : property->GetAllPrimitives())
+		{
+			auto *box = static_cast<CSPrimBox *>(primitive);
+			double start[3], stop[3];
+			for (unsigned int n = 0; n < 3; ++n)
+			{
+				start[n] = box->GetCoord(2 * n);
+				stop[n] = box->GetCoord(2 * n + 1);
+				if (n != unsigned(resistor->GetDirection()) && start[n] != stop[n])
+				{
+					throw std::invalid_argument("CartesianSubgrid: native resistor currently requires one "
+												"local edge, not a distributed box");
+				}
+			}
+			const auto a = DrawingPoint(start), b = DrawingPoint(stop);
+			if (!m_Grid->IsIndependentEdge(a, b))
+			{
+				throw std::invalid_argument("CartesianSubgrid: native resistor must span exactly one "
+											"unconstrained independent local edge");
+			}
+			const auto path = m_Grid->VoltagePath(a, b);
+			for (const auto &term : path.weights)
+			{
+				if (!occupied.insert(term.first).second)
+				{
+					throw std::invalid_argument(
+						"CartesianSubgrid: overlapping native resistors are unsupported");
+				}
+			}
+			ports.push_back({a, b, resistor->GetResistance(), 0});
+			primitive->SetPrimitiveUsed(true);
+		}
+	}
+	m_Grid->SetResistors(ports, dT);
 }

@@ -28,8 +28,10 @@ to what a user notices, in a few lines; the details belong in the commit.
   Internal PEC supports aligned volume/sheet boxes and axis-aligned cylinders
   or hollow barrels with mesh-aligned ends. Unrepresentable PEC patterns at a
   coarse/fine interface are rejected instead of closing unresolved openings.
-  The serial reference requires `engine=basic` and outer PEC; physical ports,
-  PML and GPU execution are not supported yet.
+  The serial reference supports positive resistors on one independent local
+  edge and local voltage/current integration, with short two-port Yee controls.
+  Distributed/LC ports, PML and GPU subgridding remain unsupported;
+  `engine=basic` and outer PEC are required.
 - **A GPU engine**, `--engine=gpu` (`engine='gpu'` from Python), for AMD and
   NVIDIA GPUs (HIP/CUDA) and on macOS (Metal), with Cartesian and cylindrical
   meshes and the usual extensions. `--gpu-device=N` picks one of the GPUs

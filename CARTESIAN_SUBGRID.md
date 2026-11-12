@@ -211,8 +211,9 @@ H half-steps. A source that touches no unconstrained master edge is rejected.
 
 Currently supported: positive isotropic, lossless background and cell-aligned
 material boxes; outer PEC; zero-delay nonperiodic soft E box sources; E/H observations.
-Internal PEC supports the geometry and restrictions below. Unsupported requests fail at setup: lumped
-ports, conducting sheets, dispersion/loss, PML/Mur, periodic sources, transformed
+Internal PEC and restricted one-edge resistive lumped ports follow the contracts below.
+Unsupported requests fail at setup: distributed/LC/modal ports, conducting
+sheets, dispersion/loss, PML/Mur, periodic sources, transformed
 primitives, other field types and GPU/SSE/new CPU engine selection. Only
 `engine=basic` selects this reference adapter; its execution is serial.
 
@@ -305,6 +306,80 @@ of unsupported/unresolved geometry. E/H observations remain on the base grid;
 dual-H snapping can put a nominal near-surface observation inside the metal.
 Place observation stencils clear of the surface and inspect snapped coordinates.
 
+### Local resistors and U/I integration
+
+The serial adapter accepts `AddLumpedPort` with positive finite resistance when
+its line spans **exactly one unconstrained independent local E edge**. Its two
+transverse dimensions must be zero. This includes a local edge inside a refined
+region that does not exist on the base observation grid. The existing zero-delay
+soft E waveform/amplitude convention is retained; it is not reinterpreted as a
+Thevenin voltage or Norton current. A zero-area `caps=True` line creates no
+additional metal caps. Supply the actual electrode geometry separately.
+
+Distributed boxes, unresolved/multiple longitudinal edges, hanging-only edges,
+overlapping native resistors, series topology and additional L/C values are
+rejected. This deliberately limits the native mapping rather than assigning an
+unverified effective resistance to a multi-edge box. It is not yet the normal
+finite-width microstrip-port workflow used by the antenna.
+
+Voltage paths and rectangular current contours are prepared on actual leaves
+once at probe definition and evaluated from cached sparse weights. U integrates
+the constrained electric edge basis. I integrates the piecewise-constant **dual H
+chain**, with segments split at local primal and dual boundaries. Integrating the
+linearly smoothed H point reconstruction instead attenuates a Yee current
+contour; point-field interpolation and circulation are distinct operations.
+Zero-width current-probe spans expand to local dual bounds, tolerating only
+coordinate roundoff. Output includes the actual physical integration bounds
+before the normal column-name header; legacy base-index headers are informational.
+E/H field probes and dumps retain their previous base-grid sampling contract.
+
+The C++ reference also supports axis-aligned voltage-path resistors with optional
+Norton current. If `V=b^T u`, `G=1/R`, and `C_p=sqrt(G_p)b_p`, midpoint coupling
+adds `C C^T` to the normalized electric update. A setup-factored small Woodbury
+system uses the existing interface-mass inverse; it never inverts a dense field
+matrix. The fixed timestep and a maximum of 64 reference resistors are checked.
+For the leapfrog invariant W, without the separately accounted soft E kick,
+
+```text
+W_new - W_old = dt * sum_p V_mid,p * (I_source,p - G_p * V_mid,p).
+```
+
+`SourceWork()` and `ResistorLoss()` accumulate source work and passive loss since
+`SetResistors`; include the initial W when checking a nonzero initial state.
+Soft-E work is accounted separately in the same ledger when resistors are
+configured. Configure resistors before `SetSources`. Integration weights,
+responses and factors are setup allocations; there is no per-step allocation.
+A local-field scratch vector accounts for soft-source work; this reference is
+not a production memory/performance claim.
+
+Controls are in `tests/test_cartesian_subgrid_ports.cpp` and
+`python/Tests/Cartesian_Subgrid_Ports.py`. The native fixture is a short PEC
+microstrip with lossless epsilon-r 2.25 and two **50-ohm lumped terminations**;
+it is not a calibrated 24-GHz laminate or a claim of ideal characteristic Z.
+The substrate/port height is 0.2 mm. Frequencies are 20–28 GHz in 0.2-GHz steps,
+with identical 50-fs timesteps and 24,000 steps. The controls preserve actual
+point-port cell sizes: shrinking the point-port cell changes its contact and
+local capacitance, even if its zero-width CAD line is unchanged.
+
+| Control | max complex Z error | max complex S11 / S21 error | max S21 phase error |
+|---|---:|---:|---:|
+| Identical base grid, normal Yee / compact identity | 2.62e-6 ohm | 2.95e-8 / 4.54e-8 | not separately gated |
+| Ports outside refinement, ratio 2/1/1 | 4.45e-4 ohm | 5.02e-6 / 3.72e-6 | 0.000212 deg |
+| Ports inside refinement, ratio 2/2/1 | 0.0583 ohm | 4.06e-4 / 9.12e-5 | 0.00403 deg |
+
+The outside control uses a conventional tensor Yee grid with the same fine X
+interval and unchanged port cells. The inside control uses uniformly finer XY
+Yee lines with the same local port cells; Z remains unchanged. Interface gates
+are 0.5 ohm, 0.005 complex S and 0.1 degree. The maximum error in
+`abs(S11)^2+abs(S21)^2=1` is 1.82e-5 outside and 1.78e-6 inside (gate 1e-3).
+Polarity reversal leaves Z/S unchanged. Core controls include voltage additivity,
+H orientation, coordinate-roundoff contours, parallel loads and rejected inputs.
+A three-resistor XYZ-refined control, including a voltage path crossing the
+interface, preserves injected-minus-dissipated-minus-stored energy within
+1.46e-12 over 100,000 steps (gate 1e-10), with no passive energy increase.
+These are scoped CPU controls, not arbitrary-interface, antenna, GPU or PML
+qualification.
+
 ## Tests and observed accuracy
 
 ```sh
@@ -315,6 +390,7 @@ build/tests/test_cartesian_subgrid --long
 build/tests/test_cartesian_subgrid_mesh --long
 build/tests/test_cartesian_subgrid_material --long
 build/tests/test_cartesian_subgrid_pec --long
+build/tests/test_cartesian_subgrid_ports --long
 build/tests/test_cartesian_subgrid --mesh > mesh.json
 python3 python/Tests/run_testsuite.py --unittests Cartesian
 ```
@@ -390,7 +466,7 @@ not relabelled as sufficiently accurate. Increasing propagation resolution to
 42x36x36 reduces error to 3.77%, retaining the 5% resolved-case gate and the
 coarser convergence evidence. This is a numerical control, not an antenna
 accuracy claim. Native E/H source/probe and dump checks also compare a graded
-fixture with its translated equivalent; physical port qualification is pending.
+fixture with its translated equivalent; broader physical-port qualification remains pending.
 
 Material controls include an analytic two-dielectric TE cavity: the equation
 `k1*cot(k1*a) + k2*cot(k2*b) = 0` imposes tangential E/H continuity for equal
@@ -410,7 +486,7 @@ discontinuous-mu interface; the initial priority-order and boundary-roundoff
 failures were in this experimental adapter/core, not established upstream bugs.
 
 Before antenna use: broader material/PEC geometry and interface qualification, absorbing boundaries,
-physical port/source qualification and scattering tests.
+distributed/modal port and source qualification and broader scattering tests.
 Before practical acceleration: structured interior kernels, compact interface
 metadata, memory/RSS and interleaved native benchmarks. Then device kernels,
 domain partitioning and communication can reuse this numerical contract.

@@ -28,6 +28,7 @@ class Operator_CartesianSubgrid : public Operator
 		return *m_Grid;
 	}
 	CartesianSubgrid::Point Position(unsigned int n, const unsigned int pos[3], bool dual) const;
+	CartesianSubgrid::Point DrawingPoint(const double *drawing) const;
 	Excitation *Signal() const
 	{
 		return m_Exc;
@@ -38,6 +39,7 @@ class Operator_CartesianSubgrid : public Operator
 							  const std::vector<CartesianSubgrid::Index> &ratios);
 	void ValidateProperties() const;
 	void PrepareSources();
+	void PrepareResistors();
 	std::vector<std::vector<double>> m_Boxes;
 	std::vector<CartesianSubgrid::Index> m_Ratios;
 	std::unique_ptr<CartesianSubgrid> m_Grid;

@@ -49,6 +49,37 @@ class CartesianSubgrid
 	using MediumSampler = std::function<Medium(const Point &, const Point &)>;
 	//! Setup-only PEC edge classifier in absolute SI coordinates.
 	using PECSelector = std::function<bool(unsigned int, const Point &, const Point &)>;
+	//! Setup-only exact line/contour weights on this grid's normalized state.
+	struct Integral
+	{
+		bool magnetic = false;
+		std::vector<std::pair<std::size_t, double>> weights;
+	};
+	struct Resistor
+	{
+		Point start, stop;
+		double resistance;
+		//! Norton current in amperes per unit Step sourceAmplitude (not a soft E kick).
+		double current = 0;
+	};
+	Integral VoltagePath(const Point &start, const Point &stop) const;
+	Integral CurrentContour(unsigned int normal, const Point &start, const Point &stop) const;
+	double Evaluate(const Integral &integral) const;
+	//! Exact independent local edge, used by the restricted native lumped adapter.
+	bool IsIndependentEdge(const Point &start, const Point &stop) const;
+	//! Dual contour bounds around a zero-width, node-centred native probe.
+	std::pair<double, double> DualBounds(unsigned int axis, const Point &point) const;
+	//! Fixed-step, passive midpoint resistor coupling; at most 64 small reference ports.
+	void SetResistors(const std::vector<Resistor> &ports, double timestep);
+	double ResistorVoltage(std::size_t port) const;
+	double ResistorLoss() const
+	{
+		return m_ResistorLoss;
+	}
+	double SourceWork() const
+	{
+		return m_SourceWork;
+	}
 
 	CartesianSubgrid(Index cells, Point spacing, Box refined, double epsilon, double permeability,
 					 bool uniformFine = false, Index ratio = {2, 2, 2});
@@ -159,6 +190,8 @@ class CartesianSubgrid
 	void CurlTranspose(const std::vector<double> &magnetic, std::vector<double> &electric) const;
 	void SolveMass(std::vector<double> &values) const;
 	void CheckStep(double timestep) const;
+	Integral LineIntegral(bool magnetic, const Point &start, const Point &stop) const;
+	void ApplyResistors(double timestep, double sourceAmplitude);
 	double Coordinate(unsigned int axis, double lattice) const;
 	double Length(const Leaf &leaf, unsigned int axis) const;
 
@@ -185,5 +218,8 @@ class CartesianSubgrid
 	std::vector<double> m_Values;
 	std::vector<double> m_Electric, m_Magnetic, m_Increment, m_Curl;
 	std::vector<std::pair<std::size_t, double>> m_Sources;
+	std::vector<Integral> m_PortVoltage, m_PortResponse;
+	std::vector<double> m_PortConductance, m_PortCurrent, m_PortLower, m_PortRHS, m_PortMid, m_SourceCurl;
+	double m_PortTimestep = 0, m_ResistorLoss = 0, m_SourceWork = 0;
 };
 #endif

@@ -671,6 +671,7 @@ void CartesianSubgrid::CheckStep(double timestep) const
 void CartesianSubgrid::SetSources(const std::vector<std::pair<std::size_t, double>> &sources)
 {
 	m_Sources.clear();
+	m_SourceCurl.resize(m_PortVoltage.empty() ? 0 : m_Electric.size());
 	for (const auto &source : sources)
 	{
 		Require(source.first < m_Electric.size() && std::isfinite(source.second),
@@ -684,14 +685,42 @@ void CartesianSubgrid::Step(double timestep, double sourceAmplitude)
 	CheckStep(timestep);
 	Require(std::isfinite(sourceAmplitude), "CartesianSubgrid: nonfinite drive");
 	CurlTranspose(m_Magnetic, m_Increment);
-	SolveMass(m_Increment);
-	for (std::size_t i = 0; i < m_Electric.size(); ++i)
+	if (!m_PortVoltage.empty() && !m_Sources.empty())
 	{
-		m_Electric[i] += timestep * m_Increment[i];
+		std::copy(m_Increment.begin(), m_Increment.end(), m_SourceCurl.begin());
+	}
+	SolveMass(m_Increment);
+	if (m_PortVoltage.empty())
+	{
+		for (std::size_t i = 0; i < m_Electric.size(); ++i)
+		{
+			m_Electric[i] += timestep * m_Increment[i];
+		}
+	}
+	else
+	{
+		ApplyResistors(timestep, sourceAmplitude);
 	}
 	for (const auto &source : m_Sources)
 	{
-		m_Electric[source.first] += sourceAmplitude * source.second;
+		const double change = sourceAmplitude * source.second;
+		if (!m_PortVoltage.empty())
+		{
+			double derivative = m_Electric[source.first];
+			for (const auto &term : m_MassOffDiagonal)
+			{
+				if (term.first.first == source.first)
+				{
+					derivative += term.second * m_Electric[term.first.second];
+				}
+				if (term.first.second == source.first)
+				{
+					derivative += term.second * m_Electric[term.first.first];
+				}
+			}
+			m_SourceWork += change * (derivative + .5 * change - .5 * timestep * m_SourceCurl[source.first]);
+		}
+		m_Electric[source.first] += change;
 	}
 	Curl(m_Electric, m_Curl);
 	for (std::size_t i = 0; i < m_Magnetic.size(); ++i)
@@ -968,5 +997,342 @@ std::size_t CartesianSubgrid::StorageBytes() const
 	{
 		bytes += sizeof(block) + block.edges.capacity() * sizeof(std::size_t) + block.lower.capacity() * sizeof(double);
 	}
+	bytes += (m_PortConductance.capacity() + m_PortCurrent.capacity() + m_PortLower.capacity() +
+			  m_PortRHS.capacity() + m_PortMid.capacity() + m_SourceCurl.capacity()) *
+			 sizeof(double);
+	for (const auto *ports : {&m_PortVoltage, &m_PortResponse})
+	{
+		bytes += ports->capacity() * sizeof(Integral);
+		for (const auto &port : *ports)
+		{
+			bytes += port.weights.capacity() * sizeof(decltype(port.weights)::value_type);
+		}
+	}
 	return bytes;
+}
+
+CartesianSubgrid::Integral CartesianSubgrid::LineIntegral(bool magnetic, const Point &start,
+														  const Point &stop) const
+{
+	unsigned int axis = 0, dimensions = 0;
+	for (unsigned int n = 0; n < 3; ++n)
+	{
+		Require(std::isfinite(start[n]) && std::isfinite(stop[n]) && start[n] >= m_Lines[n].front() &&
+					start[n] <= m_Lines[n].back() && stop[n] >= m_Lines[n].front() &&
+					stop[n] <= m_Lines[n].back(),
+				"CartesianSubgrid: integral lies outside the physical grid");
+		if (start[n] != stop[n])
+		{
+			axis = n;
+			++dimensions;
+		}
+	}
+	Require(dimensions == 1, "CartesianSubgrid: an integral segment must be axis aligned and nonzero");
+	const double lo = std::min(start[axis], stop[axis]), hi = std::max(start[axis], stop[axis]);
+	const double sign = stop[axis] > start[axis] ? 1 : -1;
+	// All intersecting leaf boundaries, not base-grid sampling. Midpoint quadrature
+	// is exact for the edge basis and piecewise-constant dual H chain.
+	// H point reconstruction is different: integrating its linear smoothing
+	// would attenuate a Yee current contour even on an identical uniform grid.
+	std::vector<double> cuts{lo, hi};
+	for (std::size_t cell = 0; cell < m_Leaves.size(); ++cell)
+	{
+		const auto origin = LeafStart(cell), length = LeafLengths(cell);
+		bool intersects = true;
+		for (unsigned int n = 0; n < 3; ++n)
+		{
+			if (n != axis && (start[n] < origin[n] || start[n] > origin[n] + length[n]))
+			{
+				intersects = false;
+			}
+		}
+		if (intersects)
+		{
+			for (double cut : {origin[axis], origin[axis] + (magnetic ? .5 : 1.) * length[axis],
+							   origin[axis] + length[axis]})
+			{
+				if (cut > lo && cut < hi)
+				{
+					cuts.push_back(cut);
+				}
+			}
+		}
+	}
+	std::sort(cuts.begin(), cuts.end());
+	cuts.erase(std::unique(cuts.begin(), cuts.end()), cuts.end());
+	std::map<std::size_t, double> weights;
+	for (std::size_t k = 1; k < cuts.size(); ++k)
+	{
+		Point p = start;
+		p[axis] = .5 * (cuts[k - 1] + cuts[k]);
+		const auto index = FindLeaf(p);
+		const auto &cell = m_Leaves[index];
+		const double distance = sign * (cuts[k] - cuts[k - 1]);
+		if (magnetic)
+		{
+			const double t = (p[axis] - Coordinate(axis, cell.lo[axis])) / Length(cell, axis);
+			const double area = Length(cell, (axis + 1) % 3) * Length(cell, (axis + 2) % 3);
+			const auto face = 6 * index + 2 * axis + (t < .5 ? 0 : 1);
+			weights[face] += distance / (area * m_Media[index].permeability * m_SqrtReluctance[face]);
+		}
+		else
+		{
+			const unsigned int a = (axis + 1) % 3, b = (axis + 2) % 3;
+			const double u = (p[a] - Coordinate(a, cell.lo[a])) / Length(cell, a);
+			const double v = (p[b] - Coordinate(b, cell.lo[b])) / Length(cell, b);
+			for (unsigned int i = 0; i < 2; ++i)
+			{
+				for (unsigned int j = 0; j < 2; ++j)
+				{
+					const auto trace = Restrict(LocalEdge(cell, axis, i, j));
+					for (const auto &term : trace.weights)
+					{
+						weights[term.first] += distance * (i ? u : 1 - u) * (j ? v : 1 - v) * term.second /
+											   m_SqrtMass[term.first];
+					}
+				}
+			}
+		}
+	}
+	Integral result;
+	result.magnetic = magnetic;
+	for (const auto &term : weights)
+	{
+		if (term.second != 0)
+		{
+			result.weights.push_back(term);
+		}
+	}
+	return result;
+}
+
+CartesianSubgrid::Integral CartesianSubgrid::VoltagePath(const Point &start, const Point &stop) const
+{
+	return LineIntegral(false, start, stop);
+}
+
+CartesianSubgrid::Integral CartesianSubgrid::CurrentContour(unsigned int normal, const Point &start,
+															const Point &stop) const
+{
+	Require(normal < 3 && start[normal] == stop[normal], "CartesianSubgrid: invalid current normal");
+	const unsigned int a = (normal + 1) % 3, b = (normal + 2) % 3;
+	Require(stop[a] > start[a] && stop[b] > start[b],
+			"CartesianSubgrid: positive current-contour area required");
+	Point corners[4] = {start, start, stop, stop};
+	corners[1][a] = stop[a];
+	corners[3][a] = start[a];
+	Integral result;
+	result.magnetic = true;
+	std::map<std::size_t, double> weights;
+	for (unsigned int side = 0; side < 4; ++side)
+	{
+		const auto segment = LineIntegral(true, corners[side], corners[(side + 1) % 4]);
+		for (const auto &term : segment.weights)
+		{
+			weights[term.first] += term.second;
+		}
+	}
+	for (const auto &term : weights)
+	{
+		if (term.second != 0)
+		{
+			result.weights.push_back(term);
+		}
+	}
+	return result;
+}
+
+double CartesianSubgrid::Evaluate(const Integral &integral) const
+{
+	const auto &field = integral.magnetic ? m_Magnetic : m_Electric;
+	double value = 0;
+	for (const auto &term : integral.weights)
+	{
+		value += term.second * field.at(term.first);
+	}
+	return value;
+}
+
+bool CartesianSubgrid::IsIndependentEdge(const Point &start, const Point &stop) const
+{
+	for (const auto &edge : m_Edges)
+	{
+		const auto a = EdgePoint(edge, 0), b = EdgePoint(edge, 1);
+		bool forward = true, reverse = true;
+		for (unsigned int n = 0; n < 3; ++n)
+		{
+			const double tolerance =
+				32 * std::numeric_limits<double>::epsilon() *
+				std::max({std::abs(a[n]), std::abs(b[n]), m_Lines[n][1] - m_Lines[n][0]});
+			forward =
+				forward && std::abs(start[n] - a[n]) <= tolerance && std::abs(stop[n] - b[n]) <= tolerance;
+			reverse =
+				reverse && std::abs(start[n] - b[n]) <= tolerance && std::abs(stop[n] - a[n]) <= tolerance;
+		}
+		if (forward || reverse)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+std::pair<double, double> CartesianSubgrid::DualBounds(unsigned int axis, const Point &point) const
+{
+	Require(axis < 3, "CartesianSubgrid: invalid dual-contour axis");
+	FindLeaf(point);
+	double left = -std::numeric_limits<double>::infinity(), right = -left;
+	for (std::size_t index = 0; index < m_Leaves.size(); ++index)
+	{
+		const auto lo = LeafStart(index), lengths = LeafLengths(index);
+		bool incident = true;
+		for (unsigned int n = 0; n < 3; ++n)
+		{
+			const double tolerance =
+				std::min(lengths[n] * 1e-8, 32 * std::numeric_limits<double>::epsilon() *
+												std::max({std::abs(point[n]), std::abs(lo[n]), lengths[n]}));
+			incident =
+				incident && point[n] >= lo[n] - tolerance && point[n] <= lo[n] + lengths[n] + tolerance;
+		}
+		if (!incident)
+		{
+			continue;
+		}
+		for (double coordinate : {lo[axis], lo[axis] + lengths[axis]})
+		{
+			const double tolerance =
+				std::min(lengths[axis] * 1e-8,
+						 32 * std::numeric_limits<double>::epsilon() *
+							 std::max({std::abs(point[axis]), std::abs(coordinate), lengths[axis]}));
+			if (coordinate < point[axis] - tolerance)
+			{
+				left = std::max(left, coordinate);
+			}
+			if (coordinate > point[axis] + tolerance)
+			{
+				right = std::min(right, coordinate);
+			}
+		}
+	}
+	Require(std::isfinite(left) && std::isfinite(right),
+			"CartesianSubgrid: zero-width current probe needs an interior local node");
+	return {.5 * (left + point[axis]), .5 * (right + point[axis])};
+}
+
+void CartesianSubgrid::SetResistors(const std::vector<Resistor> &ports, double timestep)
+{
+	CheckStep(timestep);
+	Require(ports.size() <= 64, "CartesianSubgrid: at most 64 reference resistors supported");
+	Require(m_Sources.empty(), "CartesianSubgrid: configure resistors before soft sources");
+	m_PortVoltage.clear();
+	m_PortResponse.clear();
+	m_PortConductance.clear();
+	m_PortCurrent.clear();
+	m_PortTimestep = timestep;
+	m_ResistorLoss = m_SourceWork = 0;
+	for (const auto &port : ports)
+	{
+		Require(port.resistance > 0 && std::isfinite(port.resistance) && std::isfinite(port.current),
+				"CartesianSubgrid: finite positive resistance and finite Norton current required");
+		auto voltage = VoltagePath(port.start, port.stop);
+		Require(!voltage.weights.empty(), "CartesianSubgrid: resistor voltage is constrained to PEC");
+		const double root = 1 / std::sqrt(port.resistance);
+		std::vector<double> response(m_Electric.size(), 0);
+		for (const auto &term : voltage.weights)
+		{
+			response[term.first] = root * term.second;
+		}
+		SolveMass(response);
+		Integral sparse;
+		for (std::size_t i = 0; i < response.size(); ++i)
+		{
+			if (response[i] != 0)
+			{
+				sparse.weights.emplace_back(i, response[i]);
+			}
+		}
+		m_PortVoltage.push_back(std::move(voltage));
+		m_PortResponse.push_back(std::move(sparse));
+		m_PortConductance.push_back(root * root);
+		m_PortCurrent.push_back(port.current / root);
+	}
+	const auto count = ports.size();
+	m_PortLower.assign(count * count, 0);
+	m_PortRHS.resize(count);
+	m_PortMid.resize(count);
+	// Small Woodbury solve: I + dt/2 C^T S^-1 C, C_p = sqrt(G_p) b_p.
+	// Reuse the already factored interface mass; no dense full-field matrix.
+	for (std::size_t i = 0; i < count; ++i)
+	{
+		for (std::size_t j = 0; j <= i; ++j)
+		{
+			double value = i == j ? 1 : 0;
+			for (const auto &a : m_PortVoltage[i].weights)
+			{
+				for (const auto &b : m_PortResponse[j].weights)
+				{
+					if (a.first == b.first)
+					{
+						value += .5 * timestep * std::sqrt(m_PortConductance[i]) * a.second * b.second;
+					}
+				}
+			}
+			for (std::size_t k = 0; k < j; ++k)
+			{
+				value -= m_PortLower[i * count + k] * m_PortLower[j * count + k];
+			}
+			Require(std::isfinite(value) && (i != j || value > 0),
+					"CartesianSubgrid: resistor matrix is not positive definite");
+			m_PortLower[i * count + j] = i == j ? std::sqrt(value) : value / m_PortLower[j * count + j];
+		}
+	}
+}
+
+void CartesianSubgrid::ApplyResistors(double timestep, double amplitude)
+{
+	Require(timestep == m_PortTimestep, "CartesianSubgrid: resistor timestep changed; reconfigure first");
+	const auto count = m_PortVoltage.size();
+	// Solve directly for net normalized current, j - sqrt(G)*V_mid.
+	// (I + dt/2 D)(j - sqrt(G)*V_mid) = j - C^T(u_old + dt/2 S^-1 K^T v).
+	for (std::size_t i = 0; i < count; ++i)
+	{
+		double voltage = 0;
+		for (const auto &term : m_PortVoltage[i].weights)
+		{
+			voltage += term.second * (m_Electric[term.first] + .5 * timestep * m_Increment[term.first]);
+		}
+		m_PortRHS[i] = amplitude * m_PortCurrent[i] - std::sqrt(m_PortConductance[i]) * voltage;
+		for (std::size_t j = 0; j < i; ++j)
+		{
+			m_PortRHS[i] -= m_PortLower[i * count + j] * m_PortRHS[j];
+		}
+		m_PortRHS[i] /= m_PortLower[i * count + i];
+	}
+	for (std::size_t i = count; i-- > 0;)
+	{
+		for (std::size_t j = i + 1; j < count; ++j)
+		{
+			m_PortRHS[i] -= m_PortLower[j * count + i] * m_PortRHS[j];
+		}
+		m_PortRHS[i] /= m_PortLower[i * count + i];
+		m_PortMid[i] = amplitude * m_PortCurrent[i] - m_PortRHS[i];
+		m_ResistorLoss += timestep * m_PortMid[i] * m_PortMid[i];
+		m_SourceWork += timestep * m_PortMid[i] * amplitude * m_PortCurrent[i];
+	}
+	for (std::size_t i = 0; i < m_Electric.size(); ++i)
+	{
+		m_Electric[i] += timestep * m_Increment[i];
+	}
+	for (std::size_t port = 0; port < count; ++port)
+	{
+		for (const auto &term : m_PortResponse[port].weights)
+		{
+			m_Electric[term.first] += timestep * term.second * m_PortRHS[port];
+		}
+	}
+}
+
+double CartesianSubgrid::ResistorVoltage(std::size_t port) const
+{
+	return Evaluate(m_PortVoltage.at(port));
 }

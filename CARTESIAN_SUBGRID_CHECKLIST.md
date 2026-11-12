@@ -29,7 +29,9 @@ separate tasks; a passing test on one engine does not qualify another engine.
 - Current capability is a **serial CPU numerical reference**, with homogeneous
   lossless background, cell-aligned isotropic lossless material boxes and PEC
   outer walls. Internal PEC boxes/sheets and axis-aligned cylinders/shells have
-  scoped geometry, contact and numerical controls. It is not an antenna-ready solver.
+  scoped geometry, contact and numerical controls. One-edge positive resistive
+  ports and local U/I integration have short two-port CPU controls.
+  It is not an antenna-ready solver.
 - The new feature concerns Cartesian coordinates. Preserve the existing
   cylindrical modes and test them for regressions; implementing a new
   cylindrical subgrid is outside this scope.
@@ -128,8 +130,12 @@ unaccounted minimum-spacing/timestep change.
 
 - [ ] **P01** Support the source types, directions, delays and waveforms used
   by the regular Cartesian solver; preserve the intended source normalization.
-- [ ] **P02** Implement lumped-port source/resistor coupling on local fields,
+- [x] **P02** Implement lumped-port source/resistor coupling on local fields,
   plus voltage-path and current-contour integration across local cells.
+  Scoped CPU qualification: native positive R on one independent local edge,
+  zero-delay soft E source, exact local U paths and discrete dual H contours.
+  Distributed boxes, multi-edge/hanging native resistors, overlapping native
+  resistors and LC/modal ports remain explicitly unsupported.
 - [ ] **P03** Support the remaining circuit/lumped RLC elements and qualify
   energy injection, stored energy and dissipation.
 - [ ] **P04** Implement microstrip/coaxial/waveguide port workflows as
@@ -139,7 +145,13 @@ unaccounted minimum-spacing/timestep change.
 
 Acceptance: qualify a short 50-ohm transmission line before an antenna.
 Sampling reconstructed E/H on base observation coordinates is not, by itself,
-a qualified physical port.
+a qualified physical port. P01/P03/P05 are **partial**: source normalization,
+50-ohm resistors, complex Z/S11/S21, phase, polarity and two-port power balance
+pass the scoped [port controls](CARTESIAN_SUBGRID.md#local-resistors-and-ui-integration).
+The outside/inside-refinement controls preserve point-port cells in their
+conventional Yee references. Energy/source-work/loss agrees within 1.46e-12
+through 100k steps; broader sources, distributed R/LC/modal workflows and
+material/interface placements remain open.
 
 ## 4. Boundaries and radiation postprocessing
 
@@ -274,3 +286,4 @@ numerical change invalidates their prior qualification.
 | 2026-11-12 | M01–M04, nonuniform base lines | This PR, graded-mesh increment | [Physical geometry and numerical tests](tests/test_cartesian_subgrid_mesh.cpp), [native source/translation controls](python/Tests/Cartesian_Subgrid.py), [results](CARTESIAN_SUBGRID.md#tests-and-observed-accuracy); serial homogeneous CPU only |
 | 2026-11-12 | G02; partial G01/G04/G06 | This PR, lossless-material increment | [Material/occupancy/invariant/cavity controls](tests/test_cartesian_subgrid_material.cpp), [graded native Yee](tests/test_cartesian_subgrid_mesh.cpp), [native priorities/units/guards](python/Tests/Cartesian_Subgrid_Materials.py); serial CPU, cell-aligned isotropic lossless boxes only; internal PEC and broad scattering still open |
 | 2026-11-12 | G03; extended partial G01/G04/G06 | This PR, internal-PEC increment | [Cu18 contact/PEC invariant/cavity/native-Yee controls](tests/test_cartesian_subgrid_pec.cpp), [native integration and guards](python/Tests/Cartesian_Subgrid_PEC.py); serial CPU, aligned boxes/sheets and sampled axial cylinders/shells; not physical-port, broad scattering or GPU qualification |
+| 2026-11-12 | P02 scoped; partial P01/P03/P05 | This PR, physical-port increment (parent `4186af8`) | [Core power/integral controls](tests/test_cartesian_subgrid_ports.cpp), [native two-port comparisons](python/Tests/Cartesian_Subgrid_Ports.py), [contract and numerical results](CARTESIAN_SUBGRID.md#local-resistors-and-ui-integration); one independent native R edge, serial CPU; broader ports remain open |
