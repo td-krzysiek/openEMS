@@ -13,6 +13,9 @@ It is a **serial CPU reference implementation**, suitable for numerical
 review and small validation models. It is not yet a replacement for the
 production antenna engine.
 
+[Implementation and qualification checklist](CARTESIAN_SUBGRID_CHECKLIST.md)
+tracks the completed controls and remaining feature/engine milestones in PR #29.
+
 ## Geometry, storage and execution
 
 - One refinement level and 1 through 64 independent rectangular boxes, each
