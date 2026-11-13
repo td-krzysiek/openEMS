@@ -12,7 +12,7 @@ namespace distributed
 {
 
 // Contiguous FP32 wire storage. Borrowing is explicit at both endpoints and
-// keeps the native staging owner alive; it never lends ordinary vector storage.
+// keeps the native staging owner alive; owned vectors are never implicitly lent.
 class HostSamples
 {
   public:
@@ -65,6 +65,15 @@ class HostSamples
 	void AllowBorrowing()
 	{
 		m_AllowBorrowing = true;
+	}
+	void RestoreOwned()
+	{
+		if (m_Owned.size() != m_Size)
+		{
+			throw std::logic_error("external-only halo cannot receive an owned copy");
+		}
+		m_Data = m_Owned.data();
+		m_Owner.reset();
 	}
 	bool Adopt(const HostSamples &source)
 	{

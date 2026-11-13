@@ -208,6 +208,7 @@ struct LocalHaloTransport::Impl
 			}
 			if (!state->receive->Adopt(*state->send))
 			{
+				state->receive->RestoreOwned();
 				std::copy(state->send->begin(), state->send->end(), state->receive->begin());
 			}
 			state->complete = true;
