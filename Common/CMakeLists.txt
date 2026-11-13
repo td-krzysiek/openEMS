@@ -3,6 +3,7 @@
 
 set(SOURCES
   ${SOURCES}
+  ${CMAKE_CURRENT_SOURCE_DIR}/observation_profile.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/dft_snapshot.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/startup_gate.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/runtime_gate.cpp

@@ -46,7 +46,8 @@ public:
 protected:
 	virtual void DumpFDData();
 	//! Add \a weights[n] times \a field to the frequency domain field n
-	void AddSample(const ArrayLib::ArrayNIJK<FDTD_FLOAT>& field, const std::vector<std::complex<float>>& weights);
+	void AddSample(const ArrayLib::ArrayNIJK<FDTD_FLOAT>& field,
+	    const std::vector<std::complex<float>>& weights, unsigned int step);
 
 	//! frequency domain field storage
 	std::vector<ArrayLib::ArrayNIJK<std::complex<float>>*> m_FD_Fields;

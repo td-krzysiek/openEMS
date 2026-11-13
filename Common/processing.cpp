@@ -20,12 +20,15 @@
 #include "Common/operator_base.h"
 #include <algorithm>
 #include "processing.h"
+#include "observation_profile.h"
 #include <climits>
 
 using namespace std;
 
 Processing::Processing(Engine_Interface_Base* eng_if)
 {
+	// Construct before any dump workers, so the writer outlives their shutdown.
+	ObservationProfile::Enabled();
 	m_Eng_Interface = NULL;
 	SetEngineInterface(eng_if);
 
@@ -374,6 +377,7 @@ int ProcessingArray::Process()
 		if ((step>0) && (step<nextProcess))
 			nextProcess=step;
 	}
+	ObservationProfile::Flush();
 	return nextProcess;
 }
 
@@ -382,6 +386,7 @@ void ProcessingArray::PostProcess()
 	// background processing first, it may use the same libraries (e.g. HDF5) as the post-processing
 	for (size_t i=0; i<ProcessArray.size(); ++i) ProcessArray.at(i)->FinishAsync();
 	for (size_t i=0; i<ProcessArray.size(); ++i) ProcessArray.at(i)->PostProcess();
+	ObservationProfile::Flush();
 }
 
 void ProcessingArray::DumpBoxes2File( string vtkfilenameprefix ) const
