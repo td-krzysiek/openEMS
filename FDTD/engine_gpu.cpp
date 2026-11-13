@@ -15,6 +15,7 @@
 *	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include "tools/setup_profile.h"
 #include <cstdlib>
 #include <stdexcept>
 
@@ -87,8 +88,13 @@ void Engine_GPU::Init()
 		if (m_DumpPath)
 			cout << "Engine_GPU: OPENEMS_GPU_DUMPS=" << path << ": field dumps " << (m_DumpPath==1 ? "without device sums" : "on the host") << endl;
 	}
-	if (!m_Backend->Init(Op))
-		throw std::runtime_error("Engine_GPU::Init: GPU backend initialization failed");
+	{
+		SetupProfile::Phase phase("gpu.backend_init");
+		if (!m_Backend->Init(Op))
+		{
+			throw std::runtime_error("Engine_GPU::Init: GPU backend initialization failed");
+		}
+	}
 
 	// with unified memory the host mirror is a view of the device fields
 	m_SharedMemory = m_Backend->GetSharedVoltages() && m_Backend->GetSharedCurrents();

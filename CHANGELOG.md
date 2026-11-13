@@ -16,6 +16,9 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Added
 
+- Optional `--profile-setup` (`OPENEMS_PROFILE_SETUP=1`) records coarse host-wall
+  setup phases as JSON; the existing speed benchmark preserves the hierarchy.
+
 - Optional per-extension/per-hook detail in sampled domain timing records
   (`OPENEMS_DOMAIN_PROFILE_EXTENSIONS=1`) reuses the existing device events;
   no additional timers or device waits are inserted.
