@@ -26,6 +26,56 @@ static void Require(bool condition, const char* message)
 	}
 }
 
+static void BorrowedUpload(GPU_Backend &backend, bool currents, ArrayLib::ArrayNIJK<float> &expected,
+						   ArrayLib::ArrayNIJK<float> &actual, size_t plane)
+{
+	std::shared_ptr<GPU_HaloBuffer> source(backend.NewHaloBuffer(2 * plane));
+	if (!source)
+	{
+		return; // Reference/Metal have no pinned HIP adapter.
+	}
+	Require(source->CanUploadBorrowed(), "pinned backend lacks borrowed upload");
+	const size_t nodes = expected.size() / 3;
+	const size_t from[2] = {nodes + plane, 2 * nodes + plane};
+	const size_t to[2] = {nodes, 2 * nodes};
+	for (bool explicitWait : {false, true})
+	{
+		if (!source)
+		{
+			source.reset(backend.NewHaloBuffer(2 * plane));
+		}
+		std::unique_ptr<GPU_HaloBuffer> destination(backend.NewHaloBuffer(2 * plane));
+		source->Download(currents, from, plane);
+		source->Wait();
+		for (size_t c = 0; c < 2; ++c)
+		{
+			std::copy_n(source->Data() + c * plane, plane, expected.data() + to[c]);
+		}
+		std::weak_ptr<GPU_HaloBuffer> lifetime = source;
+		destination->UploadBorrowed(currents, to, plane, source->Data(), source);
+		source.reset();
+		Require(!lifetime.expired(), "source staging released while upload may be active");
+		if (explicitWait)
+		{
+			destination->Wait();
+		}
+		// Destruction must drain an outstanding upload before releasing its owner.
+		destination.reset();
+		Require(lifetime.expired(), "borrowed native storage owner leaked");
+		if (currents)
+		{
+			backend.DownloadCurrents(actual);
+		}
+		else
+		{
+			backend.DownloadVoltages(actual);
+		}
+		Require(std::equal(expected.data(), expected.data() + expected.size(), actual.data()),
+				"borrowed native upload changed fields or failed to drain");
+	}
+	std::cout << "PASS borrowed pinned upload currents=" << currents << '\n';
+}
+
 int main(int argc, char** argv)
 {
 	try
@@ -119,6 +169,7 @@ int main(int argc, char** argv)
 				Require(
 				    std::equal(expected.data(), expected.data() + expected.size(), actual.data()),
 				    "ordered device copy differs or touches another location");
+				BorrowedUpload(*backend, currents, expected, actual, plane);
 				std::cout << "PASS domain=" << domain << " currents=" << currents << '\n';
 			}
 		}

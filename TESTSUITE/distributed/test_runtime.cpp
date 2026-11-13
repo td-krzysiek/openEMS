@@ -157,12 +157,91 @@ static MessageId Id(uint64_t step = 0)
 	return { { 2, step, FieldPhase::Current }, 1, 0, 1 };
 }
 
+static void BorrowedTransfers()
+{
+	auto storage = std::make_shared<std::vector<float>>(4, 3.5f);
+	std::weak_ptr<std::vector<float>> lifetime = storage;
+	auto source = std::make_shared<HostSamples>(4, storage->data(), storage);
+	auto receiver = std::make_shared<HostSamples>(4, -9.f);
+	receiver->AllowBorrowing();
+	auto *pointer = storage->data();
+	LocalHaloTransport transport(5);
+	auto receive = transport.Receive(Id(), receiver);
+	auto send = transport.Send(Id(), source);
+	storage.reset();
+	source.reset();
+	Require(!receive->Ready() && receiver->data() != pointer,
+			"borrowed payload exposed before producer completion");
+	receive->Wait();
+	send->Wait();
+	Require(receiver->data() == pointer && receiver->at(3) == 3.5f,
+			"local transport copied instead of borrowing native storage");
+	Require(!lifetime.expired(), "borrowed producer freed before the consumer");
+	// A device upload completion keeps the same owner until DMA drains.
+	auto uploadOwner = receiver->Owner();
+	receiver.reset();
+	Require(!lifetime.expired(), "upload owner did not retain producer staging");
+	uploadOwner.reset();
+	Require(lifetime.expired(), "completed borrowed storage leaked");
+
+	storage = std::make_shared<std::vector<float>>(4, 7.f);
+	source = std::make_shared<HostSamples>(4, storage->data(), storage);
+	receiver = std::make_shared<HostSamples>(4, -1.f);
+	auto *owned = receiver->data();
+	LocalHaloTransport copied;
+	receive = copied.Receive(Id(), receiver);
+	send = copied.Send(Id(), source);
+	receive->Wait();
+	send->Wait();
+	Require(receiver->data() == owned && receiver->at(3) == 7.f && !receiver->Owner(),
+			"non-opted receiver unexpectedly borrowed storage");
+	// Reusing a receiver for an owned payload must restore its own storage.
+	receiver->AllowBorrowing();
+	Require(receiver->Adopt(*source), "receiver did not borrow explicit storage");
+	auto ordinary = std::make_shared<HostSamples>(4, 11.f);
+	LocalHaloTransport mixed;
+	receive = mixed.Receive(Id(2), receiver);
+	send = mixed.Send(Id(2), ordinary);
+	receive->Wait();
+	send->Wait();
+	Require(receiver->data() == owned && receiver->at(0) == 11.f && storage->at(0) == 7.f,
+	    "copy fallback wrote into the previous borrowed producer");
+	Reject(
+		[&]()
+		{
+			HostSamples invalid(4, nullptr, storage);
+		});
+	Reject(
+		[&]()
+		{
+			HostSamples invalid(4, storage->data(), {});
+		});
+	HostSamples wrong(3);
+	wrong.AllowBorrowing();
+	Reject(
+		[&]()
+		{
+			wrong.Adopt(*source);
+		});
+
+	LocalHaloTransport failed(20);
+	receiver->AllowBorrowing();
+	auto waiting = failed.Receive(Id(1), receiver);
+	failed.Send(Id(1), source);
+	failed.Fail("injected borrowed transfer failure");
+	Reject(
+		[&]()
+		{
+			waiting->Wait();
+		});
+}
+
 static void Transfers()
 {
 	CompletionPtr send, receive;
-	auto source = std::make_shared<std::vector<float>>(4, 3.5f);
-	auto destination = std::make_shared<std::vector<float>>(4, -9.f);
-	std::weak_ptr<std::vector<float>> lifetime = source;
+	auto source = std::make_shared<HostSamples>(4, 3.5f);
+	auto destination = std::make_shared<HostSamples>(4, -9.f);
+	std::weak_ptr<HostSamples> lifetime = source;
 	{
 		LocalHaloTransport t(5);
 		receive = t.Receive(Id(), destination);
@@ -193,7 +272,7 @@ static void Transfers()
 	{
 		LocalHaloTransport t;
 		auto a = t.Receive(Id(), destination);
-		auto b = t.Send(Id(), std::make_shared<std::vector<float>>(3, 0));
+		auto b = t.Send(Id(), std::make_shared<HostSamples>(3, 0));
 		Reject([&]()
 		{
 			a->Wait();
@@ -558,6 +637,7 @@ int main()
 		Plans();
 		Memory();
 		Transfers();
+		BorrowedTransfers();
 		Coordination();
 		ExternalHooks();
 		AsyncPipeline();

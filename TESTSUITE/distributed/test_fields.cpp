@@ -10,12 +10,42 @@ class ZeroHalo : public LocalHaloTransport
 public:
 	CompletionPtr Send(const MessageId& id, HostBuffer source) override
 	{
-		return LocalHaloTransport::Send(
-		    id, std::make_shared<std::vector<float>>(source->size(), 0));
+		auto zeros = std::make_shared<std::vector<float>>(source->size(), 0);
+		return LocalHaloTransport::Send(id,
+										std::make_shared<HostSamples>(source->size(), zeros->data(), zeros));
 	}
 };
 
-static double Solve(GridShape shape, std::vector<uint32_t> cuts, bool negative, bool overlap = false)
+// Stand-in pinned storage: exercises ownership/routing independently of HIP.
+class BorrowedCPU : public CPUDomainExecutor
+{
+  public:
+	explicit BorrowedCPU(LocalOperatorData data) : CPUDomainExecutor(std::move(data))
+	{
+	}
+	HostBuffer CreateHaloBuffer(const HaloRecipe &recipe, bool sending) override
+	{
+		if (sending)
+		{
+			auto values = std::make_shared<std::vector<float>>(recipe.Samples());
+			return std::make_shared<HostSamples>(recipe.Samples(), values->data(), values);
+		}
+		auto buffer = std::make_shared<HostSamples>(recipe.Samples());
+		buffer->AllowBorrowing();
+		return buffer;
+	}
+	CompletionPtr Unpack(const HaloRecipe &recipe, HostBuffer buffer) override
+	{
+		if (!buffer->Owner())
+		{
+			throw std::runtime_error("borrowed receiver did not share producer storage");
+		}
+		return CPUDomainExecutor::Unpack(recipe, buffer);
+	}
+};
+
+static double Solve(GridShape shape, std::vector<uint32_t> cuts, bool negative, bool overlap = false,
+					bool borrowed = false)
 {
 	PartitionPlan single(1, shape, { 0, shape.nx }), split(2, shape, cuts);
 	CPUDomainExecutor reference(test_fixture::Data(single.Domains()[0]));
@@ -23,7 +53,14 @@ static double Solve(GridShape shape, std::vector<uint32_t> cuts, bool negative, 
 	std::vector<DomainExecutor*> executors;
 	for (const auto& d : split.Domains())
 	{
-		owned.emplace_back(new CPUDomainExecutor(test_fixture::Data(d)));
+		if (borrowed)
+		{
+			owned.emplace_back(new BorrowedCPU(test_fixture::Data(d)));
+		}
+		else
+		{
+			owned.emplace_back(new CPUDomainExecutor(test_fixture::Data(d)));
+		}
 		executors.push_back(owned.back().get());
 	}
 	LocalHaloTransport reference_transport, transport(17);
@@ -74,6 +111,21 @@ int main()
 			{
 				throw std::runtime_error("overlapped CPU fields differ");
 			}
+		}
+		for (const auto &cuts :
+			 std::vector<std::vector<uint32_t>>{{0, 1, 35}, {0, 17, 35}, {0, 34, 35}, {0, 1, 8, 23, 34, 35}})
+		{
+			for (bool overlap : {false, true})
+			{
+				if (Solve({35, 19, 13}, cuts, false, overlap, true) != 0)
+				{
+					throw std::runtime_error("borrowed-halo fields differ from the full reference");
+				}
+			}
+		}
+		if (Solve({35, 19, 13}, {0, 17, 35}, true, true, true) < 1e-3)
+		{
+			throw std::runtime_error("borrowed missing-halo control was not detected");
 		}
 		if (Solve({ 35, 19, 13 }, { 0, 17, 35 }, true, true) < 1e-3)
 		{

@@ -19,6 +19,7 @@
 #define GPU_BACKEND_H
 
 #include <complex>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -136,6 +137,16 @@ public:
 	virtual void Upload(bool currents, const size_t offsets[2], size_t count) = 0;
 	virtual bool Ready() = 0;
 	virtual void Wait() = 0;
+	virtual bool CanUploadBorrowed() const
+	{
+		return false;
+	}
+	// The implementation must retain owner through completion, including
+	// enqueue failure and destruction before the caller obtains a token.
+	virtual void UploadBorrowed(bool, const size_t[2], size_t, const FDTD_FLOAT *, std::shared_ptr<void>)
+	{
+		throw std::logic_error("backend cannot upload a borrowed host halo");
+	}
 };
 
 //! Abstract interface to the device used by Engine_GPU

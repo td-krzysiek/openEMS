@@ -206,7 +206,11 @@ struct LocalHaloTransport::Impl
 				state->error = "local halo sample count mismatch";
 				throw std::runtime_error(state->error);
 			}
-			std::copy(state->send->begin(), state->send->end(), state->receive->begin());
+			if (!state->receive->Adopt(*state->send))
+			{
+				state->receive->RestoreOwned();
+				std::copy(state->send->begin(), state->send->end(), state->receive->begin());
+			}
 			state->complete = true;
 			state->send.reset();
 			state->receive.reset();
@@ -220,7 +224,10 @@ struct LocalHaloTransport::Impl
 		for (auto& item : pending)
 		{
 			item.second->error = failure;
+			item.second->send.reset();
+			item.second->receive.reset();
 		}
+		pending.clear();
 	}
 };
 
@@ -337,12 +344,20 @@ HaloExchange::HaloExchange(const PartitionPlan& plan,
 	{
 		if (m_Executors.count(recipe.source))
 		{
-			m_SendBuffers[recipe.channel] = std::make_shared<std::vector<float>>(recipe.Samples());
+			m_SendBuffers[recipe.channel] = m_Executors.at(recipe.source)->CreateHaloBuffer(recipe, true);
 		}
 		if (m_Executors.count(recipe.destination))
 		{
 			m_ReceiveBuffers[recipe.channel] =
-			    std::make_shared<std::vector<float>>(recipe.Samples());
+				m_Executors.at(recipe.destination)->CreateHaloBuffer(recipe, false);
+		}
+		for (const auto *buffers : {&m_SendBuffers, &m_ReceiveBuffers})
+		{
+			auto found = buffers->find(recipe.channel);
+			if (found != buffers->end() && (!found->second || found->second->size() != recipe.Samples()))
+			{
+				throw std::invalid_argument("executor returned invalid halo storage");
+			}
 		}
 	}
 }

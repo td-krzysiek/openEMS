@@ -52,13 +52,35 @@ public:
 	}
 	void Upload(bool currents, const size_t offsets[2], size_t count) override
 	{
+		UploadFrom(currents, offsets, count, m_Data, {});
+	}
+	bool CanUploadBorrowed() const override
+	{
+		return true;
+	}
+	void UploadBorrowed(bool currents, const size_t offsets[2], size_t count, const FDTD_FLOAT *source,
+						std::shared_ptr<void> owner) override
+	{
+		if (!source || !owner)
+		{
+			throw std::invalid_argument("borrowed upload requires storage ownership");
+		}
+		UploadFrom(currents, offsets, count, source, std::move(owner));
+	}
+	void UploadFrom(bool currents, const size_t offsets[2], size_t count, const FDTD_FLOAT *source,
+					std::shared_ptr<void> owner)
+	{
 		CheckRange(offsets, count);
 		Wait();
+		m_UploadOwner = std::move(owner);
+		// Releasing an old native owner may select its device in its destructor.
+		HIP_Check(hipSetDevice(m_Backend->ctx->device), "select borrowed upload device");
 		float* field = currents ? m_Backend->curr : m_Backend->volt;
 		for (unsigned int c = 0; c < 2; ++c)
 		{
-			HIP_Check(hipMemcpyAsync(field + offsets[c], m_Data + c * count, count * sizeof(float),
-			              hipMemcpyHostToDevice, m_Stream), "upload tangential halo");
+			HIP_Check(hipMemcpyAsync(field + offsets[c], source + c * count, count * sizeof(float),
+									 hipMemcpyHostToDevice, m_Stream),
+					  "upload tangential halo");
 		}
 		Record();
 	}
@@ -135,5 +157,7 @@ private:
 	hipStream_t m_Stream = nullptr;
 	hipEvent_t m_Producer = nullptr, m_Complete = nullptr;
 	bool m_Active = false;
+	// Released only after Cleanup has drained all submitted DMA operations.
+	std::shared_ptr<void> m_UploadOwner;
 };
 #endif
