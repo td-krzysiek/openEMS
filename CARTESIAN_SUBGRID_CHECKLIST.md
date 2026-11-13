@@ -28,7 +28,7 @@ separate tasks; a passing test on one engine does not qualify another engine.
   of every platform or engine.
 - Current capability is a **serial CPU numerical reference**, with homogeneous
   lossless background, cell-aligned isotropic lossless material boxes and PEC/PMC
-  outer faces. Internal PEC boxes/sheets and axis-aligned cylinders/shells have
+  outer faces, plus scoped parallel first-order Mur faces. Internal PEC boxes/sheets and axis-aligned cylinders/shells have
   scoped geometry, contact and numerical controls. One-edge positive resistive
   ports and local U/I integration have short two-port CPU controls.
   It is not an antenna-ready solver.
@@ -170,6 +170,14 @@ material/interface placements remain open.
 - [ ] **B05** Compare small-antenna input response, near fields, radiation cuts,
   power and efficiency with regular fine-grid and analytic controls.
 
+B02/B03 are **partial**: paired operator/engine Mur extensions support one
+face or two opposite parallel faces, with a checked homogeneous, source-free,
+unrefined two-cell collar. All six normals, a local packet, a 100k-step signed
+boundary-work ledger and native Yee/normal/oblique-TE/graded controls pass.
+The measured first-order reflection and temporal-window sensitivity are
+[documented separately](CARTESIAN_SUBGRID.md#first-order-mur-absorbing-faces).
+Adjacent Mur corners, UPML, oblique TM and broader scattering remain open.
+
 Acceptance: a radiating PEC antenna must work before treating the prototype as
 an antenna solver. Correct E/H file creation alone does not qualify NF2FF.
 
@@ -292,5 +300,5 @@ numerical change invalidates their prior qualification.
 | 2026-11-12 | G02; partial G01/G04/G06 | This PR, lossless-material increment | [Material/occupancy/invariant/cavity controls](tests/test_cartesian_subgrid_material.cpp), [graded native Yee](tests/test_cartesian_subgrid_mesh.cpp), [native priorities/units/guards](python/Tests/Cartesian_Subgrid_Materials.py); serial CPU, cell-aligned isotropic lossless boxes only; internal PEC and broad scattering still open |
 | 2026-11-12 | G03; extended partial G01/G04/G06 | This PR, internal-PEC increment | [Cu18 contact/PEC invariant/cavity/native-Yee controls](tests/test_cartesian_subgrid_pec.cpp), [native integration and guards](python/Tests/Cartesian_Subgrid_PEC.py); serial CPU, aligned boxes/sheets and sampled axial cylinders/shells; not physical-port, broad scattering or GPU qualification |
 | 2026-11-12 | P02 scoped; partial P01/P03/P05 | This PR, physical-port increment (parent `4186af8`) | [Core power/integral controls](tests/test_cartesian_subgrid_ports.cpp), [native two-port comparisons](python/Tests/Cartesian_Subgrid_Ports.py), [contract and numerical results](CARTESIAN_SUBGRID.md#local-resistors-and-ui-integration); one independent native R edge, serial CPU; broader ports remain open |
-
 | 2026-11-13 | B01 scoped PMC/symmetry | This PR, PMC boundary increment (parent `19dd0f1`) | [Core cavity/energy/face controls](tests/test_cartesian_subgrid_boundaries.cpp), [native mirror-domain controls](python/Tests/Cartesian_Subgrid_Boundaries.py), [boundary planes and reconstruction limits](CARTESIAN_SUBGRID.md#outer-pecpmc-boundaries); serial CPU only. PML/NF2FF/GPU remain open. |
+| 2026-11-13 | Partial B02/B03, parallel Mur faces | This PR, paired Mur extension increment (parent `9de9020`) | [Pulse/energy/half-step controls](tests/test_cartesian_subgrid_mur.cpp), [native reflection and scope guards](python/Tests/Cartesian_Subgrid_Mur.py), [contract and limitations](CARTESIAN_SUBGRID.md#first-order-mur-absorbing-faces); serial basic CPU only. Adjacent corners, PML/NF2FF/GPU remain open. |

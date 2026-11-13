@@ -31,7 +31,9 @@ to what a user notices, in a few lines; the details belong in the commit.
   The serial reference supports positive resistors on one independent local
   edge and local voltage/current integration, with short two-port Yee controls.
   Outer PEC/PMC combinations support closed and symmetry-plane CPU controls;
-  PMC planes lie on the physical outer base faces. Distributed/LC ports,
+  PMC planes lie on the physical outer base faces. First-order Mur supports
+  parallel faces with a checked unrefined, homogeneous two-cell collar;
+  adjacent Mur corners remain unsupported. Distributed/LC ports,
   PML and GPU subgridding remain unsupported; `engine=basic` is required.
 - **A GPU engine**, `--engine=gpu` (`engine='gpu'` from Python), for AMD and
   NVIDIA GPUs (HIP/CUDA) and on macOS (Metal), with Cartesian and cylindrical

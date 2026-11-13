@@ -694,7 +694,14 @@ void CartesianSubgrid::SetSources(const std::vector<std::pair<std::size_t, doubl
 
 void CartesianSubgrid::Step(double timestep, double sourceAmplitude)
 {
+	UpdateElectric(timestep, sourceAmplitude);
+	UpdateMagnetic(timestep);
+}
+
+void CartesianSubgrid::UpdateElectric(double timestep, double sourceAmplitude)
+{
 	CheckStep(timestep);
+	Require(m_PendingMagneticTimestep == 0, "CartesianSubgrid: complete the pending magnetic sweep first");
 	Require(std::isfinite(sourceAmplitude), "CartesianSubgrid: nonfinite drive");
 	CurlTranspose(m_Magnetic, m_Increment);
 	if (!m_PortVoltage.empty() && !m_Sources.empty())
@@ -734,11 +741,19 @@ void CartesianSubgrid::Step(double timestep, double sourceAmplitude)
 		}
 		m_Electric[source.first] += change;
 	}
+	m_PendingMagneticTimestep = timestep;
+}
+
+void CartesianSubgrid::UpdateMagnetic(double timestep)
+{
+	Require(timestep == m_PendingMagneticTimestep && timestep > 0,
+			"CartesianSubgrid: magnetic sweep must follow electric sweep at the same timestep");
 	Curl(m_Electric, m_Curl);
 	for (std::size_t i = 0; i < m_Magnetic.size(); ++i)
 	{
 		m_Magnetic[i] -= timestep * m_Curl[i];
 	}
+	m_PendingMagneticTimestep = 0;
 }
 
 double CartesianSubgrid::Coordinate(unsigned int axis, double lattice) const

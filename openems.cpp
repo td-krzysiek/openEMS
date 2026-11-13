@@ -30,6 +30,7 @@
 #include "FDTD/extensions/operator_ext_excitation.h"
 #include "FDTD/extensions/operator_ext_tfsf.h"
 #include "FDTD/extensions/operator_ext_mur_abc.h"
+#include "FDTD/extensions/operator_ext_cartesiansubgrid_mur.h"
 #include "FDTD/extensions/operator_ext_upml.h"
 #include "FDTD/extensions/operator_ext_lorentzmaterial.h"
 #include "FDTD/extensions/operator_ext_debyematerial.h"
@@ -450,10 +451,22 @@ bool openEMS::SetupBoundaryConditions()
 		if (m_BC_type[n]==2) //Mur-ABC
 		{
 			FDTD_Op->SetBCSize(n, 1);
+			if (dynamic_cast<Operator_CartesianSubgrid *>(FDTD_Op))
+			{
+				auto *extension = new Operator_Ext_CartesianSubgrid_Mur(FDTD_Op, n);
+				if (m_Mur_v_ph[n] > 0)
+				{
+					extension->SetPhaseVelocity(m_Mur_v_ph[n]);
+				}
+				FDTD_Op->AddExtension(extension);
+				continue;
+			}
 			Operator_Ext_Mur_ABC* op_ext_mur = new Operator_Ext_Mur_ABC(FDTD_Op);
 			op_ext_mur->SetDirection(n/2,n%2);
 			if (m_Mur_v_ph[n]>0)
+			{
 				op_ext_mur->SetPhaseVelocity(m_Mur_v_ph[n]);
+			}
 			FDTD_Op->AddExtension(op_ext_mur);
 		}
 		if (m_BC_type[n]==3)

@@ -12,6 +12,7 @@
 #include "extensions/operator_ext_excitation.h"
 #include "extensions/operator_ext_tfsf.h"
 #include "extensions/operator_ext_lumpedRLC.h"
+#include "extensions/operator_ext_cartesiansubgrid_mur.h"
 #include "tools/constants.h"
 
 #include <algorithm>
@@ -72,14 +73,32 @@ unsigned int BaseLineIndex(const double *lines, unsigned int count, double value
 class Engine_CartesianSubgrid : public Engine
 {
   public:
-	explicit Engine_CartesianSubgrid(const Operator_CartesianSubgrid *op) : Engine(op), m_Operator(op) {}
+	explicit Engine_CartesianSubgrid(const Operator_CartesianSubgrid *op) : Engine(op), m_Operator(op)
+	{
+		InitExtensions();
+		SortExtensionByPriority();
+	}
 	bool IterateTS(unsigned int steps) override
 	{
 		Excitation *signal = m_Operator->Signal();
 		for (unsigned int step = 0; step < steps; ++step)
 		{
 			const double drive = numTS < signal->GetLength() ? signal->GetVoltageSignal()[numTS] : 0;
-			m_Operator->Grid().Step(m_Operator->GetTimestep(), drive);
+			if (m_Eng_exts.empty())
+			{
+				m_Operator->Grid().Step(m_Operator->GetTimestep(), drive);
+			}
+			else
+			{
+				DoPreVoltageUpdates();
+				m_Operator->Grid().UpdateElectric(m_Operator->GetTimestep(), drive);
+				DoPostVoltageUpdates();
+				Apply2Voltages();
+				DoPreCurrentUpdates();
+				m_Operator->Grid().UpdateMagnetic(m_Operator->GetTimestep());
+				DoPostCurrentUpdates();
+				Apply2Current();
+			}
 			++numTS;
 		}
 		return true;
@@ -215,11 +234,21 @@ void Operator_CartesianSubgrid::SetEngineType(Engine_Types::EngineType type)
 
 void Operator_CartesianSubgrid::SetBoundaryCondition(int *conditions)
 {
+	int murAxis = -1;
 	for (int i = 0; i < 6; ++i)
 	{
-		if (conditions[i] != 0 && conditions[i] != 1)
+		if (conditions[i] != 0 && conditions[i] != 1 && conditions[i] != 2)
 		{
-			throw std::invalid_argument("CartesianSubgrid: only outer PEC/PMC boundaries are supported");
+			throw std::invalid_argument("CartesianSubgrid: only outer PEC/PMC and scoped Mur are supported");
+		}
+		if (conditions[i] == 2)
+		{
+			if (murAxis != -1 && murAxis != i / 2)
+			{
+				throw std::invalid_argument(
+					"CartesianSubgrid: Mur faces must be parallel; adjacent Mur corners are unsupported");
+			}
+			murAxis = i / 2;
 		}
 	}
 	Operator::SetBoundaryCondition(conditions);
@@ -228,10 +257,16 @@ void Operator_CartesianSubgrid::SetBoundaryCondition(int *conditions)
 void Operator_CartesianSubgrid::AddExtension(Operator_Extension *extension)
 {
 	std::unique_ptr<Operator_Extension> owner(extension);
+	if (dynamic_cast<Operator_Ext_CartesianSubgrid_Mur *>(extension))
+	{
+		Operator::AddExtension(owner.release());
+		return;
+	}
 	if (!dynamic_cast<Operator_Ext_Excitation *>(extension) &&
 		!dynamic_cast<Operator_Ext_TFSF *>(extension) && !dynamic_cast<Operator_Ext_LumpedRLC *>(extension))
 	{
-		throw std::invalid_argument("CartesianSubgrid: unsupported extension " + extension->GetExtensionName());
+		throw std::invalid_argument("CartesianSubgrid: unsupported extension " +
+									extension->GetExtensionName());
 	}
 	// Soft E sources are prepared on compact master edges below. Actual TFSF
 	// primitives are rejected; SetupFDTD adds its extension unconditionally.
@@ -597,7 +632,7 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 	for (unsigned int i = 0; i < boundaries.size(); ++i)
 	{
 		boundaries[i] =
-			m_BC[i] == 1 ? CartesianSubgrid::BoundaryType::PMC : CartesianSubgrid::BoundaryType::PEC;
+			m_BC[i] == 0 ? CartesianSubgrid::BoundaryType::PEC : CartesianSubgrid::BoundaryType::PMC;
 	}
 	m_Grid.reset(new CartesianSubgrid(
 		lines, GetBackgroundEpsR() * EPS0, GetBackgroundMueR() * MUE0, regions, false, sample,
@@ -623,6 +658,13 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 	m_Exc->Reset(dT);
 	PrepareResistors();
 	PrepareSources();
+	for (auto *extension : m_Op_exts)
+	{
+		if (!extension->BuildExtension())
+		{
+			throw std::invalid_argument("CartesianSubgrid: extension preparation failed");
+		}
+	}
 	return 0;
 }
 

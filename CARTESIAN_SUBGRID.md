@@ -210,10 +210,11 @@ counting coarse observation samples. Soft E drive is added between the E and
 H half-steps. A source that touches no unconstrained master edge is rejected.
 
 Currently supported: positive isotropic, lossless background and cell-aligned
-material boxes; outer PEC/PMC combinations; zero-delay nonperiodic soft E box sources; E/H observations.
+material boxes; outer PEC/PMC combinations and scoped parallel Mur faces;
+zero-delay nonperiodic soft E box sources; E/H observations.
 Internal PEC and restricted one-edge resistive lumped ports follow the contracts below.
 Unsupported requests fail at setup: distributed/LC/modal ports, conducting
-sheets, dispersion/loss, PML/Mur, periodic sources, transformed
+sheets, dispersion/loss, PML and adjacent Mur corners, periodic sources, transformed
 primitives, other field types and GPU/SSE/new CPU engine selection. Only
 `engine=basic` selects this reference adapter; its execution is serial.
 
@@ -417,7 +418,8 @@ All six face selections, mixed PEC/PMC and all-PMC analytical cavities, and a
 100k-step two-region anisotropic-ratio invariant are covered by
 `tests/test_cartesian_subgrid_boundaries.cpp`. Native tests in
 `python/Tests/Cartesian_Subgrid_Boundaries.py` cover both half-domain sides
-along X/Y/Z, with and without refinement. PML and Mur continue to fail at setup.
+along X/Y/Z, with and without refinement. PML and adjacent Mur corners
+continue to fail at setup; parallel Mur faces follow the separate contract below.
 This is scoped serial CPU reference functionality, not absorbing-boundary,
 antenna or GPU qualification. The six identity mirror controls agree with ordinary
 Yee within 1.31e-6 of E peaks and 7.33e-7 of H peaks (gate 2e-4). Local and
@@ -426,6 +428,79 @@ frequency error decreases from 0.2553% to 0.0640% on doubling base resolution;
 all-PMC error decreases from 0.8569% to 0.2164%. The 100k-step two-region
 invariant drift is 5.78e-15 (gate 1e-9). These values do not establish general
 interface scattering or production performance.
+
+### First-order Mur absorbing faces
+
+The existing `MUR` boundary code (2), Python/Matlab `SetBoundaryCond` and
+optional Mur phase-velocity setting are reused. This increment implements a
+paired `Operator_Extension` / `Engine_Extension` on the serial compact engine;
+it does not change ordinary Yee Mur. For example:
+
+```python
+fdtd.SetBoundaryCond(['MUR', 'MUR', 'PEC', 'PEC', 'PMC', 'PMC'])
+```
+
+One face or two opposite, parallel faces are supported. Adjacent Mur faces,
+PML and all-face open radiation are **not** supported yet. Each Mur face needs
+two unrefined base cells of homogeneous lossless material, free of internal
+PEC, enabled sources and lumped resistors. The collar covers the entire face,
+not just a local refinement neighbourhood. Setup rejects violations. This
+strong guard keeps both boundary and first interior electric traces independent
+and their mass diagonal. Interior local refinement remains permitted.
+
+Mur lives on the outer electric base plane, with the neighbour one base line
+inside. For each tangential voltage trace:
+
+```text
+a = (v*dt - d)/(v*dt + d)
+V_boundary(new) = V_inside(old) + a*(V_inside(new) - V_boundary(old))
+```
+
+Here `d` is the actual outer interval, including graded meshes; the default
+`v=1/sqrt(epsilon*mu)` uses the collar medium. Histories and trace weights are
+allocated once. Ordered E/H half-sweeps expose the ordinary extension hooks;
+the existing full-step path retains its arithmetic. Invalid half-sweep ordering
+or changing dt between E and H is rejected. There is no device fallback:
+GPU/SSE/new CPU subgridding still fails explicitly at setup.
+
+`BoundaryWorkOut()` records **signed discrete correction work**, not far-field
+radiated power and not a guarantee of positive dissipation on each step.
+The leapfrog invariant plus this work closes the source-free control ledger.
+This is not a passivity proof for arbitrary media, fields or interface layouts.
+
+Controls in `tests/test_cartesian_subgrid_mur.cpp` cover all six face normals,
+a local-refinement packet, full versus split-step equivalence and ordering
+errors. Identity pulse fields agree with ordinary Yee within 1.59e-7 of initial
+amplitude (gate 2e-4). The reflected packet peak is 0.00522 (identity) and
+0.00580 (local). After 100k local steps, remaining energy is 3.35e-5 of its
+initial value, with peak energy no greater than initial and a maximum corrected
+ledger error 1.19e-13 (gate 1e-10). The nonzero local residual is retained;
+this is bounded evolution, not complete asymptotic absorption qualification.
+
+`python/Tests/Cartesian_Subgrid_Mur.py` exercises the actual scripting/XML
+path, including scope rejection. A matched long reference moves the remote
+PEC echo beyond the six-nanosecond observation window. Frequency-domain
+reflection is extracted from the complete incident and difference signals;
+four- versus six-nanosecond magnitudes must differ by less than 0.01. A narrow
+10 GHz pulse avoids the long near-cutoff tail observed with wider illumination.
+The oblique TE mode has fixed transverse wave number, so 30/45 degrees refer
+only to 10 GHz, not the whole band. TEM is used for normal incidence.
+
+| Incidence at 10 GHz | Measured amplitude reflection, 9.5 / 10 / 10.5 GHz |
+|---|---|
+| Normal | 0.00243 / 0.00269 / 0.00298 |
+| TE 30 degrees | 0.0744 / 0.0711 / 0.0653 |
+| TE 45 degrees | 0.226 / 0.149 / 0.128 |
+| TE 30 degrees, graded normal intervals | 0.0732 / 0.0697 / 0.0636 |
+
+The four identity waveforms agree with ordinary Yee within 1.03e-6 of the
+incident peak (gate 2e-4). The largest 4-to-6 ns magnitude change is 9.56e-4.
+The continuum first-order estimate `(1-cos(theta))/(1+cos(theta))` is recorded
+for context; finite mesh, finite pulse and repeat returns need not reproduce
+it exactly. The local-refined matched-reference normal packet return is also
+checked. Oblique TM, wider converged spectra, refinement-interface scattering,
+adjacent absorbing corners and PML remain open B02/B03 qualification work.
+These reflections are too large to treat Mur as a precision antenna absorber.
 
 ## Tests and observed accuracy
 
@@ -438,6 +513,7 @@ build/tests/test_cartesian_subgrid_mesh --long
 build/tests/test_cartesian_subgrid_material --long
 build/tests/test_cartesian_subgrid_pec --long
 build/tests/test_cartesian_subgrid_ports --long
+build/tests/test_cartesian_subgrid_mur --long
 build/tests/test_cartesian_subgrid_boundaries --long
 build/tests/test_cartesian_subgrid --mesh > mesh.json
 python3 python/Tests/run_testsuite.py --unittests Cartesian

@@ -134,6 +134,9 @@ class CartesianSubgrid
 		return m_StableStep;
 	}
 	void Step(double timestep, double sourceAmplitude = 0);
+	//! Serial extension hooks may act between these ordered electric/magnetic sweeps.
+	void UpdateElectric(double timestep, double sourceAmplitude = 0);
+	void UpdateMagnetic(double timestep);
 	void SetSources(const std::vector<std::pair<std::size_t, double>> &sources);
 	void SetElectric(const Field &field);
 	void SetMagnetic(const Field &field);
@@ -230,5 +233,6 @@ class CartesianSubgrid
 	std::vector<Integral> m_PortVoltage, m_PortResponse;
 	std::vector<double> m_PortConductance, m_PortCurrent, m_PortLower, m_PortRHS, m_PortMid, m_SourceCurl;
 	double m_PortTimestep = 0, m_ResistorLoss = 0, m_SourceWork = 0;
+	double m_PendingMagneticTimestep = 0;
 };
 #endif

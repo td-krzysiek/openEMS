@@ -104,7 +104,7 @@ for refined, graded in [(False, False), (True, False), (True, True)]:
             metrics[label] = errors
             print('PMC mirrored-domain comparison', label, errors, flush=True)
 
-# Unsupported absorbing/periodic conditions must still fail closed.
+# Adjacent Mur corners and PML must still fail closed.
 for condition in ['MUR', 'PML_8']:
     fdtd = openEMS(NrTS=1, CartesianSubgridBox=[-4,-4,-4,4,4,4])
     fdtd.SetBoundaryCond([condition]*6)
