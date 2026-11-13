@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #ifdef OPENEMS_WITH_DOMAIN_RUNTIME
 #include "gpu_backend_domains.h"
+#include "tools/setup_profile.h"
 #include "distributed/runtime.h"
 #include "domain_performance.h"
 #include "extensions/engine_ext_excitation.h"
@@ -413,6 +414,7 @@ std::string GPU_Backend_Domains::GetName() const
 
 bool GPU_Backend_Domains::Init(const Operator* op)
 {
+	SetupProfile::Phase phase("gpu.domains_init");
 	if (dynamic_cast<const Operator_Cylinder*>(op))
 	{
 		throw std::invalid_argument("domain backend requires a Cartesian operator");
@@ -454,6 +456,7 @@ bool GPU_Backend_Domains::Init(const Operator* op)
 	std::vector<DomainExecutor*> executors;
 	for (const auto& domain : d->plan->Domains())
 	{
+		SetupProfile::Phase domainPhase("gpu.domain_init", SetupProfile::Active() ? std::to_string(domain.id) : "");
 		auto* backend = d->devices[domain.id].get();
 		backend->Activate();
 		if (!backend->InitDomain(op, domain.begin, domain.end))

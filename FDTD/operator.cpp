@@ -15,6 +15,7 @@
 *	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include "tools/setup_profile.h"
 #include <fstream>
 #include <algorithm>
 #include <stdexcept>
@@ -1096,35 +1097,52 @@ void Operator::Calc_ECOperatorPos(int n, unsigned int* pos)
 int Operator::CalcECOperator( DebugFlags debugFlags )
 {
 	m_DebugFlags = debugFlags;
-	Init_EC();
-	InitDataStorage();
-
-	if (Calc_EC()==0)
-		return -1;
+	{
+		SetupProfile::Phase phase("operator.storage");
+		Init_EC();
+		InitDataStorage();
+	}
+	{
+		SetupProfile::Phase phase("operator.materials");
+		if (Calc_EC()==0)
+		{
+			return -1;
+		}
+	}
 
 	// Physics which changes physical C/L must participate in timestep selection.
 	for (size_t n=0; n<m_Op_exts.size(); ++n)
+	{
 		if (m_Op_exts.at(n)->IsActive())
+		{
+			SetupProfile::Phase phase("operator.preprocess_extension",
+				SetupProfile::Active() ? m_Op_exts.at(n)->GetExtensionName() : "");
 			m_Op_exts.at(n)->PreprocessEC();
+		}
+	}
 
 	m_InvaildTimestep = false;
 	opt_dT = 0;
-	if (dT>0)
 	{
-		double save_dT = dT;
-		CalcTimestep();
-		opt_dT = dT;
-		if (dT<save_dT)
+		SetupProfile::Phase phase("operator.timestep");
+		if (dT>0)
 		{
-			cerr << "Operator::CalcECOperator: Warning, forced timestep: " << save_dT << "s is larger than calculated timestep: " << dT << "s! It is not recommended using this timestep!! " << endl;
-			m_InvaildTimestep = true;
+			double save_dT = dT;
+			CalcTimestep();
+			opt_dT = dT;
+			if (dT<save_dT)
+			{
+				cerr << "Operator::CalcECOperator: Warning, forced timestep: " << save_dT << "s is larger than calculated timestep: " << dT << "s! It is not recommended using this timestep!! " << endl;
+				m_InvaildTimestep = true;
+			}
+
+			dT = save_dT;
 		}
-
-		dT = save_dT;
+		else
+		{
+			CalcTimestep();
+		}
 	}
-	else
-		CalcTimestep();
-
 	dT*=m_TimeStepFactor;
 
 	if (m_Exc->GetSignalPeriod()>0)
@@ -1137,17 +1155,22 @@ int Operator::CalcECOperator( DebugFlags debugFlags )
 
 	m_Exc->Reset(dT);
 
-	InitOperator();
+	{
+		SetupProfile::Phase phase("operator.coefficients");
+		InitOperator();
 
-	if (m_ECCoeffs==NULL)   // else computed from the circuit values when read
-		ParallelFor(numLines[0], [this](unsigned int, size_t begin, size_t end) {
-			unsigned int pos[3];
-			for (int n=0; n<3; ++n)
-				for (pos[0]=begin; pos[0]<end; ++pos[0])
-					for (pos[1]=0; pos[1]<numLines[1]; ++pos[1])
-						for (pos[2]=0; pos[2]<numLines[2]; ++pos[2])
-							Calc_ECOperatorPos(n,pos);
-		});
+		if (m_ECCoeffs==NULL)   // else computed from the circuit values when read
+		{
+			ParallelFor(numLines[0], [this](unsigned int, size_t begin, size_t end) {
+				unsigned int pos[3];
+				for (int n=0; n<3; ++n)
+					for (pos[0]=begin; pos[0]<end; ++pos[0])
+						for (pos[1]=0; pos[1]<numLines[1]; ++pos[1])
+							for (pos[2]=0; pos[2]<numLines[2]; ++pos[2])
+								Calc_ECOperatorPos(n,pos);
+			});
+		}
+	}
 
 	//Apply PEC to all boundary's
 	bool PEC[6]={1,1,1,1,1,1};
@@ -1157,9 +1180,14 @@ int Operator::CalcECOperator( DebugFlags debugFlags )
 			PEC[n] = false;
 	ApplyElectricBC(PEC);
 
-	CalcPEC();
-
-	Calc_LumpedElements();
+	{
+		SetupProfile::Phase phase("operator.pec");
+		CalcPEC();
+	}
+	{
+		SetupProfile::Phase phase("operator.lumped");
+		Calc_LumpedElements();
+	}
 
 	bool PMC[6];
 	for (int n=0; n<6; ++n)
@@ -1168,8 +1196,13 @@ int Operator::CalcECOperator( DebugFlags debugFlags )
 
 	//all information available for extension... create now...
 	for (size_t n=0; n<m_Op_exts.size(); ++n)
+	{
+		SetupProfile::Phase phase("operator.extension", SetupProfile::Active() ? m_Op_exts.at(n)->GetExtensionName() : "");
 		if (m_Op_exts.at(n)->BuildExtension()==false)
+		{
 			m_Op_exts.at(n)->SetActive(false); //extension has nothing to do or failed to build, drop it below
+		}
+	}
 
 	//remove inactive extensions
 	std::vector<Operator_Extension*>::iterator it = m_Op_exts.begin();
