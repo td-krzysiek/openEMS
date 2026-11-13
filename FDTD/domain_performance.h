@@ -12,6 +12,7 @@
 #include <iostream>
 #include <locale>
 #include <sstream>
+#include <array>
 
 // Optional observations only: never changes ownership or waits for a timer.
 // Header-only so the standalone fake-device test exercises the actual writer.
@@ -20,6 +21,12 @@ class DomainPerformance
 public:
 	using Clock = std::chrono::steady_clock;
 	using Time = Clock::time_point;
+	enum ExtensionHook
+	{
+		PreVoltage, PostVoltage, ApplyVoltage,
+		PreCurrent, PostCurrent, ApplyCurrent, SynchronizeHook, ExtensionHookCount
+	};
+	static constexpr size_t NoExtension = size_t(-1);
 	enum HostMetric
 	{
 		UpdateWait,
@@ -34,6 +41,9 @@ public:
 		std::unique_ptr<GPU_DeviceTimer> timer;
 		bool extension = false;
 		bool ended = false;
+		size_t extension_id = NoExtension;
+		ExtensionHook hook = PreVoltage;
+		double submit_seconds = 0;
 		Time started;
 	};
 
@@ -49,7 +59,8 @@ public:
 		{
 			return std::unique_ptr<DomainPerformance>(new DomainPerformance(path, plan, devices,
 				Setting("OPENEMS_DOMAIN_PROFILE_INTERVAL", 4096, 128),
-				Setting("OPENEMS_DOMAIN_PROFILE_WARMUP", 4096, 0)));
+				Setting("OPENEMS_DOMAIN_PROFILE_WARMUP", 4096, 0),
+				Setting("OPENEMS_DOMAIN_PROFILE_EXTENSIONS", 0, 0) != 0));
 		}
 		catch (const std::exception& error)
 		{
@@ -59,8 +70,10 @@ public:
 	}
 
 	DomainPerformance(const std::string& path, const openems::distributed::PartitionPlan& plan,
-		const std::vector<GPU_Backend*>& devices, uint64_t interval, uint64_t warmup)
-		: m_Devices(devices), m_Data(devices.size()), m_Interval(interval), m_Warmup(warmup)
+		const std::vector<GPU_Backend*>& devices, uint64_t interval, uint64_t warmup,
+		bool extension_detail = false)
+		: m_Devices(devices), m_Data(devices.size()), m_Interval(interval), m_Warmup(warmup),
+		  m_ExtensionDetail(extension_detail)
 	{
 		if (!interval || devices.size() != plan.Domains().size())
 		{
@@ -92,7 +105,8 @@ public:
 				<< ",\"owned_nodes\":" << uint64_t(domain.end - domain.begin) * plan.Shape().Plane()
 				<< '}';
 		}
-		out << "],\"device_time_scope\":\"main_updates_and_native_extension_hooks_only\","
+		out << "],\"extension_detail\":" << (m_ExtensionDetail ? "true" : "false")
+			<< ",\"device_time_scope\":\"main_updates_and_native_extension_hooks_only\","
 			<< "\"host_wait_is_gpu_idle\":false,\"added_device_waits\":false}";
 		Write(out.str());
 		if (m_File)
@@ -114,6 +128,30 @@ public:
 	bool Active() const
 	{
 		return m_Active;
+	}
+	//! Labels are registered once at setup; existing event pairs are reused unchanged.
+	size_t RegisterExtension(const std::string& name)
+	{
+		if (!m_ExtensionDetail)
+		{
+			return NoExtension;
+		}
+		m_ExtensionNames.push_back(name);
+		for (auto& data : m_Data)
+		{
+			data.extensions.emplace_back();
+		}
+		return m_ExtensionNames.size() - 1;
+	}
+	Interval* BeginExtension(size_t domain, size_t extension, ExtensionHook hook)
+	{
+		auto* sample = Begin(domain, true);
+		if (sample && extension != NoExtension)
+		{
+			sample->extension_id = extension;
+			sample->hook = hook;
+		}
+		return sample;
 	}
 	static Time Now()
 	{
@@ -137,6 +175,10 @@ public:
 			data.used = 0;
 			data.main_submit = data.extension_submit = 0;
 			data.sent = data.received = 0;
+			for (auto& extension : data.extensions)
+			{
+				extension = {};
+			}
 			for (double& value : data.host)
 			{
 				value = 0;
@@ -165,6 +207,8 @@ public:
 		auto& sample = data.intervals[data.used++];
 		sample.extension = extension;
 		sample.ended = false;
+		sample.extension_id = NoExtension;
+		sample.submit_seconds = 0;
 		if (sample.timer)
 		{
 			try
@@ -187,7 +231,8 @@ public:
 			return;
 		}
 		auto& data = m_Data.at(domain);
-		(sample->extension ? data.extension_submit : data.main_submit) += Seconds(sample->started);
+		sample->submit_seconds = Seconds(sample->started);
+		(sample->extension ? data.extension_submit : data.main_submit) += sample->submit_seconds;
 		if (sample->timer)
 		{
 			try
@@ -272,6 +317,20 @@ public:
 				{
 					(sample.extension ? extension : main) += seconds;
 				}
+				if (sample.extension_id != NoExtension)
+				{
+					auto& detail = data.extensions.at(sample.extension_id).at(sample.hook);
+					++detail.calls;
+					detail.submit += sample.submit_seconds;
+					if (ready)
+					{
+						detail.device += seconds;
+					}
+					else
+					{
+						++detail.missing;
+					}
+				}
 			}
 			out << (i ? "," : "") << "{\"id\":" << i
 				<< ",\"device_timing_complete\":" << (!missing && data.used ? "true" : "false")
@@ -288,7 +347,12 @@ public:
 				<< ",\"unpack_wait_host_seconds\":" << data.host[UnpackWait]
 				<< ",\"boundary_host_seconds\":" << data.host[Boundary]
 				<< ",\"halo_sent_bytes\":" << data.sent
-				<< ",\"halo_received_bytes\":" << data.received << '}';
+				<< ",\"halo_received_bytes\":" << data.received;
+			if (m_ExtensionDetail)
+			{
+				WriteExtensions(out, data);
+			}
+			out << '}';
 		}
 		out << "]}";
 		Write(out.str());
@@ -300,6 +364,11 @@ public:
 	}
 
 private:
+	struct HookData
+	{
+		double device = 0, submit = 0;
+		size_t calls = 0, missing = 0;
+	};
 	struct Data
 	{
 		std::vector<Interval> intervals;
@@ -307,7 +376,42 @@ private:
 		double main_submit = 0, extension_submit = 0;
 		double host[HostMetricCount] = {};
 		uint64_t sent = 0, received = 0;
+		std::vector<std::array<HookData, ExtensionHookCount>> extensions;
 	};
+	void WriteExtensions(std::ostream& out, const Data& data) const
+	{
+		static const char* names[] = {"pre_voltage", "post_voltage", "apply_voltage",
+			"pre_current", "post_current", "apply_current", "synchronize"};
+		out << ",\"extensions\":[";
+		for (size_t id = 0; id < data.extensions.size(); ++id)
+		{
+			HookData total;
+			for (const auto& hook : data.extensions[id])
+			{
+				total.device += hook.device;
+				total.submit += hook.submit;
+				total.calls += hook.calls;
+				total.missing += hook.missing;
+			}
+			out << (id ? "," : "") << "{\"id\":" << id << ",\"name\":" << Quote(m_ExtensionNames[id]);
+			auto values = [&](const HookData& hook)
+			{
+				out << ",\"calls\":" << hook.calls << ",\"missing_device_intervals\":" << hook.missing
+					<< ",\"device_seconds\":" << (!hook.calls || hook.missing ? "null" : Number(hook.device))
+					<< ",\"submit_host_seconds\":" << hook.submit;
+			};
+			values(total);
+			out << ",\"hooks\":[";
+			for (size_t hook = 0; hook < ExtensionHookCount; ++hook)
+			{
+				out << (hook ? "," : "") << "{\"name\":" << Quote(names[hook]);
+				values(data.extensions[id][hook]);
+				out << '}';
+			}
+			out << "]}";
+		}
+		out << ']';
+	}
 	static uint64_t Setting(const char* name, uint64_t fallback, uint64_t minimum)
 	{
 		const char* raw = std::getenv(name);
@@ -387,9 +491,11 @@ private:
 	}
 	std::vector<GPU_Backend*> m_Devices;
 	std::vector<Data> m_Data;
+	std::vector<std::string> m_ExtensionNames;
 	FILE* m_File = nullptr;
 	uint64_t m_Interval, m_Warmup, m_Step = 0, m_Samples = 0;
 	bool m_Active = false, m_Warned = false;
+	bool m_ExtensionDetail = false;
 	double m_Exchange = 0;
 };
 #endif

@@ -263,10 +263,12 @@ private:
 class DomainExtension : public GPU_Extension
 {
 public:
-	explicit DomainExtension(DomainPerformance* profile) : m_Profile(profile)
+	DomainExtension(DomainPerformance* profile, const std::string& name)
+		: m_Profile(profile), m_ProfileId(profile ? profile->RegisterExtension(name) : DomainPerformance::NoExtension)
 	{
 	}
 	DomainPerformance* m_Profile;
+	size_t m_ProfileId;
 	std::vector<std::pair<GPU_Backend*, std::unique_ptr<GPU_Extension>>> children;
 	~DomainExtension() override
 	{
@@ -282,13 +284,13 @@ public:
 			child.second.reset();
 		}
 	}
-	void Invoke(void (GPU_Extension::*hook)())
+	void Invoke(void (GPU_Extension::*hook)(), DomainPerformance::ExtensionHook label)
 	{
 		for (size_t i = 0; i < children.size(); ++i)
 		{
 			auto& child = children[i];
 			child.first->Activate();
-			auto* timing = m_Profile ? m_Profile->Begin(i, true) : nullptr;
+			auto* timing = m_Profile ? m_Profile->BeginExtension(i, m_ProfileId, label) : nullptr;
 			(child.second.get()->*hook)();
 			if (m_Profile)
 			{
@@ -298,31 +300,31 @@ public:
 	}
 	void DoPreVoltageUpdates() override
 	{
-		Invoke(&GPU_Extension::DoPreVoltageUpdates);
+		Invoke(&GPU_Extension::DoPreVoltageUpdates, DomainPerformance::PreVoltage);
 	}
 	void DoPostVoltageUpdates() override
 	{
-		Invoke(&GPU_Extension::DoPostVoltageUpdates);
+		Invoke(&GPU_Extension::DoPostVoltageUpdates, DomainPerformance::PostVoltage);
 	}
 	void Apply2Voltages() override
 	{
-		Invoke(&GPU_Extension::Apply2Voltages);
+		Invoke(&GPU_Extension::Apply2Voltages, DomainPerformance::ApplyVoltage);
 	}
 	void DoPreCurrentUpdates() override
 	{
-		Invoke(&GPU_Extension::DoPreCurrentUpdates);
+		Invoke(&GPU_Extension::DoPreCurrentUpdates, DomainPerformance::PreCurrent);
 	}
 	void DoPostCurrentUpdates() override
 	{
-		Invoke(&GPU_Extension::DoPostCurrentUpdates);
+		Invoke(&GPU_Extension::DoPostCurrentUpdates, DomainPerformance::PostCurrent);
 	}
 	void Apply2Current() override
 	{
-		Invoke(&GPU_Extension::Apply2Current);
+		Invoke(&GPU_Extension::Apply2Current, DomainPerformance::ApplyCurrent);
 	}
 	void Synchronize() override
 	{
-		Invoke(&GPU_Extension::Synchronize);
+		Invoke(&GPU_Extension::Synchronize, DomainPerformance::SynchronizeHook);
 	}
 };
 }
@@ -611,7 +613,8 @@ void GPU_Backend_Domains::Synchronize()
 
 GPU_Extension* GPU_Backend_Domains::CreateExtension(Engine_Extension* ext, Engine* engine)
 {
-	std::unique_ptr<DomainExtension> result(new DomainExtension(d->profile.get()));
+	std::unique_ptr<DomainExtension> result(new DomainExtension(d->profile.get(),
+		d->profile ? ext->GetExtensionName() : std::string()));
 	for (auto& backend : d->devices)
 	{
 		backend->Activate();

@@ -66,5 +66,32 @@ The next-run planner owns compatibility checks, memory constraints and any new
 partition choice. Record a proposed split as a new run's execution configuration
 and qualify it independently. The solver never learns or repartitions silently.
 
+## Per-extension attribution
+
+Set `OPENEMS_DOMAIN_PROFILE_EXTENSIONS=1` alongside `OPENEMS_DOMAIN_PROFILE`
+to label the **existing** sampled event pairs by extension instance and hook.
+This adds no timers, GPU events, device waits, field transfers or kernel changes.
+Without this opt-in the aggregate records remain available as before. Names
+are registered once at setup; IDs distinguish repeated instances such as PML
+regions. The sample adds `extensions` per domain, containing instance totals
+and the seven pre/post/apply E/H and synchronize hooks. A hook may be a no-op
+on a domain, so small event intervals include dispatch/launch gaps; they are
+not an isolated kernel benchmark. No allocation is added in unsampled steps.
+
+Each entry reports calls, missing event intervals, device seconds (null if
+unavailable) and separate host submission seconds. Missing measurements must
+not rank as zero/fast. Existing event pairs, warmup/cadence and buffered writing
+are reused. Group totals must reproduce the aggregate extension time. Added
+CPU aggregation/JSON output still has a cost: measure aggregate versus detailed
+logging at the same cadence, not profiling-off versus many more GPU events.
+Family totals should be formed within each sample before taking medians, and
+reported independently for each ordered physical GPU. These are not percentages
+of full application wall time. The synchronized per-kernel diagnostic remains
+unnecessary for this low-overhead attribution.
+
+This observer cannot be attached to an existing executable; enable it on a
+subsequent qualified launch. It does not enable UPML fusion or any other solver
+optimization. The current Metal/reference adapters still expose host times only.
+
 This feature adds an optional virtual backend method: rebuild the core, plugins
 and any C++ dependants together. Do not load an old plugin into this build.
