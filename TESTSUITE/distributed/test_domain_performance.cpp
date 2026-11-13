@@ -139,6 +139,61 @@ int main(int argc, char** argv)
 			"unready device must not look like zero compute time");
 		Require(text.find("\"type\":\"closed\",\"samples\":3") != std::string::npos,
 			"buffered output was not finalized");
+		// Detail labels must reuse the aggregate profiler's exact timer workload.
+		Counts reference_counts;
+		for (bool details : {false, true})
+		{
+			FakeBackend first, second;
+			const std::string path = std::string(argv[1]) + (details ? ".detail" : ".aggregate");
+			std::remove(path.c_str());
+			{
+				DomainPerformance profile(path, plan, {&first, &second}, 128, 0, details);
+				const auto upml = profile.RegisterExtension("UPML \"region\"\n");
+				const auto rlc = profile.RegisterExtension("Lumped RLC");
+				for (uint64_t step : {uint64_t(0), uint64_t(128)})
+				{
+					profile.StartStep(step);
+					for (size_t domain = 0; domain < 2; ++domain)
+					{
+						profile.End(domain, profile.Begin(domain, false));
+						for (auto id : {upml, rlc})
+						{
+							for (auto hook : {DomainPerformance::PreVoltage, DomainPerformance::PostCurrent})
+							{
+								profile.End(domain, profile.BeginExtension(domain, id, hook));
+							}
+						}
+					}
+					profile.FinishStep();
+				}
+				if (details)
+				{
+					first.counts.ready = false;
+					profile.StartStep(256);
+					profile.End(0, profile.BeginExtension(0, upml, DomainPerformance::PostCurrent));
+					profile.FinishStep();
+				}
+			}
+			Require(first.counts.synchronized == 0 && second.counts.synchronized == 0,
+				"extension detail added a device wait");
+			if (!details)
+			{
+				reference_counts = first.counts;
+			}
+			else
+			{
+				Require(first.counts.allocated == reference_counts.allocated &&
+					first.counts.began == reference_counts.began + 1 &&
+					first.counts.read == reference_counts.read + 1,
+					"extension labels added timers/events beyond the explicit unready control");
+				std::ifstream detail_stream(path);
+				const std::string detail_text((std::istreambuf_iterator<char>(detail_stream)), {});
+				Require(detail_text.find("\"name\":\"Lumped RLC\",\"calls\":2,\"missing_device_intervals\":0,\"device_seconds\":0.25") != std::string::npos,
+					"extension totals were not attributed to their own instance");
+				Require(detail_text.find("\"name\":\"post_current\",\"calls\":1,\"missing_device_intervals\":1,\"device_seconds\":null") != std::string::npos,
+					"unready extension interval must remain missing, not zero");
+			}
+		}
 		return 0;
 	}
 	catch (const std::exception& error)
