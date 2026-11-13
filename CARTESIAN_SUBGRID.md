@@ -210,7 +210,7 @@ counting coarse observation samples. Soft E drive is added between the E and
 H half-steps. A source that touches no unconstrained master edge is rejected.
 
 Currently supported: positive isotropic, lossless background and cell-aligned
-material boxes; outer PEC; zero-delay nonperiodic soft E box sources; E/H observations.
+material boxes; outer PEC/PMC combinations; zero-delay nonperiodic soft E box sources; E/H observations.
 Internal PEC and restricted one-edge resistive lumped ports follow the contracts below.
 Unsupported requests fail at setup: distributed/LC/modal ports, conducting
 sheets, dispersion/loss, PML/Mur, periodic sources, transformed
@@ -380,6 +380,53 @@ interface, preserves injected-minus-dissipated-minus-stored energy within
 These are scoped CPU controls, not arbitrary-interface, antenna, GPU or PML
 qualification.
 
+### Outer PEC/PMC boundaries
+
+Use the existing Python or Matlab `SetBoundaryCond` workflow;
+no new CSXCAD geometry or XML attributes are introduced. The native six-face
+boundary codes retain PEC=0 and PMC=1. For example, in Python:
+
+```python
+fdtd.SetBoundaryCond(['PMC', 'PEC', 'PEC', 'PEC', 'PEC', 'PEC'])
+```
+
+A PMC face retains tangential E unknowns and their one-sided physical mass;
+the shared curl transpose enforces zero tangential H weakly. PEC eliminates
+tangential E as before. This changes setup topology and coefficients only;
+there is no new boundary branch, ghost lattice or allocation in the update loop.
+The region-to-boundary base-cell margin is unchanged.
+
+**Boundary planes are the physical outer base faces.** Ordinary Yee's PMC
+planes are staggered on its magnetic lattice. Reusing identical outer line
+coordinates therefore need not describe the same physical cavity. The native
+identity control compares the half PMC domain against an independently
+reflected, full ordinary-Yee PEC domain with matched sources and observation
+positions. It does not silently count that staggered-plane offset as solver
+error. Refined half domains compare against matching two-region full domains.
+
+`Electric`/`Magnetic` remain local leaf reconstructions. At the exact PMC face,
+tangential E is a well-defined constrained-space trace; normal E and tangential
+H return unilateral cell samples, not symmetric boundary averages or imposed
+point traces. The native controls compare tangential E on the plane and all
+E/H components at three interior points. Do not place an NF2FF surface on that
+boundary or infer exact pointwise boundary fields from these reconstructions.
+Boundary-field reconstruction and broader radiation/absorber compatibility
+remain separate qualification tasks.
+
+All six face selections, mixed PEC/PMC and all-PMC analytical cavities, and a
+100k-step two-region anisotropic-ratio invariant are covered by
+`tests/test_cartesian_subgrid_boundaries.cpp`. Native tests in
+`python/Tests/Cartesian_Subgrid_Boundaries.py` cover both half-domain sides
+along X/Y/Z, with and without refinement. PML and Mur continue to fail at setup.
+This is scoped serial CPU reference functionality, not absorbing-boundary,
+antenna or GPU qualification. The six identity mirror controls agree with ordinary
+Yee within 1.31e-6 of E peaks and 7.33e-7 of H peaks (gate 2e-4). Local and
+graded mirror controls agree within 1.67e-15 of field peaks. The mixed-cavity
+frequency error decreases from 0.2553% to 0.0640% on doubling base resolution;
+all-PMC error decreases from 0.8569% to 0.2164%. The 100k-step two-region
+invariant drift is 5.78e-15 (gate 1e-9). These values do not establish general
+interface scattering or production performance.
+
 ## Tests and observed accuracy
 
 ```sh
@@ -391,6 +438,7 @@ build/tests/test_cartesian_subgrid_mesh --long
 build/tests/test_cartesian_subgrid_material --long
 build/tests/test_cartesian_subgrid_pec --long
 build/tests/test_cartesian_subgrid_ports --long
+build/tests/test_cartesian_subgrid_boundaries --long
 build/tests/test_cartesian_subgrid --mesh > mesh.json
 python3 python/Tests/run_testsuite.py --unittests Cartesian
 ```

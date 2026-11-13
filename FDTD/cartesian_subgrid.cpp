@@ -67,9 +67,16 @@ CartesianSubgrid::CartesianSubgrid(Index cells, Point spacing, double epsilon, d
 
 CartesianSubgrid::CartesianSubgrid(const Axes &lines, double epsilon, double permeability,
 								   const std::vector<Region> &regions, bool uniformFine,
-								   const MediumSampler &medium, const PECSelector &pec)
-	: m_Ratio{1, 1, 1}, m_Epsilon(epsilon), m_Mu(permeability), m_UniformFine(uniformFine)
+								   const MediumSampler &medium, const PECSelector &pec,
+								   const BoundaryConditions &boundaries)
+	: m_Ratio{1, 1, 1}, m_Boundaries(boundaries), m_Epsilon(epsilon), m_Mu(permeability),
+	  m_UniformFine(uniformFine)
 {
+	for (BoundaryType boundary : m_Boundaries)
+	{
+		Require(boundary == BoundaryType::PEC || boundary == BoundaryType::PMC,
+				"CartesianSubgrid: unsupported outer boundary condition");
+	}
 	Require(epsilon > 0 && std::isfinite(epsilon) && permeability > 0 && std::isfinite(permeability),
 			"CartesianSubgrid: positive finite homogeneous epsilon and mu required");
 	Require(!regions.empty() && regions.size() <= 64, "CartesianSubgrid: expected 1 through 64 regions");
@@ -173,7 +180,9 @@ bool CartesianSubgrid::Boundary(const Edge &edge) const
 {
 	for (unsigned int n = 0; n < 3; ++n)
 	{
-		if (n != unsigned(edge.axis) && (edge.lo[n] == 0 || edge.lo[n] == int(m_Ratio[n] * m_Cells[n])))
+		if (n != unsigned(edge.axis) &&
+			((edge.lo[n] == 0 && m_Boundaries[2 * n] == BoundaryType::PEC) ||
+			 (edge.lo[n] == int(m_Ratio[n] * m_Cells[n]) && m_Boundaries[2 * n + 1] == BoundaryType::PEC)))
 		{
 			return true;
 		}
@@ -412,6 +421,9 @@ void CartesianSubgrid::Build(const MediumSampler &medium, const PECSelector &pec
 			}
 		}
 	}
+	// PMC leaves tangential E free. The one-sided boundary mass and the
+	// shared curl transpose enforce zero tangential H as a natural boundary
+	// condition at the outer physical face. No ghost-field time update is added.
 	std::vector<double> mass(m_Edges.size(), 0);
 	std::map<std::pair<std::size_t, std::size_t>, double> off;
 	m_RowStart.push_back(0);

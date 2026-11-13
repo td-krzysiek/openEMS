@@ -1,6 +1,6 @@
 # Cartesian subgridding — implementation and qualification checklist
 
-Last reviewed: **12 November 2026**.
+Last reviewed: **13 November 2026**.
 
 This is the canonical detailed checklist for extending the Cartesian subgridding prototype
 to the functionality of the regular Cartesian solver. Check an item only after
@@ -27,8 +27,8 @@ separate tasks; a passing test on one engine does not qualify another engine.
   the recorded runs summarized in the numerical documentation, not CI coverage
   of every platform or engine.
 - Current capability is a **serial CPU numerical reference**, with homogeneous
-  lossless background, cell-aligned isotropic lossless material boxes and PEC
-  outer walls. Internal PEC boxes/sheets and axis-aligned cylinders/shells have
+  lossless background, cell-aligned isotropic lossless material boxes and PEC/PMC
+  outer faces. Internal PEC boxes/sheets and axis-aligned cylinders/shells have
   scoped geometry, contact and numerical controls. One-edge positive resistive
   ports and local U/I integration have short two-port CPU controls.
   It is not an antenna-ready solver.
@@ -155,7 +155,12 @@ material/interface placements remain open.
 
 ## 4. Boundaries and radiation postprocessing
 
-- [ ] **B01** Implement and test PMC and supported symmetry boundaries.
+- [x] **B01** Implement and test PMC and supported symmetry boundaries.
+  Scoped serial CPU reference: physical-face weak PMC, mixed closed-cavity
+  convergence and all six mirrored-domain controls, including graded meshes.
+  Exact-face normal E/tangential H are unilateral leaf reconstructions, not
+  imposed point traces; staggered native-Yee PMC planes differ in position.
+  See [boundary contract](CARTESIAN_SUBGRID.md#outer-pecpmc-boundaries).
 - [ ] **B02** Integrate UPML and Mur boundaries. An initial requirement to keep
   refinement outside absorbing layers must be explicit and checked.
 - [ ] **B03** Measure absorbing-boundary reflection over relevant frequencies,
@@ -287,3 +292,5 @@ numerical change invalidates their prior qualification.
 | 2026-11-12 | G02; partial G01/G04/G06 | This PR, lossless-material increment | [Material/occupancy/invariant/cavity controls](tests/test_cartesian_subgrid_material.cpp), [graded native Yee](tests/test_cartesian_subgrid_mesh.cpp), [native priorities/units/guards](python/Tests/Cartesian_Subgrid_Materials.py); serial CPU, cell-aligned isotropic lossless boxes only; internal PEC and broad scattering still open |
 | 2026-11-12 | G03; extended partial G01/G04/G06 | This PR, internal-PEC increment | [Cu18 contact/PEC invariant/cavity/native-Yee controls](tests/test_cartesian_subgrid_pec.cpp), [native integration and guards](python/Tests/Cartesian_Subgrid_PEC.py); serial CPU, aligned boxes/sheets and sampled axial cylinders/shells; not physical-port, broad scattering or GPU qualification |
 | 2026-11-12 | P02 scoped; partial P01/P03/P05 | This PR, physical-port increment (parent `4186af8`) | [Core power/integral controls](tests/test_cartesian_subgrid_ports.cpp), [native two-port comparisons](python/Tests/Cartesian_Subgrid_Ports.py), [contract and numerical results](CARTESIAN_SUBGRID.md#local-resistors-and-ui-integration); one independent native R edge, serial CPU; broader ports remain open |
+
+| 2026-11-13 | B01 scoped PMC/symmetry | This PR, PMC boundary increment (parent `19dd0f1`) | [Core cavity/energy/face controls](tests/test_cartesian_subgrid_boundaries.cpp), [native mirror-domain controls](python/Tests/Cartesian_Subgrid_Boundaries.py), [boundary planes and reconstruction limits](CARTESIAN_SUBGRID.md#outer-pecpmc-boundaries); serial CPU only. PML/NF2FF/GPU remain open. |

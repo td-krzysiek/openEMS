@@ -12,6 +12,7 @@ set(TESTS
   test_cartesian_subgrid_material
   test_cartesian_subgrid_pec
   test_cartesian_subgrid_ports
+  test_cartesian_subgrid_boundaries
 )
 
 foreach(test ${TESTS})

@@ -25,6 +25,13 @@ class CartesianSubgrid
 	using Index = std::array<unsigned int, 3>;
 	using Axes = std::array<std::vector<double>, 3>;
 	using Field = std::function<double(unsigned int, const Point &)>;
+	enum class BoundaryType
+	{
+		PEC,
+		PMC
+	};
+	//! X-/X+/Y-/Y+/Z-/Z+; value initialization retains PEC on every face.
+	using BoundaryConditions = std::array<BoundaryType, 6>;
 	struct Box
 	{
 		Index start;
@@ -87,7 +94,8 @@ class CartesianSubgrid
 					 const std::vector<Region> &regions, bool uniformFine = false);
 	CartesianSubgrid(const Axes &lines, double epsilon, double permeability,
 					 const std::vector<Region> &regions, bool uniformFine = false,
-					 const MediumSampler &medium = MediumSampler(), const PECSelector &pec = PECSelector());
+					 const MediumSampler &medium = MediumSampler(), const PECSelector &pec = PECSelector(),
+					 const BoundaryConditions &boundaries = BoundaryConditions{});
 	//! Actual local edge classification, including dependent interface traces.
 	bool LeafEdgeIsPEC(std::size_t leaf, unsigned int axis, unsigned int first, unsigned int second) const;
 	std::size_t PECTraceCount() const
@@ -199,6 +207,7 @@ class CartesianSubgrid
 	Index m_Ratio;
 	Axes m_Lines;
 	std::vector<Region> m_Regions;
+	BoundaryConditions m_Boundaries;
 	double m_Epsilon;
 	double m_Mu;
 	bool m_UniformFine;

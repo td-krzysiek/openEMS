@@ -217,9 +217,9 @@ void Operator_CartesianSubgrid::SetBoundaryCondition(int *conditions)
 {
 	for (int i = 0; i < 6; ++i)
 	{
-		if (conditions[i] != 0)
+		if (conditions[i] != 0 && conditions[i] != 1)
 		{
-			throw std::invalid_argument("CartesianSubgrid: only outer PEC boundaries are supported");
+			throw std::invalid_argument("CartesianSubgrid: only outer PEC/PMC boundaries are supported");
 		}
 	}
 	Operator::SetBoundaryCondition(conditions);
@@ -593,9 +593,15 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 		return property && property->GetType() == CSProperties::METAL;
 	};
 	const bool hasMetal = CSX->GetQtyPrimitives(CSProperties::METAL) != 0;
+	CartesianSubgrid::BoundaryConditions boundaries;
+	for (unsigned int i = 0; i < boundaries.size(); ++i)
+	{
+		boundaries[i] =
+			m_BC[i] == 1 ? CartesianSubgrid::BoundaryType::PMC : CartesianSubgrid::BoundaryType::PEC;
+	}
 	m_Grid.reset(new CartesianSubgrid(
 		lines, GetBackgroundEpsR() * EPS0, GetBackgroundMueR() * MUE0, regions, false, sample,
-		hasMetal ? CartesianSubgrid::PECSelector(pec) : CartesianSubgrid::PECSelector()));
+		hasMetal ? CartesianSubgrid::PECSelector(pec) : CartesianSubgrid::PECSelector(), boundaries));
 	if (hasMetal && m_Grid->PECTraceCount() == 0)
 	{
 		throw std::invalid_argument(
