@@ -16,6 +16,7 @@
 */
 
 #include "processfields_fd.h"
+#include "observation_profile.h"
 #include "Common/operator_base.h"
 #include "tools/vtk_file_writer.h"
 #include "tools/hdf5_file_writer.h"
@@ -111,10 +112,13 @@ int ProcessFieldsFD::Process()
 	++m_FD_SampleCount;
 	m_LastDFTStep = m_Eng_Interface->GetNumberOfTimesteps();
 	m_LastDFTTime = T;
+	const unsigned int step = m_LastDFTStep;
 
 	// summed by the engine with the same weights: the fields never leave the device
 	if (m_FieldDFT>=0)
 	{
+		ObservationProfile::Scope timing("dft_device_submit", m_Name, step,
+		    0, m_FD_Interval, m_FD_Samples.size());
 		m_Eng_Interface->AccumulateFieldDFT(m_FieldDFT, weights);
 		return GetNextInterval();
 	}
@@ -126,30 +130,53 @@ int ProcessFieldsFD::Process()
 	{
 		const float* src = (m_DumpType==H_FIELD_DUMP) ? curr : volt;
 		m_AsyncUsed = true;
-		AsyncDumps::Get().Push(this, true, [this, src, weights]()
+		AsyncDumps::Get().Push(this, true, [this, src, weights, step]()
 		{
-			m_Eng_Interface->WaitFieldSnapshot();   // the copy may still run on the device
+			{
+				ObservationProfile::Scope timing("dft_snapshot_wait", m_Name, step);
+				m_Eng_Interface->WaitFieldSnapshot();   // the copy may still run on the device
+			}
 			ArrayLib::ArrayNIJK<FDTD_FLOAT> field;
-			if (CalcField(field, src))
-				AddSample(field, weights);
+			bool calculated;
+			{
+				ObservationProfile::Scope timing("dft_extract", m_Name, step,
+				    0, m_FD_Interval, m_FD_Samples.size());
+				calculated = CalcField(field, src);
+			}
+			if (calculated)
+			{
+				AddSample(field, weights, step);
+			}
 			else
+			{
 				m_AsyncFailed = true;
+			}
+			ObservationProfile::Flush();
 		});
 		return GetNextInterval();
 	}
 
 	ArrayLib::ArrayNIJK<FDTD_FLOAT> tmp_field_td;
-	if (!CalcField(tmp_field_td))
+	bool calculated;
+	{
+		ObservationProfile::Scope timing("dft_extract", m_Name, step,
+		    0, m_FD_Interval, m_FD_Samples.size());
+		calculated = CalcField(tmp_field_td);
+	}
+	if (!calculated)
 	{
 		m_DFTFailed = true;
 		return -1;
 	}
-	AddSample(tmp_field_td, weights);
+	AddSample(tmp_field_td, weights, step);
 	return GetNextInterval();
 }
 
-void ProcessFieldsFD::AddSample(const ArrayLib::ArrayNIJK<FDTD_FLOAT>& field, const std::vector<std::complex<float>>& weights)
+void ProcessFieldsFD::AddSample(const ArrayLib::ArrayNIJK<FDTD_FLOAT>& field,
+    const std::vector<std::complex<float>>& weights, unsigned int step)
 {
+	ObservationProfile::Scope timing("dft_cpu_accumulate", m_Name, step,
+	    field.size() * sizeof(FDTD_FLOAT), m_FD_Interval, m_FD_Samples.size());
 	const FDTD_FLOAT* field_td = field.data();
 	for (size_t n = 0; n<m_FD_Samples.size(); ++n)
 	{

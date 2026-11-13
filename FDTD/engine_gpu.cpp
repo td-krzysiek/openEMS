@@ -19,6 +19,7 @@
 #include <stdexcept>
 
 #include "engine_gpu.h"
+#include "Common/observation_profile.h"
 #include "gpu_backend.h"
 #include "engine_subgrid.h"
 #include "extensions/engine_extension.h"
@@ -165,7 +166,11 @@ void Engine_GPU::VoltagesToHost()
 	if (m_SharedMemory)
 		m_Backend->Synchronize();
 	else
+	{
+		ObservationProfile::Scope timing("gpu_full_download_E", "gpu_host_mirror", numTS,
+		    volt_ptr->size() * sizeof(FDTD_FLOAT), 0, 0, !m_FieldsOnHost);
 		m_Backend->DownloadVoltages(*volt_ptr);
+	}
 	m_StaleVolt.stale = false;
 	m_StaleVolt.lines.clear();
 }
@@ -175,7 +180,11 @@ void Engine_GPU::CurrentsToHost()
 	if (m_SharedMemory)
 		m_Backend->Synchronize();
 	else
+	{
+		ObservationProfile::Scope timing("gpu_full_download_H", "gpu_host_mirror", numTS,
+		    curr_ptr->size() * sizeof(FDTD_FLOAT), 0, 0, !m_FieldsOnHost);
 		m_Backend->DownloadCurrents(*curr_ptr);
+	}
 	m_StaleCurr.stale = false;
 	m_StaleCurr.lines.clear();
 }

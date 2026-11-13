@@ -16,6 +16,10 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Added
 
+- Optional host-wall observation timing (`OPENEMS_OBSERVATION_PROFILE`) records
+  full GPU field downloads, surface extraction and CPU DFT accumulation without
+  adding device synchronization or changing sampling.
+
 - Optional borrowed pinned host payloads for local asynchronous HIP domains
   (`OPENEMS_DOMAIN_HOST_BUFFERS=borrowed`) remove intermediate CPU halo copies.
   The default remains `copy`; rebuild core and plugins together.
