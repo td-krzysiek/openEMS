@@ -29,7 +29,8 @@ def compare(folder, reference):
             for key, value in before['FieldData/FD'].items():
                 a, b = after['FieldData/FD'][key][:], value[:]
                 assert a.shape == b.shape and np.isfinite(a).all() and np.isfinite(b).all()
-                scale = max(float(abs(b).max()), 1e-30)
+                scale = float(abs(b).max())
+                assert scale > 1e-30, (path.name, key, 'inactive field control')
                 error = float(abs(a-b).max())/scale
                 assert error <= 1e-6, (path.name, key, error)
                 errors.append(error)
@@ -38,7 +39,9 @@ def compare(folder, reference):
             continue
         a, b = [np.loadtxt(p, comments='%', ndmin=2) for p in [folder/path.name, path]]
         assert a.shape == b.shape and np.array_equal(a[:, 0], b[:, 0])
-        error = float(abs(a[:, 1:]-b[:, 1:]).max())/max(float(abs(b[:, 1:]).max()), 1e-30)
+        scale = float(abs(b[:, 1:]).max())
+        assert scale > 1e-30, (path.name, 'inactive probe control')
+        error = float(abs(a[:, 1:]-b[:, 1:]).max())/scale
         assert error <= 1e-6, (path.name, error)
         probes.append(error)
     assert errors and probes
