@@ -80,7 +80,9 @@ public:
 			<< ",\"warmup_steps\":" << warmup << ",\"repartition_during_run\":false,\"grid\":["
 			<< plan.Shape().nx << ',' << plan.Shape().ny << ',' << plan.Shape().nz
 			<< "],\"halo_mode\":" << Quote(std::getenv("OPENEMS_DOMAIN_HALOS") ?
-			    std::getenv("OPENEMS_DOMAIN_HALOS") : "serial") << ",\"domains\":[";
+			    std::getenv("OPENEMS_DOMAIN_HALOS") : "serial")
+			<< ",\"host_buffer_mode\":" << Quote(std::getenv("OPENEMS_DOMAIN_HOST_BUFFERS") ?
+			    std::getenv("OPENEMS_DOMAIN_HOST_BUFFERS") : "copy") << ",\"domains\":[";
 		for (size_t i = 0; i < devices.size(); ++i)
 		{
 			const auto& domain = plan.Domains()[i];

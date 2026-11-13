@@ -69,3 +69,38 @@ patch reflection at1e-4 absolute; record actual errors. Thin ownership tests
 include a one-line domain. Benchmarks rotate serial/async/overlap order on one
 machine. Logical-device runs do not establish physical multi-GPU performance.
 No speedup is claimed before physical-device qualification and measurement.
+
+## Borrowed local host payloads
+
+With a newly rebuilt core and HIP plugin, an additional opt-in removes the
+three intermediate CPU copies in the local transport:
+
+```sh
+OPENEMS_DOMAIN_HALOS=overlap OPENEMS_DOMAIN_HOST_BUFFERS=borrowed \
+  openEMS model.xml --engine=gpu --gpu-devices=0,1
+```
+
+`OPENEMS_DOMAIN_HOST_BUFFERS=copy` is the unchanged default and comparison
+path. Borrowing requires `async` or `overlap` and a capable pinned adapter;
+unsupported requests fail explicitly. It retains both GPU-to-host and
+host-to-GPU DMA, every existing event dependency and full-step barrier.
+No P2P or new numerical kernel is introduced. Profile headers additionally
+record `host_buffer_mode`.
+
+At setup, send payloads reference producer staging with shared ownership;
+opted-in local receivers adopt that view after producer completion. Their
+native upload reads the same pinned memory. The destination adapter retains
+its owner until the DMA queue drains, including destruction or enqueue failure.
+The next producer write remains behind the existing exchange completion.
+No new allocation is performed in the timestep loop for these views.
+Ordinary owned buffers and MPI retain their packed FP32 copy/wire behavior.
+Rebuild core/plugins together; this changes their internal interfaces.
+
+`test_domain_runtime` checks delayed visibility, pointer identity, retained
+ownership, non-opted copy behavior and failure. `test_domain_fields` checks
+borrowed two/five-domain fields, thin and unequal ownership and a broken-halo
+negative control. `test_domain_copy <fixture.xml> hip` checks pinned upload
+lifetime and destruction before an explicit wait, for E/H and native domains.
+Run `tests/manual/local_halo_buffers.py` for physical-device fields, patch
+reflection and an optional interleaved copy/borrowed benchmark. No numerical or
+speed qualification of a project antenna follows from these small controls.

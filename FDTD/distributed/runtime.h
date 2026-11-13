@@ -3,6 +3,7 @@
 #define OPENEMS_DISTRIBUTED_RUNTIME_H
 
 #include "domain_plan.h"
+#include "host_samples.h"
 #include <functional>
 #include <map>
 #include <memory>
@@ -30,7 +31,7 @@ CompletionPtr Completed();
 
 // First wire contract: packed tangential FP32 host samples, component-major.
 // Adapters own native device storage and must bridge their own queue events.
-typedef std::shared_ptr<std::vector<float>> HostBuffer;
+typedef std::shared_ptr<HostSamples> HostBuffer;
 
 class HaloTransport
 {
@@ -97,6 +98,11 @@ public:
 	virtual uint32_t Id() const = 0;
 	virtual double Timestep() const = 0;
 	virtual CompletionPtr Update(FieldPhase phase, uint64_t step) = 0;
+	// Called once during exchange setup, never in the timestep loop.
+	virtual HostBuffer CreateHaloBuffer(const HaloRecipe &recipe, bool)
+	{
+		return std::make_shared<HostSamples>(recipe.Samples());
+	}
 	virtual CompletionPtr Pack(const HaloRecipe&, HostBuffer) = 0;
 	virtual CompletionPtr Unpack(const HaloRecipe&, HostBuffer) = 0;
 	virtual bool CanOverlapCurrentInterior() const

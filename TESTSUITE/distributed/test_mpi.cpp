@@ -92,7 +92,7 @@ int main(int argc, char** argv)
 			if (argc > 1 && std::string(argv[1]) == "--fail-epoch")
 			{
 				const auto& recipe = p.Halos()[2];
-				auto buffer = std::make_shared<std::vector<float>>(recipe.Samples());
+				auto buffer = std::make_shared<HostSamples>(recipe.Samples());
 				MessageId id = { { 7, uint64_t(rank == 0 ? 9 : 8), FieldPhase::Voltage },
 					recipe.channel,
 					recipe.source,

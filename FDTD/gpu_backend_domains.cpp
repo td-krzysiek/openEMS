@@ -81,7 +81,7 @@ public:
 private:
 	void Finish()
 	{
-		if (!m_Done && m_Download)
+		if (!m_Done && m_Download && m_Host->data() != m_Native->Data())
 		{
 			std::copy(m_Native->Data(), m_Native->Data() + m_Host->size(), m_Host->begin());
 		}
@@ -95,10 +95,10 @@ private:
 class BackendExecutor : public DomainExecutor
 {
 public:
-	BackendExecutor(
-		Domain domain, GPU_Backend* backend, double timestep, DomainPerformance* profile,
-		const std::vector<HaloRecipe>& recipes, bool async)
-		: m_Domain(domain), m_Backend(backend), m_Profile(profile), m_Timestep(timestep)
+	BackendExecutor(Domain domain, GPU_Backend* backend, double timestep, DomainPerformance* profile,
+	    const std::vector<HaloRecipe>& recipes, bool async, bool borrowed)
+		: m_Domain(domain), m_Backend(backend), m_Profile(profile), m_Timestep(timestep),
+		  m_Borrowed(borrowed)
 	{
 		if (async)
 		{
@@ -106,8 +106,8 @@ public:
 			{
 				if (recipe.source == Id() || recipe.destination == Id())
 				{
-					std::unique_ptr<GPU_HaloBuffer> buffer(backend->NewHaloBuffer(recipe.Samples()));
-					if (!buffer)
+					std::shared_ptr<GPU_HaloBuffer> buffer(backend->NewHaloBuffer(recipe.Samples()));
+					if (!buffer || (borrowed && !buffer->CanUploadBorrowed()))
 					{
 						throw std::runtime_error("selected backend has no asynchronous halo adapter");
 					}
@@ -157,6 +157,20 @@ public:
 		}
 		return std::make_shared<BackendCompletion>(m_Backend, m_Profile, Id());
 	}
+	HostBuffer CreateHaloBuffer(const HaloRecipe &recipe, bool sending) override
+	{
+		if (m_Borrowed && sending)
+		{
+			auto buffer = m_Buffers.at(recipe.channel);
+			return std::make_shared<HostSamples>(recipe.Samples(), buffer->Data(), buffer);
+		}
+		auto values = std::make_shared<HostSamples>(recipe.Samples());
+		if (m_Borrowed)
+		{
+			values->AllowBorrowing();
+		}
+		return values;
+	}
 	CompletionPtr Pack(const HaloRecipe& recipe, HostBuffer values) override
 	{
 		const bool sampled = m_Profile && m_Profile->Active();
@@ -199,10 +213,18 @@ public:
 		if (!m_Buffers.empty())
 		{
 			auto* buffer = m_Buffers.at(recipe.channel).get();
-			std::copy(values->begin(), values->end(), buffer->Data());
 			const size_t offsets[2] = { m_Domain.LocalIndex(1, recipe.destination_x, 0, 0),
 				m_Domain.LocalIndex(2, recipe.destination_x, 0, 0) };
-			buffer->Upload(recipe.phase == FieldPhase::Current, offsets, recipe.plane_samples);
+			if (values->Owner())
+			{
+				buffer->UploadBorrowed(recipe.phase == FieldPhase::Current, offsets, recipe.plane_samples,
+									   values->data(), values->Owner());
+			}
+			else
+			{
+				std::copy(values->begin(), values->end(), buffer->Data());
+				buffer->Upload(recipe.phase == FieldPhase::Current, offsets, recipe.plane_samples);
+			}
 			if (sampled)
 			{
 				m_Profile->Host(Id(), DomainPerformance::Unpack, started, values->size() * sizeof(float));
@@ -234,7 +256,8 @@ private:
 	GPU_Backend* m_Backend;
 	DomainPerformance* m_Profile;
 	double m_Timestep;
-	std::map<uint32_t, std::unique_ptr<GPU_HaloBuffer>> m_Buffers;
+	bool m_Borrowed;
+	std::map<uint32_t, std::shared_ptr<GPU_HaloBuffer>> m_Buffers;
 };
 
 class DomainExtension : public GPU_Extension
@@ -360,6 +383,7 @@ GPU_Backend_Domains::~GPU_Backend_Domains()
 {
 	// Timers belong to child contexts and must be destroyed before those contexts.
 	d->coordinator.reset();
+	d->transport.Fail("domain backend destroyed");
 	d->executors.clear();
 	d->profile.reset();
 	for (auto& backend : d->devices)
@@ -409,6 +433,14 @@ bool GPU_Backend_Domains::Init(const Operator* op)
 		throw std::invalid_argument("OPENEMS_DOMAIN_HALOS must be serial, async or overlap");
 	}
 	const bool async = mode != "serial";
+	const char *host_setting = std::getenv("OPENEMS_DOMAIN_HOST_BUFFERS");
+	const std::string host_mode = host_setting ? host_setting : "copy";
+	if ((host_mode != "copy" && host_mode != "borrowed") || (host_mode == "borrowed" && !async))
+	{
+		throw std::invalid_argument("borrowed domain host buffers require async or overlap halos");
+	}
+	const bool borrowed = host_mode == "borrowed";
+	std::cout << "Domain host buffers: " << host_mode << std::endl;
 	std::cout << "Domain halo mode: " << mode << std::endl;
 	d->plan.reset(new PartitionPlan(1, shape, cuts));
 	std::vector<GPU_Backend*> profile_devices;
@@ -426,9 +458,8 @@ bool GPU_Backend_Domains::Init(const Operator* op)
 		{
 			throw std::runtime_error("selected executor does not support domain initialization");
 		}
-		d->executors.emplace_back(
-			new BackendExecutor(domain, backend, op->GetTimestep(), d->profile.get(),
-		        d->plan->Halos(), async));
+		d->executors.emplace_back(new BackendExecutor(domain, backend, op->GetTimestep(), d->profile.get(),
+													  d->plan->Halos(), async, borrowed));
 		executors.push_back(d->executors.back().get());
 		std::cout << "Domain " << domain.id << ": owns X[" << domain.begin << "," << domain.end
 		          << "), storage nodes " << domain.StorageNodes() << ", " << backend->GetName()
