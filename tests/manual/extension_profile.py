@@ -87,6 +87,8 @@ def main():
     parser.add_argument('--devices', default='0,1')
     parser.add_argument('--cuts', required=True)
     parser.add_argument('--repeats', type=int, default=2)
+    parser.add_argument('--interval', type=int, default=128)
+    parser.add_argument('--warmup', type=int, default=128)
     args = parser.parse_args()
     root = args.output.resolve()
     root.mkdir(parents=True, exist_ok=False)
@@ -100,7 +102,8 @@ def main():
         shutil.copy2(args.input, folder/'model.xml')
         env = dict(os.environ, OPENEMS_DOMAIN_PROFILE='' if index < 0 else str(folder/'profile.jsonl'),
                    OPENEMS_DOMAIN_PROFILE_EXTENSIONS='1' if enabled else '0',
-                   OPENEMS_DOMAIN_PROFILE_WARMUP='128', OPENEMS_DOMAIN_PROFILE_INTERVAL='128')
+                   OPENEMS_DOMAIN_PROFILE_WARMUP=str(args.warmup),
+                   OPENEMS_DOMAIN_PROFILE_INTERVAL=str(args.interval))
         command = [str(args.binary.resolve()), 'model.xml', '--engine=gpu',
                    '--gpu-devices='+args.devices, '--gpu-domain-cuts='+args.cuts,
                    '--numThreads=2', '--exact-endcriteria', '-vv']
