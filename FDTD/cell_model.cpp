@@ -15,6 +15,7 @@
 *	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include "tools/setup_profile.h"
 #include "cell_model.h"
 
 #include <algorithm>
@@ -121,6 +122,7 @@ CellModel::CellModel(const Operator* op) : Op(op), m_SkipInert(false)
 
 void CellModel::Analyse(bool skipInert)
 {
+	SetupProfile::Phase setupPhase("engine.cell_model_analyse");
 	m_SkipInert = skipInert;
 	m_UPML.clear();
 	m_Fused.clear();
@@ -897,6 +899,7 @@ void CellModel::MergeParts(int f, int n, std::vector<BuildPart>& parts, const Li
 
 void CellModel::Build(int F, int S, int M)
 {
+	SetupProfile::Phase setupPhase("engine.cell_model_build");
 	m_F = F;
 	m_S = S;
 	m_M = M;

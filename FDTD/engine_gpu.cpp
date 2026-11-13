@@ -15,6 +15,7 @@
 *	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include "tools/setup_profile.h"
 #include <algorithm>
 #include <chrono>
 #include <cstdlib>
@@ -107,8 +108,11 @@ void Engine_GPU::Init()
 	{
 		const GPU_CellModel expanded(model, numLines);
 		m_NodeBytes = expanded.NodeBytes();
+		SetupProfile::Phase phase("gpu.backend_init");
 		if (!m_Backend->Init(Op, expanded))
+		{
 			throw std::runtime_error("Engine_GPU::Init: GPU backend initialization failed");
+		}
 	}
 	// allocates the host mirror and creates the extensions
 	Engine::Init();

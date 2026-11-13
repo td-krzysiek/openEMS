@@ -44,6 +44,7 @@ import numpy as np
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import cases  # noqa: E402
+from setup_profile import read_setup_profile  # noqa: E402
 
 FORMAT_VERSION = 1
 ENGINES = ('multithreaded', 'gpu', 'basic', 'cpu')
@@ -301,6 +302,12 @@ def run_once(path, xml, rundir, engine, threads, gpu_device, duration, log, env=
     run_s = float(t.group(3))
     r = {'mcells_s': float(s.group(1)), 'timesteps': int(t.group(1)), 'cells': float(t.group(2)), 'run_s': run_s,
          'wall_s': wall, 'setup_s': wall - run_s, 'rss_mib': rss, 'engine_info': engine_info(text)}
+    try:
+        profile = read_setup_profile(text)
+    except (ValueError, TypeError) as error:
+        return {'error': 'invalid setup profile in {}: {}'.format(log, error)}
+    if profile is not None:
+        r['setup_profile'] = profile
     if engine == 'gpu':
         backend = re.search(r'^Create FDTD engine \(GPU, backend: (.*)\)$', text, re.M)
         r['gpu_backend'] = backend.group(1) if backend else None
