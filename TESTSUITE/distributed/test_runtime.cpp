@@ -195,6 +195,17 @@ static void BorrowedTransfers()
 	send->Wait();
 	Require(receiver->data() == owned && receiver->at(3) == 7.f && !receiver->Owner(),
 			"non-opted receiver unexpectedly borrowed storage");
+	// Reusing a receiver for an owned payload must restore its own storage.
+	receiver->AllowBorrowing();
+	Require(receiver->Adopt(*source), "receiver did not borrow explicit storage");
+	auto ordinary = std::make_shared<HostSamples>(4, 11.f);
+	LocalHaloTransport mixed;
+	receive = mixed.Receive(Id(2), receiver);
+	send = mixed.Send(Id(2), ordinary);
+	receive->Wait();
+	send->Wait();
+	Require(receiver->data() == owned && receiver->at(0) == 11.f && storage->at(0) == 7.f,
+	    "copy fallback wrote into the previous borrowed producer");
 	Reject(
 		[&]()
 		{
