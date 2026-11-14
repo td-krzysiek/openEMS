@@ -57,16 +57,19 @@ struct Operator::GeometryLookup
 #ifdef OPENEMS_HAS_SPATIAL_INDEX
 	CSPrimitiveIndex materials;
 	CSPrimitiveIndex materialsAndMetal;
+	CSPrimitiveIndex excitations;
 
 	GeometryLookup(ContinuousStructure& csx, CSPrimitiveIndex::Config config)
 		: materials(csx, config),
-		  materialsAndMetal(csx, WithMetal(config))
+		  materialsAndMetal(csx, WithType(config,
+			static_cast<CSProperties::PropertyType>(CSProperties::MATERIAL | CSProperties::METAL))),
+		  excitations(csx, WithType(config, CSProperties::EXCITATION))
 	{
 	}
 
-	static CSPrimitiveIndex::Config WithMetal(CSPrimitiveIndex::Config config)
+	static CSPrimitiveIndex::Config WithType(CSPrimitiveIndex::Config config, CSProperties::PropertyType type)
 	{
-		config.type = static_cast<CSProperties::PropertyType>(CSProperties::MATERIAL | CSProperties::METAL);
+		config.type = type;
 		return config;
 	}
 #endif
@@ -99,7 +102,8 @@ void Operator::BuildGeometryLookup()
 	m_GeometryLookup = std::make_unique<GeometryLookup>(*CSX, config);
 	cout << "Geometry index: " << config.bins[0] << 'x' << config.bins[1] << 'x' << config.bins[2]
 		<< " buckets per type, " << m_GeometryLookup->materials.GetReferenceCount() +
-		m_GeometryLookup->materialsAndMetal.GetReferenceCount() << " references, "
+		m_GeometryLookup->materialsAndMetal.GetReferenceCount() +
+		m_GeometryLookup->excitations.GetReferenceCount() << " references, "
 		<< std::chrono::duration<double>(std::chrono::steady_clock::now()-start).count()
 		<< " s (setup only)" << endl;
 #else
@@ -1227,7 +1231,6 @@ int Operator::CalcECOperator( DebugFlags debugFlags )
 	ApplyElectricBC(PEC);
 
 	CalcPEC();
-	m_GeometryLookup.reset();
 
 	Calc_LumpedElements();
 
@@ -2044,6 +2047,10 @@ std::vector<CSPrimitives*> Operator::GetPrimitivesBoundBox(int posX, int posY, i
 		if (type == static_cast<CSProperties::PropertyType>(CSProperties::MATERIAL | CSProperties::METAL))
 		{
 			return m_GeometryLookup->materialsAndMetal.Query(boundBox);
+		}
+		if (type == CSProperties::EXCITATION)
+		{
+			return m_GeometryLookup->excitations.Query(boundBox);
 		}
 	}
 #endif

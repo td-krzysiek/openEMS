@@ -4,8 +4,12 @@
 #include "FDTD/operator.h"
 #include "FDTD/engine.h"
 #include "FDTD/excitation.h"
+#include "FDTD/extensions/operator_extension.h"
+#include "FDTD/extensions/operator_ext_upml.h"
 #include "ContinuousStructure.h"
 #include "CSPrimBox.h"
+#include "CSPrimLinPoly.h"
+#include "CSPropExcitation.h"
 #include "CSPropMaterial.h"
 #include "CSPropMetal.h"
 
@@ -100,7 +104,44 @@ struct Result
 	std::vector<float> fields;
 };
 
-Result Run(const char* option, bool fail=false)
+class LookupExtension : public Operator_Extension
+{
+public:
+	LookupExtension(TestOperator& op, ContinuousStructure& csx, bool& seen,
+		bool indexed, bool fail)
+		: Operator_Extension(&op), m_Operator(op), m_CSX(csx), m_Seen(seen),
+		  m_Indexed(indexed), m_Fail(fail)
+	{
+	}
+	bool BuildExtension() override
+	{
+		m_Seen = true;
+		Require(m_Operator.HasIndex() == m_Indexed, "index not retained through extension construction");
+		const double bounds[6] = {3.5, 4.5, 3.5, 4.5, 0, 8};
+		const double point[3] = {4, 4, 2.25};
+		for (auto type : {CSProperties::MATERIAL, CSProperties::EXCITATION,
+			static_cast<CSProperties::PropertyType>(CSProperties::MATERIAL | CSProperties::METAL)})
+		{
+			const auto actual = m_Operator.GetPrimitivesBoundBox(8, 8, -1, type);
+			const auto legacy = m_CSX.GetPrimitivesByBoundBox(bounds, true, type);
+			Require(m_CSX.GetPropertyByCoordPriority(point, actual, false) ==
+				m_CSX.GetPropertyByCoordPriority(point, legacy, false), "extension material winner changed");
+		}
+		if (m_Fail)
+		{
+			throw std::runtime_error("intentional extension failure");
+		}
+		return false; // Test hook only; no engine extension.
+	}
+private:
+	TestOperator& m_Operator;
+	ContinuousStructure& m_CSX;
+	bool& m_Seen;
+	bool m_Indexed;
+	bool m_Fail;
+};
+
+Result Run(const char* option, int fail=0)
 {
 	Environment(option);
 	ContinuousStructure csx;
@@ -124,6 +165,21 @@ Result Run(const char* option, bool fail=false)
 	AddBox(csx, metal, 5, {{1, 7, 1, 7, 1, 1}});
 	AddBox(csx, voidMaterial, 10, {{3, 4, 3, 4, .75, 1.25}});
 	AddBox(csx, dielectric, 5, {{2, 5, 2, 5, 3, 6}});
+	auto* polygon = new CSPrimLinPoly(csx.GetParameterSet(), metal);
+	polygon->SetNormDir(2);
+	polygon->SetElevation(2.1);
+	polygon->SetLength(.25);
+	polygon->SetPriority(6);
+	for (const auto& point : {std::array<double, 2>{{2, 2}}, {{6, 2}}, {{6, 3}},
+		{{3, 3}}, {{3, 6}}, {{2, 6}}})
+	{
+		polygon->AddCoord(point[0]);
+		polygon->AddCoord(point[1]);
+	}
+	auto* source = new CSPropExcitation(csx.GetParameterSet());
+	csx.AddProperty(source);
+	source->SetExcitType(0);
+	AddBox(csx, source, 0, {{4, 4, 4, 4, 2, 2.5}});
 	Require(csx.Update().empty(), "fixture must update");
 	Excitation excitation;
 	excitation.SetupGaussianPulse(1e9, 1e9);
@@ -131,7 +187,13 @@ Result Run(const char* option, bool fail=false)
 	op.SetEngineType(Engine::BASIC);
 	op.SetExcitationSignal(&excitation);
 	Require(op.SetGeometryCSX(&csx), "fixture grid must load");
-	op.fail = fail;
+	op.fail = fail == 1;
+	bool extensionSeen = false;
+	op.AddExtension(new LookupExtension(op, csx, extensionSeen,
+		option && std::string(option) != "0", fail == 2));
+	const int boundaries[6] = {3, 3, 3, 3, 3, 3};
+	const unsigned int widths[6] = {2, 2, 2, 2, 2, 2};
+	Require(Operator_Ext_UPML::Create_UPML(&op, boundaries, widths, ""), "UPML fixture creation failed");
 	try
 	{
 		Require(op.CalcECOperator() == 0, "setup must succeed");
@@ -140,13 +202,15 @@ Result Run(const char* option, bool fail=false)
 	catch (const std::runtime_error& error)
 	{
 		Require(!op.HasIndex(), "setup exception retained borrowed index");
-		if (fail && std::string(error.what()) == "intentional setup failure")
+		if ((fail == 1 && std::string(error.what()) == "intentional setup failure") ||
+			(fail == 2 && std::string(error.what()) == "intentional extension failure"))
 		{
 			return {};
 		}
 		throw;
 	}
 	Require(!op.HasIndex(), "index must be released before FDTD");
+	Require(extensionSeen, "extension lookup check never ran");
 	// Subsequent lookups must see geometry edits rather than stale tile lists.
 	AddBox(csx, metal, 100, {{0, 8, 0, 8, 0, 8}});
 	Require(csx.Update().empty(), "post-setup geometry must update");
@@ -220,6 +284,7 @@ int main()
 		Compare(legacy, Run("8,8,1"));
 		Compare(legacy, Run("4,4,4"));
 		Run("4,4,1", true);
+		Run("4,4,1", 2);
 #endif
 		bool rejected = false;
 		try
