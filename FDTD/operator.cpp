@@ -59,8 +59,8 @@ struct Operator::GeometryLookup
 	CSPrimitiveIndex materialsAndMetal;
 
 	GeometryLookup(ContinuousStructure& csx, CSPrimitiveIndex::Config config)
-		: materials(csx.BuildSpatialIndex(config)),
-		  materialsAndMetal(csx.BuildSpatialIndex(WithMetal(config)))
+		: materials(csx, config),
+		  materialsAndMetal(csx, WithMetal(config))
 	{
 	}
 

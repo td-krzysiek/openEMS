@@ -1,7 +1,8 @@
 # Experimental setup geometry index
 
-Requires CSXCAD with `ContinuousStructure::BuildSpatialIndex`. This is a
-C++ setup acceleration experiment, not a new geometry, XML, or physics option.
+Requires CSXCAD with the public `CSPrimitiveIndex(structure, config)` constructor.
+This is a C++ setup acceleration experiment, not a new geometry, XML, or physics
+option.
 It is off by default. Both scripting interfaces inherit the environment of
 the launched solver:
 
