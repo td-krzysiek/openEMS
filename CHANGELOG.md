@@ -16,6 +16,10 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Added
 
+- An opt-in setup geometry index (`OPENEMS_GEOMETRY_INDEX=Nx,Ny,Nz`), when
+  built with CSXCAD spatial-index support. Unset or `0` retains the existing
+  setup path; FDTD updates are unchanged.
+
 - **A GPU engine**, `--engine=gpu` (`engine='gpu'` from Python), for AMD and
   NVIDIA GPUs (HIP/CUDA) and on macOS (Metal), with Cartesian and cylindrical
   meshes and the usual extensions. `--gpu-device=N` picks one of the GPUs

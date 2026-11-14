@@ -29,6 +29,7 @@
 
 #include <algorithm>
 #include <functional>
+#include <memory>
 #include <stdexcept>
 
 class Operator_Extension;
@@ -248,6 +249,10 @@ public:
 	}
 
 protected:
+	struct GeometryLookup;
+	std::unique_ptr<GeometryLookup> m_GeometryLookup;
+	void BuildGeometryLookup();
+
 	DebugFlags m_DebugFlags = None;
 	//! use New() for creating a new Operator
 	Operator();

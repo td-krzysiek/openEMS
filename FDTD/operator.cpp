@@ -18,6 +18,14 @@
 #include <fstream>
 #include <algorithm>
 #include <stdexcept>
+#include <chrono>
+#include <cstdlib>
+#include <sstream>
+
+#if __has_include("CSPrimitiveIndex.h")
+#include "CSPrimitiveIndex.h"
+#define OPENEMS_HAS_SPATIAL_INDEX 1
+#endif
 #include "operator.h"
 #include "tools/useful.h"
 #include "engine.h"
@@ -42,6 +50,62 @@ using std::cout;
 using std::cerr;
 using std::endl;
 using std::flush;
+
+// Kept out of the public header so builds against older CSXCAD still work.
+struct Operator::GeometryLookup
+{
+#ifdef OPENEMS_HAS_SPATIAL_INDEX
+	CSPrimitiveIndex materials;
+	CSPrimitiveIndex materialsAndMetal;
+
+	GeometryLookup(ContinuousStructure& csx, CSPrimitiveIndex::Config config)
+		: materials(csx.BuildSpatialIndex(config)),
+		  materialsAndMetal(csx.BuildSpatialIndex(WithMetal(config)))
+	{
+	}
+
+	static CSPrimitiveIndex::Config WithMetal(CSPrimitiveIndex::Config config)
+	{
+		config.type = static_cast<CSProperties::PropertyType>(CSProperties::MATERIAL | CSProperties::METAL);
+		return config;
+	}
+#endif
+};
+
+void Operator::BuildGeometryLookup()
+{
+	m_GeometryLookup.reset();
+	const char* option = std::getenv("OPENEMS_GEOMETRY_INDEX");
+	if (!option || std::string(option) == "0")
+	{
+		return;
+	}
+#ifdef OPENEMS_HAS_SPATIAL_INDEX
+	CSPrimitiveIndex::Config config;
+	char comma1 = 0, comma2 = 0;
+	std::istringstream input(option);
+	if (!(input >> config.bins[0] >> comma1 >> config.bins[1] >> comma2 >> config.bins[2]) ||
+		comma1 != ',' || comma2 != ',' || !(input >> std::ws).eof())
+	{
+		throw std::invalid_argument("OPENEMS_GEOMETRY_INDEX expects positive Nx,Ny,Nz (or 0 to disable)");
+	}
+	config.type = CSProperties::MATERIAL;
+	for (int axis=0; axis<3; ++axis)
+	{
+		config.bounds[2*axis] = GetDiscLine(axis, 0);
+		config.bounds[2*axis+1] = GetDiscLine(axis, numLines[axis]-1);
+	}
+	const auto start = std::chrono::steady_clock::now();
+	m_GeometryLookup = std::make_unique<GeometryLookup>(*CSX, config);
+	cout << "Geometry index: " << config.bins[0] << 'x' << config.bins[1] << 'x' << config.bins[2]
+		<< " buckets per type, " << m_GeometryLookup->materials.GetReferenceCount() +
+		m_GeometryLookup->materialsAndMetal.GetReferenceCount() << " references, "
+		<< std::chrono::duration<double>(std::chrono::steady_clock::now()-start).count()
+		<< " s (setup only)" << endl;
+#else
+	throw std::runtime_error("OPENEMS_GEOMETRY_INDEX requires CSXCAD with CSPrimitiveIndex support");
+#endif
+}
 
 Operator* Operator::New(unsigned int numThreads)
 {
@@ -1094,6 +1158,17 @@ void Operator::Calc_ECOperatorPos(int n, unsigned int* pos)
 
 int Operator::CalcECOperator( DebugFlags debugFlags )
 {
+	// No geometry may change while the setup index is in use. Rebuild per
+	// invocation and discard on every return/exception, before FDTD begins.
+	struct ReleaseLookup
+	{
+		std::unique_ptr<GeometryLookup>& lookup;
+		~ReleaseLookup()
+		{
+			lookup.reset();
+		}
+	} releaseLookup{m_GeometryLookup};
+	BuildGeometryLookup();
 	m_DebugFlags = debugFlags;
 	Init_EC();
 	InitDataStorage();
@@ -1152,6 +1227,7 @@ int Operator::CalcECOperator( DebugFlags debugFlags )
 	ApplyElectricBC(PEC);
 
 	CalcPEC();
+	m_GeometryLookup.reset();
 
 	Calc_LumpedElements();
 
@@ -1958,6 +2034,19 @@ std::vector<CSPrimitives*> Operator::GetPrimitivesBoundBox(int posX, int posY, i
 		}
 	}
 
+#ifdef OPENEMS_HAS_SPATIAL_INDEX
+	if (m_GeometryLookup)
+	{
+		if (type == CSProperties::MATERIAL)
+		{
+			return m_GeometryLookup->materials.Query(boundBox);
+		}
+		if (type == static_cast<CSProperties::PropertyType>(CSProperties::MATERIAL | CSProperties::METAL))
+		{
+			return m_GeometryLookup->materialsAndMetal.Query(boundBox);
+		}
+	}
+#endif
 	std::vector<CSPrimitives*> vPrim = this->CSX->GetPrimitivesByBoundBox(boundBox, true, type);
 	return vPrim;
 }
