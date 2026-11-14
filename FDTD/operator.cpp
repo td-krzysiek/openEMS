@@ -58,13 +58,118 @@ struct Operator::GeometryLookup
 	CSPrimitiveIndex materials;
 	CSPrimitiveIndex materialsAndMetal;
 	CSPrimitiveIndex excitations;
+#ifdef CSXCAD_HAS_PREPARED_PRIMITIVE_GRID
+	std::array<std::array<std::unique_ptr<CSPrimitiveIndex::PreparedGrid>, 3>, 3> prepared;
+	std::array<std::size_t, 3> counts{};
+#endif
 
-	GeometryLookup(ContinuousStructure& csx, CSPrimitiveIndex::Config config)
+	GeometryLookup(ContinuousStructure& csx, CSPrimitiveIndex::Config config,
+		const Operator& op, bool prepare)
 		: materials(csx, config),
 		  materialsAndMetal(csx, WithType(config,
 			static_cast<CSProperties::PropertyType>(CSProperties::MATERIAL | CSProperties::METAL))),
 		  excitations(csx, WithType(config, CSProperties::EXCITATION))
 	{
+		if (prepare)
+		{
+#ifdef CSXCAD_HAS_PREPARED_PRIMITIVE_GRID
+			CSPrimitiveIndex::QueryRanges ranges;
+			for (int axis = 0; axis < 3; ++axis)
+			{
+				counts[axis] = op.GetNumberOfLines(axis, true);
+				for (std::size_t pos = 0; pos < counts[axis]; ++pos)
+				{
+					ranges[axis].push_back({{op.GetDiscLine(axis, pos == 0 ? 0 : pos - 1),
+						op.GetDiscLine(axis, std::min(pos + 1, counts[axis] - 1))}});
+				}
+				// Final entry represents an unrestricted axis (negative position).
+				ranges[axis].push_back({{op.GetDiscLine(axis, 0),
+					op.GetDiscLine(axis, counts[axis] - 1)}});
+			}
+			const CSPrimitiveIndex* indices[3] = {&materials, &materialsAndMetal, &excitations};
+			for (int type = 0; type < 3; ++type)
+			{
+				for (int fullAxis = 0; fullAxis < 3; ++fullAxis)
+				{
+					auto queries = ranges;
+					queries[fullAxis] = {ranges[fullAxis].back()};
+					prepared[type][fullAxis] = std::make_unique<CSPrimitiveIndex::PreparedGrid>(
+						*indices[type], queries);
+				}
+			}
+#else
+			throw std::runtime_error("Prepared geometry queries require newer CSXCAD support");
+#endif
+		}
+	}
+
+	const std::vector<CSPrimitives*>* PreparedCandidates(int posX, int posY,
+		int posZ, CSProperties::PropertyType type) const
+	{
+#ifdef CSXCAD_HAS_PREPARED_PRIMITIVE_GRID
+		int mask = -1;
+		if (type == CSProperties::MATERIAL)
+		{
+			mask = 0;
+		}
+		else if (type == static_cast<CSProperties::PropertyType>(CSProperties::MATERIAL | CSProperties::METAL))
+		{
+			mask = 1;
+		}
+		else if (type == CSProperties::EXCITATION)
+		{
+			mask = 2;
+		}
+		const int pos[3] = {posX, posY, posZ};
+		int fullAxis = -1;
+		std::array<std::size_t, 3> key{};
+		for (int axis = 0; axis < 3; ++axis)
+		{
+			if (pos[axis] < 0)
+			{
+				fullAxis = axis;
+				key[axis] = counts[axis];
+			}
+			else
+			{
+				key[axis] = static_cast<std::size_t>(pos[axis]);
+				if (key[axis] >= counts[axis])
+				{
+					return nullptr;
+				}
+			}
+		}
+		if (mask >= 0 && fullAxis >= 0 && prepared[mask][fullAxis])
+		{
+			key[fullAxis] = 0;
+			return &prepared[mask][fullAxis]->GetCandidates(key[0], key[1], key[2]);
+		}
+#endif
+		return nullptr;
+	}
+
+	void PrintPreparedSize() const
+	{
+#ifdef CSXCAD_HAS_PREPARED_PRIMITIVE_GRID
+		std::size_t bytes = 0, lists = 0, references = 0;
+		for (const auto& type : prepared)
+		{
+			for (const auto& grid : type)
+			{
+				if (grid)
+				{
+					bytes += grid->GetMappingBytes();
+					lists += grid->GetListCount();
+					references += grid->GetReferenceCount();
+				}
+			}
+		}
+		if (bytes)
+		{
+			cout << "Prepared geometry: " << bytes << " mapping bytes, " << lists
+				<< " unique lists, " << references << " primitive references" << endl;
+		}
+#endif
 	}
 
 	static CSPrimitiveIndex::Config WithType(CSPrimitiveIndex::Config config, CSProperties::PropertyType type)
@@ -85,12 +190,13 @@ void Operator::BuildGeometryLookup()
 	}
 #ifdef OPENEMS_HAS_SPATIAL_INDEX
 	CSPrimitiveIndex::Config config;
+	const bool prepare = std::string(option) == "prepared";
 	char comma1 = 0, comma2 = 0;
 	std::istringstream input(option);
-	if (!(input >> config.bins[0] >> comma1 >> config.bins[1] >> comma2 >> config.bins[2]) ||
-		comma1 != ',' || comma2 != ',' || !(input >> std::ws).eof())
+	if (!prepare && (!(input >> config.bins[0] >> comma1 >> config.bins[1] >> comma2 >> config.bins[2]) ||
+		comma1 != ',' || comma2 != ',' || !(input >> std::ws).eof()))
 	{
-		throw std::invalid_argument("OPENEMS_GEOMETRY_INDEX expects positive Nx,Ny,Nz (or 0 to disable)");
+		throw std::invalid_argument("OPENEMS_GEOMETRY_INDEX expects positive Nx,Ny,Nz, prepared, or 0");
 	}
 	config.type = CSProperties::MATERIAL;
 	for (int axis=0; axis<3; ++axis)
@@ -99,13 +205,14 @@ void Operator::BuildGeometryLookup()
 		config.bounds[2*axis+1] = GetDiscLine(axis, numLines[axis]-1);
 	}
 	const auto start = std::chrono::steady_clock::now();
-	m_GeometryLookup = std::make_unique<GeometryLookup>(*CSX, config);
+	m_GeometryLookup = std::make_unique<GeometryLookup>(*CSX, config, *this, prepare);
 	cout << "Geometry index: " << config.bins[0] << 'x' << config.bins[1] << 'x' << config.bins[2]
 		<< " buckets per type, " << m_GeometryLookup->materials.GetReferenceCount() +
 		m_GeometryLookup->materialsAndMetal.GetReferenceCount() +
 		m_GeometryLookup->excitations.GetReferenceCount() << " references, "
 		<< std::chrono::duration<double>(std::chrono::steady_clock::now()-start).count()
 		<< " s (setup only)" << endl;
+	m_GeometryLookup->PrintPreparedSize();
 #else
 	throw std::runtime_error("OPENEMS_GEOMETRY_INDEX requires CSXCAD with CSPrimitiveIndex support");
 #endif
@@ -888,7 +995,8 @@ void Operator::DumpMaterial2File(std::string filename)
 	{
 		for (pos[1]=0; pos[1]<numLines[1]; ++pos[1])
 		{
-			std::vector<CSPrimitives*> vPrims = this->GetPrimitivesBoundBox(
+			std::vector<CSPrimitives*> vPrimsScratch;
+			const auto& vPrims = this->GetPrimitivesBoundBoxView(vPrimsScratch,
 				pos[0], pos[1], -1,
 				CSProperties::MATERIAL
 			);
@@ -2019,6 +2127,24 @@ void Operator::CalcStartStopLines(unsigned int &numThreads, std::vector<unsigned
 	}
 }
 
+const std::vector<CSPrimitives*>& Operator::GetPrimitivesBoundBoxView(
+	std::vector<CSPrimitives*>& scratch, int posX, int posY, int posZ,
+	CSProperties::PropertyType type) const
+{
+#ifdef OPENEMS_HAS_SPATIAL_INDEX
+	if (m_GeometryLookup)
+	{
+		const auto* candidates = m_GeometryLookup->PreparedCandidates(posX, posY, posZ, type);
+		if (candidates)
+		{
+			return *candidates;
+		}
+	}
+#endif
+	scratch = GetPrimitivesBoundBox(posX, posY, posZ, type);
+	return scratch;
+}
+
 std::vector<CSPrimitives*> Operator::GetPrimitivesBoundBox(int posX, int posY, int posZ, CSProperties::PropertyType type) const
 {
 	double boundBox[6];
@@ -2068,7 +2194,8 @@ void Operator::Calc_EC_Range(unsigned int xStart, unsigned int xStop)
 	{
 		for (pos[1]=0; pos[1]<numLines[1]; ++pos[1])
 		{
-			std::vector<CSPrimitives*> vPrims = this->GetPrimitivesBoundBox(
+			std::vector<CSPrimitives*> vPrimsScratch;
+			const auto& vPrims = this->GetPrimitivesBoundBoxView(vPrimsScratch,
 				pos[0], pos[1], -1,
 				CSProperties::MATERIAL
 			);
@@ -2301,7 +2428,8 @@ void Operator::CalcPEC_Range(unsigned int startX, unsigned int stopX, unsigned i
 	{
 		for (pos[1]=0; pos[1]<numLines[1]; ++pos[1])
 		{
-			std::vector<CSPrimitives*> vPrims = this->GetPrimitivesBoundBox(
+			std::vector<CSPrimitives*> vPrimsScratch;
+			const auto& vPrims = this->GetPrimitivesBoundBoxView(vPrimsScratch,
 				pos[0], pos[1], -1,
 				(CSProperties::PropertyType)(CSProperties::MATERIAL | CSProperties::METAL)
 			);

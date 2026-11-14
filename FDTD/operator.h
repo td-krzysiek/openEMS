@@ -217,6 +217,9 @@ public:
 	virtual double CalcNumericPhaseVelocity(unsigned int start[3], unsigned int stop[3], double propDir[3], float freq) const;
 
 	virtual std::vector<CSPrimitives*> GetPrimitivesBoundBox(int posX, int posY, int posZ, CSProperties::PropertyType type=CSProperties::ANY) const;
+	const std::vector<CSPrimitives*>& GetPrimitivesBoundBoxView(
+		std::vector<CSPrimitives*>& scratch, int posX, int posY, int posZ,
+		CSProperties::PropertyType type=CSProperties::ANY) const override;
 
 	//! Number of threads that build the operator, 0 (the default) for AvailableThreads(). More than AvailableThreads() are limited to it.
 	void SetNumThreads(unsigned int numThreads) {m_numThreads = numThreads;}

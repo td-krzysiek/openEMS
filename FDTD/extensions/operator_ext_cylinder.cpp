@@ -61,7 +61,8 @@ bool Operator_Ext_Cylinder::BuildExtension()
 	double inEC[4];
 	double dT = m_Op->GetTimestep();
 	pos[0]=0;
-	std::vector<CSPrimitives*> vPrims_metal = m_Op->GetPrimitivesBoundBox(
+	std::vector<CSPrimitives*> vPrims_metalScratch;
+	const auto& vPrims_metal = m_Op->GetPrimitivesBoundBoxView(vPrims_metalScratch,
 		pos[0], -1, -1,
 		(CSProperties::PropertyType)(CSProperties::MATERIAL | CSProperties::METAL)
 	);
@@ -70,7 +71,8 @@ bool Operator_Ext_Cylinder::BuildExtension()
 	{
 		double C=0;
 		double G=0;
-		std::vector<CSPrimitives*> vPrims_mat = m_Op->GetPrimitivesBoundBox(
+		std::vector<CSPrimitives*> vPrims_matScratch;
+		const auto& vPrims_mat = m_Op->GetPrimitivesBoundBoxView(vPrims_matScratch,
 			pos[0], -1, pos[2],
 			CSProperties::MATERIAL
 		);

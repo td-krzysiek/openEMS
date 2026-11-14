@@ -12,6 +12,9 @@
 #include "CSPropExcitation.h"
 #include "CSPropMaterial.h"
 #include "CSPropMetal.h"
+#if __has_include("CSPrimitiveIndex.h")
+#include "CSPrimitiveIndex.h"
+#endif
 
 #include <array>
 #include <cmath>
@@ -108,9 +111,9 @@ class LookupExtension : public Operator_Extension
 {
 public:
 	LookupExtension(TestOperator& op, ContinuousStructure& csx, bool& seen,
-		bool indexed, bool fail)
+		bool indexed, bool fail, bool prepared)
 		: Operator_Extension(&op), m_Operator(op), m_CSX(csx), m_Seen(seen),
-		  m_Indexed(indexed), m_Fail(fail)
+		  m_Indexed(indexed), m_Fail(fail), m_Prepared(prepared)
 	{
 	}
 	bool BuildExtension() override
@@ -127,6 +130,41 @@ public:
 			Require(m_CSX.GetPropertyByCoordPriority(point, actual, false) ==
 				m_CSX.GetPropertyByCoordPriority(point, legacy, false), "extension material winner changed");
 		}
+		if (m_Prepared)
+		{
+			// All built-in line/plane orientations, boundaries and full-axis sentinels.
+			for (auto type : {CSProperties::MATERIAL, CSProperties::EXCITATION,
+				static_cast<CSProperties::PropertyType>(CSProperties::MATERIAL | CSProperties::METAL)})
+			{
+				for (int x : {-1, 0, 8, 16})
+				{
+					for (int y : {-1, 0, 8, 16})
+					{
+						for (int z : {-1, 0, 8, 16})
+						{
+							std::vector<CSPrimitives*> scratch{nullptr};
+							const auto& view = m_Operator.GetPrimitivesBoundBoxView(scratch, x, y, z, type);
+							Require(view == m_Operator.GetPrimitivesBoundBox(x, y, z, type),
+								"prepared setup list differs from exact index query");
+							if (x < 0 || y < 0 || z < 0)
+							{
+								Require(&view != &scratch && scratch.size() == 1 && !scratch.front(),
+									"prepared setup query wrote scratch or returned a copy");
+								Require(&view == &m_Operator.GetPrimitivesBoundBoxView(scratch, x, y, z, type),
+									"prepared setup vector identity is unstable");
+							}
+							else
+							{
+								Require(&view == &scratch, "unregistered point-box query missed fallback");
+							}
+						}
+					}
+				}
+			}
+			std::vector<CSPrimitives*> scratch;
+			Require(&m_Operator.GetPrimitivesBoundBoxView(scratch, 8, 8, -1, CSProperties::METAL) == &scratch,
+				"unsupported property mask missed legacy fallback");
+		}
 		if (m_Fail)
 		{
 			throw std::runtime_error("intentional extension failure");
@@ -139,6 +177,7 @@ private:
 	bool& m_Seen;
 	bool m_Indexed;
 	bool m_Fail;
+	bool m_Prepared;
 };
 
 Result Run(const char* option, int fail=0)
@@ -190,7 +229,8 @@ Result Run(const char* option, int fail=0)
 	op.fail = fail == 1;
 	bool extensionSeen = false;
 	op.AddExtension(new LookupExtension(op, csx, extensionSeen,
-		option && std::string(option) != "0", fail == 2));
+		option && std::string(option) != "0", fail == 2,
+		option && std::string(option) == "prepared"));
 	const int boundaries[6] = {3, 3, 3, 3, 3, 3};
 	const unsigned int widths[6] = {2, 2, 2, 2, 2, 2};
 	Require(Operator_Ext_UPML::Create_UPML(&op, boundaries, widths, ""), "UPML fixture creation failed");
@@ -285,6 +325,11 @@ int main()
 		Compare(legacy, Run("4,4,4"));
 		Run("4,4,1", true);
 		Run("4,4,1", 2);
+#ifdef CSXCAD_HAS_PREPARED_PRIMITIVE_GRID
+		Compare(legacy, Run("prepared"));
+		Run("prepared", 1);
+		Run("prepared", 2);
+#endif
 #endif
 		bool rejected = false;
 		try

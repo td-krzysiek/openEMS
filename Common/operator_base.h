@@ -124,6 +124,14 @@ public:
 	virtual bool GetCellCenterMaterialAvgCoord(const int pos[3], double coord[3]) const = 0;
 
 	virtual std::vector<CSPrimitives*> GetPrimitivesBoundBox(int posX, int posY, int posZ, CSProperties::PropertyType type=CSProperties::ANY) const = 0;
+	//! Borrow fixed setup candidates, or use caller-owned storage for the legacy path.
+	virtual const std::vector<CSPrimitives*>& GetPrimitivesBoundBoxView(
+		std::vector<CSPrimitives*>& scratch, int posX, int posY, int posZ,
+		CSProperties::PropertyType type=CSProperties::ANY) const
+	{
+		scratch = GetPrimitivesBoundBox(posX, posY, posZ, type);
+		return scratch;
+	}
 
 	//! Set the background material (default is vacuum)
 	virtual void SetBackgroundMaterial(double epsR=0, double mueR=0, double kappa=0, double sigma=0, double density=0);

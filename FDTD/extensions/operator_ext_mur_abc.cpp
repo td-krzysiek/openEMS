@@ -135,7 +135,8 @@ bool Operator_Ext_Mur_ABC::BuildExtension()
 	for (pos[m_nyP]=0; pos[m_nyP]<m_numLines[0]; ++pos[m_nyP])
 	{
 		posBB[m_nyP]=pos[m_nyP];
-		std::vector<CSPrimitives*> vPrims = m_Op->GetPrimitivesBoundBox(
+		std::vector<CSPrimitives*> vPrimsScratch;
+		const auto& vPrims = m_Op->GetPrimitivesBoundBoxView(vPrimsScratch,
 			posBB[0], posBB[1], posBB[2],
 			CSProperties::MATERIAL
 		);
