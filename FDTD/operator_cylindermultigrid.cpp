@@ -212,7 +212,8 @@ void Operator_CylinderMultiGrid::FillMissingDataStorage()
 		{
 			for (pos[1]=0; pos[1]<numLines[1]; ++pos[1])
 			{
-				std::vector<CSPrimitives*> vPrims = this->GetPrimitivesBoundBox(
+				std::vector<CSPrimitives*> vPrimsScratch;
+				const auto& vPrims = this->GetPrimitivesBoundBoxView(vPrimsScratch,
 					pos[0], pos[1], -1, CSProperties::MATERIAL
 				);
 

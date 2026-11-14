@@ -403,7 +403,8 @@ bool Operator_Ext_UPML::BuildExtension()
 			loc_pos[1] = col%m_numLines[1];
 			pos[0] = loc_pos[0] + m_StartPos[0];
 			pos[1] = loc_pos[1] + m_StartPos[1];
-			vector<CSPrimitives*> vPrims = m_Op->GetPrimitivesBoundBox(pos[0], pos[1], -1, CSProperties::MATERIAL);
+			std::vector<CSPrimitives*> vPrimsScratch;
+			const auto& vPrims = m_Op->GetPrimitivesBoundBoxView(vPrimsScratch, pos[0], pos[1], -1, CSProperties::MATERIAL);
 			for (loc_pos[2]=0; loc_pos[2]<m_numLines[2]; ++loc_pos[2])
 			{
 				pos[2] = loc_pos[2] + m_StartPos[2];

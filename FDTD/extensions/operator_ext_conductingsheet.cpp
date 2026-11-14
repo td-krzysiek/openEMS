@@ -62,7 +62,8 @@ bool Operator_Ext_ConductingSheet::BuildExtension()
 	{
 		for (pos[1]=0; pos[1]<numLines[1]; ++pos[1])
 		{
-			std::vector<CSPrimitives*> vPrims = m_Op->GetPrimitivesBoundBox(
+			std::vector<CSPrimitives*> vPrimsScratch;
+			const auto& vPrims = m_Op->GetPrimitivesBoundBoxView(vPrimsScratch,
 				pos[0], pos[1], -1,
 				(CSProperties::PropertyType)(CSProperties::MATERIAL | CSProperties::METAL)
 			);
