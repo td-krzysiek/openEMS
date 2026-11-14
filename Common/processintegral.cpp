@@ -64,6 +64,7 @@ void ProcessIntegral::InitProcess()
 	<< Op->GetDiscLine(0,stop[0])*Op->GetGridDelta() << ","
 	<< Op->GetDiscLine(1,stop[1])*Op->GetGridDelta() << ","
 	<< Op->GetDiscLine(2,stop[2])*Op->GetGridDelta() << ") m -> [" << stop[0] << "," << stop[1] << "," << stop[2] << "]" << endl;
+	file << IntegrationGeometry();
 	file << "% t/s";
 	for (int n=0;n<GetNumberOfIntegrals();++n)
 	{
@@ -110,6 +111,7 @@ void ProcessIntegral::Dump_FD_Data(double factor, string filename)
 	<< Op->GetDiscLine(0,stop[0])*Op->GetGridDelta() << ","
 	<< Op->GetDiscLine(1,stop[1])*Op->GetGridDelta() << ","
 	<< Op->GetDiscLine(2,stop[2])*Op->GetGridDelta() << ") m -> [" << stop[0] << "," << stop[1] << "," << stop[2] << "]" << endl;
+	file << IntegrationGeometry();
 	file << "% f/Hz";
 	for (int n=0;n<GetNumberOfIntegrals();++n)
 	{

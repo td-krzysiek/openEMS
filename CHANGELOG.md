@@ -16,6 +16,25 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Added
 
+- Experimental local Cartesian subgridding: configure one box with
+  `CartesianSubgridBox` or several separate boxes with `SetCartesianSubgrids`.
+  Selected cells split independently in X/Y/Z using `CartesianSubgridRatio` (powers
+  of two from 1 to 16, default 2/2/2), with compact storage and a shared timestep.
+  Each region has its own ratios; nesting, overlap and touching are rejected.
+  Nonuniform base lines are supported with physical-coordinate sampling;
+  region bounds must coincide with base lines, without geometric snapping.
+  Lossless isotropic material boxes may follow local cell boundaries, with
+  CSXCAD material priorities. A box cutting through a cell is rejected.
+  Internal PEC supports aligned volume/sheet boxes and axis-aligned cylinders
+  or hollow barrels with mesh-aligned ends. Unrepresentable PEC patterns at a
+  coarse/fine interface are rejected instead of closing unresolved openings.
+  The serial reference supports positive resistors on one independent local
+  edge and local voltage/current integration, with short two-port Yee controls.
+  Outer PEC/PMC combinations support closed and symmetry-plane CPU controls;
+  PMC planes lie on the physical outer base faces. First-order Mur supports
+  parallel faces with a checked unrefined, homogeneous two-cell collar;
+  adjacent Mur corners remain unsupported. Distributed/LC ports,
+  PML and GPU subgridding remain unsupported; `engine=basic` is required.
 - **A GPU engine**, `--engine=gpu` (`engine='gpu'` from Python), for AMD and
   NVIDIA GPUs (HIP/CUDA) and on macOS (Metal), with Cartesian and cylindrical
   meshes and the usual extensions. `--gpu-device=N` picks one of the GPUs

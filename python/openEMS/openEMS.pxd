@@ -37,6 +37,10 @@ cdef extern from "openEMS/openems.h":
 
         void SetCylinderCoords(bool val)
         void SetupCylinderMultiGrid(string val)
+        void SetupCartesianSubgrid(vector[double] box) except +
+        void SetupCartesianSubgridRatio(vector[unsigned int] ratio) except +
+        void SetupCartesianSubgrids(vector[vector[double]] boxes, vector[vector[unsigned int]] ratios) except +
+        void AddCartesianSubgrid(vector[double] box, vector[unsigned int] ratio) except +
 
         void SetTimeStepMethod(int val)
         void SetTimeStep(double val)
@@ -63,7 +67,7 @@ cdef extern from "openEMS/openems.h":
         void RunFDTD()  nogil except +
 
         bool Write2XML(string file)
-        bool ReadFromXML(string file)
+        bool ReadFromXML(string file) except +
 
         @staticmethod
         void WelcomeScreen()

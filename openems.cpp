@@ -24,10 +24,13 @@
 #include "tools/denormal.h"
 #include "FDTD/operator_cylinder.h"
 #include "FDTD/operator_cylindermultigrid.h"
+#include "FDTD/operator_cartesiansubgrid.h"
+#include <cmath>
 #include "FDTD/engine_sse.h"
 #include "FDTD/extensions/operator_ext_excitation.h"
 #include "FDTD/extensions/operator_ext_tfsf.h"
 #include "FDTD/extensions/operator_ext_mur_abc.h"
+#include "FDTD/extensions/operator_ext_cartesiansubgrid_mur.h"
 #include "FDTD/extensions/operator_ext_upml.h"
 #include "FDTD/extensions/operator_ext_lorentzmaterial.h"
 #include "FDTD/extensions/operator_ext_debyematerial.h"
@@ -129,6 +132,10 @@ void openEMS::Reset()
 
 	CylinderCoords = false;
 	m_CC_MultiGrid.clear();
+	m_CartesianSubgridBox.clear();
+	m_CartesianSubgridRatio = {2, 2, 2};
+	m_CartesianSubgridBoxes.clear();
+	m_CartesianSubgridRatios.clear();
 	m_CellConstantMaterial=false;
 	endCrit = 1e-6;
 	m_OverSampling = 4;
@@ -444,10 +451,22 @@ bool openEMS::SetupBoundaryConditions()
 		if (m_BC_type[n]==2) //Mur-ABC
 		{
 			FDTD_Op->SetBCSize(n, 1);
+			if (dynamic_cast<Operator_CartesianSubgrid *>(FDTD_Op))
+			{
+				auto *extension = new Operator_Ext_CartesianSubgrid_Mur(FDTD_Op, n);
+				if (m_Mur_v_ph[n] > 0)
+				{
+					extension->SetPhaseVelocity(m_Mur_v_ph[n]);
+				}
+				FDTD_Op->AddExtension(extension);
+				continue;
+			}
 			Operator_Ext_Mur_ABC* op_ext_mur = new Operator_Ext_Mur_ABC(FDTD_Op);
 			op_ext_mur->SetDirection(n/2,n%2);
 			if (m_Mur_v_ph[n]>0)
+			{
 				op_ext_mur->SetPhaseVelocity(m_Mur_v_ph[n]);
+			}
 			FDTD_Op->AddExtension(op_ext_mur);
 		}
 		if (m_BC_type[n]==3)
@@ -824,6 +843,140 @@ void openEMS::SetupCylinderMultiGrid(std::string val)
 	m_CC_MultiGrid = SplitString2Double(val,',');
 }
 
+void openEMS::SetupCartesianSubgrid(std::vector<double> box)
+{
+	if (box.size() != 6 || !std::all_of(box.begin(), box.end(), [](double v) { return std::isfinite(v); }))
+	{
+		throw std::invalid_argument("CartesianSubgrid: expected six finite box coordinates");
+	}
+	for (unsigned int n = 0; n < 3; ++n)
+	{
+		if (box[n] >= box[n + 3])
+		{
+			throw std::invalid_argument("CartesianSubgrid: box start must be below stop on every axis");
+		}
+	}
+	m_CartesianSubgridBox = box;
+	m_CartesianSubgridBoxes.clear();
+	m_CartesianSubgridRatios.clear();
+}
+
+void openEMS::SetupCartesianSubgridRatio(std::vector<unsigned int> ratio)
+{
+	if (!m_CartesianSubgridBoxes.empty())
+	{
+		throw std::invalid_argument("CartesianSubgrid: set per-region ratios with SetupCartesianSubgrids");
+	}
+	if (ratio.size() != 3)
+	{
+		throw std::invalid_argument("CartesianSubgrid: expected three axis ratios");
+	}
+	CartesianSubgrid::ValidateRatio({ratio[0], ratio[1], ratio[2]});
+	m_CartesianSubgridRatio = ratio;
+}
+
+void openEMS::SetupCartesianSubgrids(const std::vector<std::vector<double>> &boxes,
+									 const std::vector<std::vector<unsigned int>> &ratios)
+{
+	std::vector<CartesianSubgrid::Index> selected;
+	if (ratios.size() != boxes.size() || boxes.empty() || boxes.size() > 64)
+	{
+		throw std::invalid_argument("CartesianSubgrid: expected 1 through 64 boxes and matching axis ratios");
+	}
+	for (const auto &ratio : ratios)
+	{
+		if (ratio.size() != 3)
+		{
+			throw std::invalid_argument("CartesianSubgrid: expected three axis ratios per region");
+		}
+		selected.push_back({ratio[0], ratio[1], ratio[2]});
+	}
+	Operator_CartesianSubgrid::ValidateRegions(boxes, selected);
+	if (boxes.size() == 1)
+	{
+		SetupCartesianSubgrid(boxes[0]);
+		SetupCartesianSubgridRatio(ratios[0]);
+	}
+	else
+	{
+		m_CartesianSubgridBoxes = boxes;
+		m_CartesianSubgridRatios = std::move(selected);
+		m_CartesianSubgridBox.clear();
+		m_CartesianSubgridRatio = {2, 2, 2};
+	}
+}
+
+void openEMS::AddCartesianSubgrid(const std::vector<double> &box, const std::vector<unsigned int> &ratio)
+{
+	std::vector<std::vector<double>> boxes = m_CartesianSubgridBoxes;
+	std::vector<std::vector<unsigned int>> ratios;
+	for (const auto &selected : m_CartesianSubgridRatios)
+	{
+		ratios.emplace_back(selected.begin(), selected.end());
+	}
+	if (!m_CartesianSubgridBox.empty())
+	{
+		boxes.push_back(m_CartesianSubgridBox);
+		ratios.push_back(m_CartesianSubgridRatio);
+	}
+	boxes.push_back(box);
+	ratios.push_back(ratio);
+	SetupCartesianSubgrids(boxes, ratios);
+}
+
+namespace
+{
+template <typename Value> std::vector<Value> ParseSubgridValues(const char *text, std::size_t count)
+{
+	if (!text)
+	{
+		throw std::invalid_argument("CartesianSubgrid: missing box or ratio attribute");
+	}
+	std::istringstream input(text);
+	std::vector<Value> values(count);
+	for (std::size_t i = 0; i < count; ++i)
+	{
+		if (!(input >> values[i]))
+		{
+			throw std::invalid_argument("CartesianSubgrid: malformed coordinate or ratio token");
+		}
+		input >> std::ws;
+		if (i + 1 < count && input.get() != ',')
+		{
+			throw std::invalid_argument("CartesianSubgrid: expected comma-separated coordinates or ratios");
+		}
+	}
+	if (!input.eof())
+	{
+		throw std::invalid_argument("CartesianSubgrid: extra values or invalid suffix");
+	}
+	return values;
+}
+
+std::vector<unsigned int> ParseSubgridRatio(const char *text)
+{
+	const auto values = ParseSubgridValues<int>(text, 3);
+	std::vector<unsigned int> ratio(values.begin(), values.end());
+	CartesianSubgrid::ValidateRatio({ratio[0], ratio[1], ratio[2]});
+	return ratio;
+}
+
+template <typename Values> std::string SubgridValues(const Values &values)
+{
+	std::ostringstream output;
+	output << std::setprecision(17);
+	for (std::size_t i = 0; i < values.size(); ++i)
+	{
+		if (i != 0)
+		{
+			output << ',';
+		}
+		output << values[i];
+	}
+	return output.str();
+}
+} // namespace
+
 bool openEMS::SetupOperator()
 {
 	// what defaults to AvailableThreads() (GPU operator build, field dumps, SAR, nf2ff) honours numThreads
@@ -850,6 +1003,15 @@ bool openEMS::SetupOperator()
 
 	// the GPU backend first: without a usable device the operator is not worth building
 	const bool gpu = (type==Engine::GPU);
+	if ((!m_CartesianSubgridBox.empty() || !m_CartesianSubgridBoxes.empty()) &&
+		(CylinderCoords || !m_CC_MultiGrid.empty() || type != Engine::BASIC))
+	{
+		throw std::invalid_argument("CartesianSubgrid: use Cartesian coordinates and explicit engine=basic");
+	}
+	if (m_CartesianSubgridBox.empty() && m_CartesianSubgridRatio != std::vector<unsigned int>{2, 2, 2})
+	{
+		throw std::invalid_argument("CartesianSubgrid: axis ratios require a refinement box");
+	}
 	GPU_Backend* gpu_backend = NULL;
 	if (gpu)
 	{
@@ -884,6 +1046,17 @@ bool openEMS::SetupOperator()
 			cout << "Create cylindrical FDTD operator (" << name << ")" << endl;
 		}
 		FDTD_Op = op_cyl;
+	}
+	else if (!m_CartesianSubgridBoxes.empty())
+	{
+		cout << "Create experimental compact multi-region Cartesian XYZ subgrid operator" << endl;
+		FDTD_Op = Operator_CartesianSubgrid::NewRegions(m_CartesianSubgridBoxes, m_CartesianSubgridRatios);
+	}
+	else if (!m_CartesianSubgridBox.empty())
+	{
+		cout << "Create experimental compact Cartesian XYZ subgrid operator" << endl;
+		FDTD_Op = Operator_CartesianSubgrid::New(m_CartesianSubgridBox,
+				{m_CartesianSubgridRatio[0], m_CartesianSubgridRatio[1], m_CartesianSubgridRatio[2]});
 	}
 	else
 	{
@@ -986,6 +1159,50 @@ bool openEMS::Parse_XML_FDTDSetup(TiXmlElement* FDTD_Opts)
 		this->SetNumberOfTimeSteps((unsigned int)(dhelp>INT_MAX ? INT_MAX : dhelp));
 
 	int ihelp = 0;
+	if (TiXmlElement *regions = FDTD_Opts->FirstChildElement("CartesianSubgrids"))
+	{
+		if (regions->NextSiblingElement("CartesianSubgrids") || FDTD_Opts->Attribute("CartesianSubgridBox") ||
+			FDTD_Opts->Attribute("CartesianSubgridRatio"))
+		{
+			throw std::invalid_argument("CartesianSubgrid: multiple or mixed refinement definitions");
+		}
+		std::vector<std::vector<double>> boxes;
+		std::vector<std::vector<unsigned int>> ratios;
+		for (TiXmlElement *region = regions->FirstChildElement(); region; region = region->NextSiblingElement())
+		{
+			if (std::string(region->Value()) != "Region" || boxes.size() >= 64)
+			{
+				throw std::invalid_argument("CartesianSubgrid: expected at most 64 Region elements");
+			}
+			for (TiXmlAttribute *attribute = region->FirstAttribute(); attribute; attribute = attribute->Next())
+			{
+				const std::string name(attribute->Name());
+				if (name != "Box" && name != "Ratio")
+				{
+					throw std::invalid_argument("CartesianSubgrid: unknown Region attribute");
+				}
+			}
+			boxes.push_back(ParseSubgridValues<double>(region->Attribute("Box"), 6));
+			ratios.push_back(region->Attribute("Ratio") ? ParseSubgridRatio(region->Attribute("Ratio"))
+														: std::vector<unsigned int>{2, 2, 2});
+		}
+		SetupCartesianSubgrids(boxes, ratios);
+	}
+	else
+	{
+		if (const char *box = FDTD_Opts->Attribute("CartesianSubgridBox"))
+		{
+			SetupCartesianSubgrid(ParseSubgridValues<double>(box, 6));
+		}
+		if (const char *ratio = FDTD_Opts->Attribute("CartesianSubgridRatio"))
+		{
+			if (m_CartesianSubgridBox.empty())
+			{
+				throw std::invalid_argument("CartesianSubgrid: ratio requires a refinement box");
+			}
+			SetupCartesianSubgridRatio(ParseSubgridRatio(ratio));
+		}
+	}
 	FDTD_Opts->QueryIntAttribute("CylinderCoords",&ihelp);
 	if (ihelp==1)
 	{
@@ -1132,6 +1349,23 @@ bool openEMS::Write2XML(TiXmlNode* rootNode)
 
 	TiXmlElement fdtd("FDTD");
 	fdtd.SetAttribute("NumberOfTimesteps", this->NrTS);
+	if (!m_CartesianSubgridBoxes.empty())
+	{
+		TiXmlElement regions("CartesianSubgrids");
+		for (std::size_t i = 0; i < m_CartesianSubgridBoxes.size(); ++i)
+		{
+			TiXmlElement region("Region");
+			region.SetAttribute("Box", SubgridValues(m_CartesianSubgridBoxes[i]));
+			region.SetAttribute("Ratio", SubgridValues(m_CartesianSubgridRatios[i]));
+			regions.InsertEndChild(region);
+		}
+		fdtd.InsertEndChild(regions);
+	}
+	else if (!m_CartesianSubgridBox.empty())
+	{
+		fdtd.SetAttribute("CartesianSubgridBox", SubgridValues(m_CartesianSubgridBox));
+		fdtd.SetAttribute("CartesianSubgridRatio", SubgridValues(m_CartesianSubgridRatio));
+	}
 
 	if (this->CylinderCoords)
 	{

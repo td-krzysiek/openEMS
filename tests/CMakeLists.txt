@@ -7,6 +7,13 @@ set(TESTS
   test_arraylib
   test_engine_plan
   test_cell_model
+  test_cartesian_subgrid
+  test_cartesian_subgrid_mesh
+  test_cartesian_subgrid_material
+  test_cartesian_subgrid_pec
+  test_cartesian_subgrid_ports
+  test_cartesian_subgrid_boundaries
+  test_cartesian_subgrid_mur
 )
 
 foreach(test ${TESTS})

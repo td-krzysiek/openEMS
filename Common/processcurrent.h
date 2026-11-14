@@ -19,6 +19,7 @@
 #define PROCESSCURRENT_H
 
 #include "processintegral.h"
+#include <functional>
 
 class ProcessCurrent : public ProcessIntegral
 {
@@ -36,6 +37,9 @@ public:
 	virtual double CalcIntegral();
 
 protected:
+	std::string IntegrationGeometry() const override;
+	std::function<double()> m_LocalIntegral;
+	std::string m_LocalGeometry;
 };
 
 #endif // PROCESSCURRENT_H
