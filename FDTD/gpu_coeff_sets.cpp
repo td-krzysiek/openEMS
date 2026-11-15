@@ -18,6 +18,7 @@
 #include <algorithm>
 #include <cstring>
 #include <limits>
+#include <stdexcept>
 #include <unordered_map>
 #include <vector>
 
@@ -44,6 +45,15 @@ struct SetKeyHash
 		return h;
 	}
 };
+}
+
+bool GPU_UseRawMainCoefficients(const char* value)
+{
+	if (!value || std::strcmp(value, "auto") == 0)
+		return false;
+	if (std::strcmp(value, "raw") == 0)
+		return true;
+	throw std::runtime_error("OPENEMS_GPU_MAIN_COEFF must be auto or raw");
 }
 
 bool GPU_FindSets(size_t count, unsigned int width, const std::function<void(size_t, float*)>& get, GPU_CoeffSets& sets)

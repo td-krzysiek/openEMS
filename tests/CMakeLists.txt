@@ -8,6 +8,10 @@ set(TESTS
   test_engine_plan
   test_cell_model
   test_setup_profile
+  test_gpu_lossy_fusion
+  test_gpu_coeff_policy
+  test_lossymetal_setup_profile
+  test_lossymetal_extent_cache
 )
 
 foreach(test ${TESTS})
@@ -17,3 +21,8 @@ foreach(test ${TESTS})
   target_link_libraries(${test} openEMS)
   add_test(NAME ${test} COMMAND ${test})
 endforeach()
+
+# Manual integration diagnostic used by check_lossymetal_setup.py.
+add_executable(inspect_lossymetal_setup inspect_lossymetal_setup.cpp)
+target_include_directories(inspect_lossymetal_setup PRIVATE ${openEMS_SOURCE_DIR})
+target_link_libraries(inspect_lossymetal_setup openEMS)

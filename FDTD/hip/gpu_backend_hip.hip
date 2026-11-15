@@ -991,7 +991,8 @@ bool GPU_Backend_HIP::Init(const Operator* op)
 	// Most nodes share one of a few coefficient sets (same material and mesh spacing): store
 	// every distinct set of the 12 coefficients of a node once and a set index per node
 	GPU_CoeffSets sets;
-	if (GPU_FindSets(d->numCells,
+	const bool raw_main = GPU_UseRawMainCoefficients(std::getenv("OPENEMS_GPU_MAIN_COEFF"));
+	if (!raw_main && GPU_FindSets(d->numCells,
 	        12,
 	        [&](size_t i, float* values)
 	{
@@ -1009,6 +1010,8 @@ bool GPU_Backend_HIP::Init(const Operator* op)
 	}
 
 	// the full arrays, one host copy at a time
+	if (raw_main && g_settings.GetVerboseLevel() > 1)
+		std::cout << "GPU main coefficient policy: raw, " << 12*d->numCells*sizeof(float) << " bytes" << std::endl;
 	d->coeff_mode = 0;
 	std::vector<float> values;
 	auto upload = [&](int c)
