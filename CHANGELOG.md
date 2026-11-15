@@ -64,6 +64,9 @@ to what a user notices, in a few lines; the details belong in the commit.
   in a lower band and uses block-sized solve workspace, reducing interface
   storage and work. Its numerical scheme, timestep bound and allocation guards
   are unchanged; general large-interface and device support remain experimental.
+- Its timestep setup uses a single signed solve for positive bipartite
+  interface graphs, retaining the exact inverse-norm formula and the general
+  all-column fallback. This does not change the interface allocation limits.
 - The Python bindings need Python 3.6 or newer (was 3.4).
 - Field dumps slow the simulation down less: they are evaluated on several
   threads, and time-domain HDF5 dumps are written in the background.

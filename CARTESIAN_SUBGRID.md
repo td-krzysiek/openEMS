@@ -721,9 +721,9 @@ changed quadrature or dropped coupling is introduced.
 Electric updates gather each block RHS into one preallocated local vector,
 solve in place, then scatter to the same independent edges. Nonzero products
 retain their previous ascending order. The workspace is the largest block,
-not a global field vector. The conservative inverse-mass norm still solves
-all n unit RHS vectors and sums the absolute inverse entries; the inverse
-itself is generally dense. Those setup columns are now n entries long.
+not a global field vector. The conservative inverse-mass norm uses one signed
+RHS for positive bipartite interface graphs, with the original n-column
+calculation retained as the general fallback; see the next subsection.
 The norm formula, 1.98 safety factor, common timestep and all existing
 allocation guards remain unchanged. A step allocates no new workspace.
 
@@ -758,8 +758,8 @@ performance bounds.
 This measures the compact reference core, excluding native processing. It is
 not a speed or resource comparison against optimized Yee/GPU execution or a
 production antenna. Regular interiors still use sparse curl rows; topology
-maps and duplicated H quadrature histories remain. The exact inverse-bound
-setup still needs n solves, and a broad graph band may give little saving.
+maps and duplicated H quadrature histories remain. A broad graph band may
+give little saving; non-bipartite inverse-bound setup still needs n solves.
 The 1024-edge cap is deliberately retained. Larger/general interfaces, native
 structured kernels, threading/SIMD and GPU execution remain separate work.
 
@@ -787,6 +787,41 @@ The source inventory identifies the tested files; embedded version text names
 the configure-time parent. Prior reference/PML/radiation binaries are frozen
 and checked before/after. Local source/build/test and benchmark evidence:
 `experiments/openems-cartesian-local-subgrid-20261112/banded-interface/`.
+
+### Signed inverse-norm setup
+
+Positive trace weights assemble nonnegative interface off-diagonals. If their
+undirected graph is bipartite, its two-colouring defines a diagonal sign
+matrix D for which `D S D = I - B`, B entrywise nonnegative. Since S is SPD,
+the Neumann series of `(I-B)^-1` is nonnegative. Thus
+`abs(S^-1) 1 = D solve(S, D 1)`: one existing Cholesky solve gives exactly
+the same absolute inverse row sums as all n unit columns, up to roundoff.
+No coupling, quadrature, factorization or spectral-bound formula changes.
+An odd cycle, or a nonpositive/nonfinite signed result, uses the old fallback.
+The final `1 + 1e-12` inflation and allocation guards remain unchanged.
+
+`InterfaceStorage()` additionally counts inverse-bound solves and blocks
+using the sign transform. The focused regression compares against independent
+dense inverses for graded chains/sheets and disconnected graphs, and rejects
+an odd cycle before solving. The frozen dense-field factor control requires
+one solve per current bipartite block. Seven standalone fixtures use three
+interleaved pairs against source `571766f`: the largest strip's median setup
+is 0.3690/0.3106 s (15.8% less), with at most 4.7e-14 normalized E/H difference.
+Memory and update time are essentially unchanged. This is a setup change in
+the small CPU reference, not a production-antenna or GPU speedup.
+
+Isolated macOS/arm64 Release qualification passes CTest13/13, Python unit
+modules13/13, long core invocations9/9, native subgrid groups8/8 and ordinary
+groups4/4. The ten-case dipole's frozen complex port/field/radiation arrays
+remain identical (maximum normalized difference zero). Source/runtime
+inventories match across the run, including four earlier frozen prefixes.
+The loaded candidate core SHA256 is
+`2b8eea4f5f5b7f4bb44f44530eaa06f81997a9b586906c92548d6881a13a919b`;
+nf2ff is `006d1b9834cf108cefd12e657c51109a269df902aac1550f41f7071bcdc00bb2`.
+The existing Engine_Compare suite passes and a separate short control
+explicitly records Metal on Apple M5 Pro with all extensions on device.
+These ordinary-engine regressions do not qualify subgrid GPU execution.
+No project antenna, conductor or multi-device adoption is included.
 
 ## Tests and observed accuracy
 

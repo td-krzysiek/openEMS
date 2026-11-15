@@ -82,6 +82,8 @@ int main(int argc, char **argv)
 				  << ",\"factor_entries\":" << info.factorEntries
 				  << ",\"dense_equivalent_entries\":" << info.denseEquivalentEntries
 				  << ",\"interface_work_entries\":" << info.workspaceEntries;
+		std::cout << ",\"inverse_bound_solves\":" << info.inverseBoundSolves
+				  << ",\"bipartite_bound_blocks\":" << info.bipartiteBoundBlocks;
 #endif
 		std::cout << ",\"fields\":[";
 		bool first = true;

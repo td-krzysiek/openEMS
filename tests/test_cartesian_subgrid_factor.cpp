@@ -44,6 +44,8 @@ static void DenseReference()
 	Require(info.blocks > 1 && info.largestBlock >= 100, "long coupled interface fixture was not exercised");
 	Require(info.factorEntries * 8 < info.denseEquivalentEntries, "interface factors retained dense storage");
 	Require(info.workspaceEntries == info.largestBlock, "interface workspace is not block-sized");
+	Require(info.bipartiteBoundBlocks == info.blocks && info.inverseBoundSolves == info.blocks,
+			"positive bipartite interface did not use one bound solve per block");
 	Require(std::abs(grid.StableTimestep() / 7.4572218243463747e-13 - 1) < 2e-13,
 			"banded factor changed the conservative timestep bound");
 	grid.SetElectric(Seed);

@@ -167,6 +167,7 @@ class CartesianSubgrid
 	{
 		std::size_t blocks = 0, largestBlock = 0, largestHalfBandwidth = 0;
 		std::size_t factorEntries = 0, denseEquivalentEntries = 0, workspaceEntries = 0;
+		std::size_t inverseBoundSolves = 0, bipartiteBoundBlocks = 0;
 	};
 	InterfaceStorageInfo InterfaceStorage() const;
 	const std::vector<Leaf> &Leaves() const
@@ -240,6 +241,7 @@ class CartesianSubgrid
 	std::vector<double> m_SqrtMass, m_SqrtReluctance;
 	std::vector<MassBlock> m_Blocks;
 	std::vector<double> m_InterfaceWork;
+	std::size_t m_InverseBoundSolves = 0, m_BipartiteBoundBlocks = 0;
 	std::vector<std::pair<std::pair<std::size_t, std::size_t>, double>> m_MassOffDiagonal;
 	std::vector<std::size_t> m_RowStart, m_Columns;
 	std::vector<double> m_Values;

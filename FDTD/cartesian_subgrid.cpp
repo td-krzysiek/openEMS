@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include "cartesian_subgrid.h"
+#include "subgrid_inverse_bound.h"
 
 #include <algorithm>
 #include <cmath>
@@ -637,18 +638,47 @@ double CartesianSubgrid::FactorMass(const std::map<std::pair<std::size_t, std::s
 			}
 		}
 		// A conservative ||S^-1||_2 <= ||S^-1||_infinity bound, computed once.
-		std::vector<double> rowSum(n, 0), column(n, 0);
-		for (std::size_t j = 0; j < n; ++j)
+		// Positive trace weights make off-diagonals nonnegative. A bipartite
+		// graph admits an exact one-RHS sign transform; retain the all-column
+		// fallback for a future interface graph containing an odd cycle.
+		std::vector<std::vector<std::size_t>> localGraph(n);
+		for (std::size_t i = 0; i < n; ++i)
 		{
-			std::fill(column.begin(), column.end(), 0);
-			column[j] = 1;
-			block.Solve(column);
-			for (std::size_t i = 0; i < n; ++i)
+			for (std::size_t neighbour : graph.at(block.edges[i]))
 			{
-				rowSum[i] += std::abs(column[i]);
+				localGraph[i].push_back(position.at(neighbour));
 			}
 		}
-		inverseBound = std::max(inverseBound, *std::max_element(rowSum.begin(), rowSum.end()));
+		double blockBound = 0;
+		const bool bipartite = CartesianSubgridDetail::BipartiteInverseNorm(
+			localGraph,
+			[&](std::vector<double> &rhs)
+			{
+				++m_InverseBoundSolves;
+				block.Solve(rhs);
+			},
+			blockBound);
+		if (bipartite)
+		{
+			++m_BipartiteBoundBlocks;
+		}
+		else
+		{
+			std::vector<double> rowSum(n, 0), column(n, 0);
+			for (std::size_t j = 0; j < n; ++j)
+			{
+				std::fill(column.begin(), column.end(), 0);
+				column[j] = 1;
+				block.Solve(column);
+				++m_InverseBoundSolves;
+				for (std::size_t i = 0; i < n; ++i)
+				{
+					rowSum[i] += std::abs(column[i]);
+				}
+			}
+			blockBound = *std::max_element(rowSum.begin(), rowSum.end());
+		}
+		inverseBound = std::max(inverseBound, blockBound);
 		m_Blocks.push_back(std::move(block));
 	}
 	std::size_t largest = 0;
@@ -1065,6 +1095,8 @@ CartesianSubgrid::InterfaceStorageInfo CartesianSubgrid::InterfaceStorage() cons
 	InterfaceStorageInfo info;
 	info.blocks = m_Blocks.size();
 	info.workspaceEntries = m_InterfaceWork.capacity();
+	info.inverseBoundSolves = m_InverseBoundSolves;
+	info.bipartiteBoundBlocks = m_BipartiteBoundBlocks;
 	for (const auto &block : m_Blocks)
 	{
 		info.largestBlock = std::max(info.largestBlock, block.edges.size());
