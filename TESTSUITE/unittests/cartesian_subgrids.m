@@ -35,4 +35,11 @@ catch err
     rejected = strcmp(err.identifier, 'openEMS:CartesianSubgrid');
 end
 pass = ts_check('invalid ratio rejected', rejected, 'non-power-of-two ratio') && pass;
+% The compact solver uses the existing boundary XML/API. Native PML physics
+% is exercised by Cartesian_Subgrid_PML.py; no separate attribute is needed.
+FDTD = SetBoundaryCond(FDTD, {'PML_8', 'PML_8', 'PEC', 'PEC', 'PMC', 'PMC'});
+pass = ts_check('PML boundary serialization', ...
+    strcmp(FDTD.BoundaryCond.ATTRIBUTE.xmin, 'PML_8') && ...
+    strcmp(FDTD.BoundaryCond.ATTRIBUTE.xmax, 'PML_8') && ...
+    strcmp(FDTD.BoundaryCond.ATTRIBUTE.zmin, 'PMC'), 'existing boundary API') && pass;
 end

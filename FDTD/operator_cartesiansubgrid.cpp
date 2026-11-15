@@ -13,6 +13,7 @@
 #include "extensions/operator_ext_tfsf.h"
 #include "extensions/operator_ext_lumpedRLC.h"
 #include "extensions/operator_ext_cartesiansubgrid_mur.h"
+#include "extensions/operator_ext_cartesiansubgrid_pml.h"
 #include "tools/constants.h"
 
 #include <algorithm>
@@ -235,12 +236,14 @@ void Operator_CartesianSubgrid::SetEngineType(Engine_Types::EngineType type)
 void Operator_CartesianSubgrid::SetBoundaryCondition(int *conditions)
 {
 	int murAxis = -1;
+	bool hasPML = false;
 	for (int i = 0; i < 6; ++i)
 	{
-		if (conditions[i] != 0 && conditions[i] != 1 && conditions[i] != 2)
+		if (conditions[i] < 0 || conditions[i] > 3)
 		{
-			throw std::invalid_argument("CartesianSubgrid: only outer PEC/PMC and scoped Mur are supported");
+			throw std::invalid_argument("CartesianSubgrid: only PEC/PMC, scoped Mur and PML are supported");
 		}
+		hasPML = hasPML || conditions[i] == 3;
 		if (conditions[i] == 2)
 		{
 			if (murAxis != -1 && murAxis != i / 2)
@@ -251,13 +254,16 @@ void Operator_CartesianSubgrid::SetBoundaryCondition(int *conditions)
 			murAxis = i / 2;
 		}
 	}
+	if (hasPML && murAxis >= 0)
+		throw std::invalid_argument("CartesianSubgrid: mixed Mur and PML faces are unsupported");
 	Operator::SetBoundaryCondition(conditions);
 }
 
 void Operator_CartesianSubgrid::AddExtension(Operator_Extension *extension)
 {
 	std::unique_ptr<Operator_Extension> owner(extension);
-	if (dynamic_cast<Operator_Ext_CartesianSubgrid_Mur *>(extension))
+	if (dynamic_cast<Operator_Ext_CartesianSubgrid_Mur *>(extension) ||
+		dynamic_cast<Operator_Ext_CartesianSubgrid_PML *>(extension))
 	{
 		Operator::AddExtension(owner.release());
 		return;
@@ -632,7 +638,7 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 	for (unsigned int i = 0; i < boundaries.size(); ++i)
 	{
 		boundaries[i] =
-			m_BC[i] == 0 ? CartesianSubgrid::BoundaryType::PEC : CartesianSubgrid::BoundaryType::PMC;
+			(m_BC[i] == 0 || m_BC[i] == 3) ? CartesianSubgrid::BoundaryType::PEC : CartesianSubgrid::BoundaryType::PMC;
 	}
 	m_Grid.reset(new CartesianSubgrid(
 		lines, GetBackgroundEpsR() * EPS0, GetBackgroundMueR() * MUE0, regions, false, sample,

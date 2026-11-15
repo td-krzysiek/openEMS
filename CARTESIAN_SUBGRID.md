@@ -210,11 +210,12 @@ counting coarse observation samples. Soft E drive is added between the E and
 H half-steps. A source that touches no unconstrained master edge is rejected.
 
 Currently supported: positive isotropic, lossless background and cell-aligned
-material boxes; outer PEC/PMC combinations and scoped parallel Mur faces;
+material boxes; outer PEC/PMC combinations, scoped parallel Mur faces and
+classical convolution PML with a checked homogeneous collar;
 zero-delay nonperiodic soft E box sources; E/H observations.
 Internal PEC and restricted one-edge resistive lumped ports follow the contracts below.
 Unsupported requests fail at setup: distributed/LC/modal ports, conducting
-sheets, dispersion/loss, PML and adjacent Mur corners, periodic sources, transformed
+sheets, dispersion/loss, mixed Mur/PML and adjacent Mur corners, periodic sources, transformed
 primitives, other field types and GPU/SSE/new CPU engine selection. Only
 `engine=basic` selects this reference adapter; its execution is serial.
 
@@ -418,8 +419,8 @@ All six face selections, mixed PEC/PMC and all-PMC analytical cavities, and a
 100k-step two-region anisotropic-ratio invariant are covered by
 `tests/test_cartesian_subgrid_boundaries.cpp`. Native tests in
 `python/Tests/Cartesian_Subgrid_Boundaries.py` cover both half-domain sides
-along X/Y/Z, with and without refinement. PML and adjacent Mur corners
-continue to fail at setup; parallel Mur faces follow the separate contract below.
+along X/Y/Z, with and without refinement. Adjacent Mur corners still fail at
+setup; Mur and PML follow the separate contracts below.
 This is scoped serial CPU reference functionality, not absorbing-boundary,
 antenna or GPU qualification. The six identity mirror controls agree with ordinary
 Yee within 1.31e-6 of E peaks and 7.33e-7 of H peaks (gate 2e-4). Local and
@@ -440,8 +441,8 @@ it does not change ordinary Yee Mur. For example:
 fdtd.SetBoundaryCond(['MUR', 'MUR', 'PEC', 'PEC', 'PMC', 'PMC'])
 ```
 
-One face or two opposite, parallel faces are supported. Adjacent Mur faces,
-PML and all-face open radiation are **not** supported yet. Each Mur face needs
+One face or two opposite, parallel faces are supported. Adjacent Mur faces
+and mixed Mur/PML configurations are rejected. Each Mur face needs
 two unrefined base cells of homogeneous lossless material, free of internal
 PEC, enabled sources and lumped resistors. The collar covers the entire face,
 not just a local refinement neighbourhood. Setup rejects violations. This
@@ -498,9 +499,107 @@ incident peak (gate 2e-4). The largest 4-to-6 ns magnitude change is 9.56e-4.
 The continuum first-order estimate `(1-cos(theta))/(1+cos(theta))` is recorded
 for context; finite mesh, finite pulse and repeat returns need not reproduce
 it exactly. The local-refined matched-reference normal packet return is also
-checked. Oblique TM, wider converged spectra, refinement-interface scattering,
-adjacent absorbing corners and PML remain open B02/B03 qualification work.
+checked. Oblique TM and adjacent corners remain unsupported for Mur; the
+separate PML implementation below adds scoped absorbing-face/corner controls.
+Wider converged spectra and general refinement-interface scattering remain open.
 These reflections are too large to treat Mur as a precision antenna absorber.
+
+### Classical convolution PML
+
+Use the existing C++/XML/Python/Matlab boundary setting, for example:
+
+```python
+fdtd.SetBoundaryCond(['PML_8'] * 6)
+```
+
+This is a separate paired `Operator_Ext_CartesianSubgrid_PML` /
+`Engine_Ext_CartesianSubgrid_PML`, not the ordinary Yee UPML implementation.
+The ordinary solver and its PML are unchanged. Only serial `engine=basic`
+subgridding is supported. Any subset of PML faces, including edges/corners
+where layers overlap, may be used with the remaining PEC/PMC faces. Mur/PML
+mixing is rejected.
+
+Each PML face requires at least four base cells, plus **one inner guard cell**.
+Its full collar must be unrefined, match the homogeneous lossless background,
+and contain no internal PEC, enabled source or resistor. The guards reject
+refinement/material/geometry/port intrusion and overlapping opposing layers.
+The collar's electric mass is diagonal; an additional check rejects PML
+corrections that touch any coupled interface mass block. Interior lossless
+materials, PEC, ports and independent refinement regions retain their previous
+scope. No per-half-step host/device copies or device fallback are introduced.
+
+The extension groups the existing normalized curl and transpose terms by
+derivative axis. It stretches each derivative independently, at the physical
+electric-edge or magnetic-face location. For rate `r` in inverse seconds:
+
+```text
+b = exp(-r*dt)
+a = expm1(-r*dt)
+psi_new = b*psi_old + a*D(field)
+D_stretched = D(field) + psi_new
+```
+
+This is the unit-kappa, zero-frequency-shift limit of recursive-convolution
+PML, not a configurable CFS-PML. The cubic profile is
+`r = -2*c*log(1e-8)/L * (depth/L)^3`, using the actual physical layer width
+and background wave speed. `1e-8` is a continuum round-trip design parameter,
+**not a measured discrete reflection**. No runtime dependency or new CSXCAD
+attribute is added. The implementation was independently derived from the
+stretched-derivative formulation; see
+[Roden and Gedney (2000)](https://doi.org/10.1002/1098-2760(20001205)27:5%3C334::AID-MOP14%3E3.0.CO;2-A).
+
+Pre-update hooks advance histories from the old opposite field; post-update
+hooks calculate targets, and apply hooks write them before the dependent
+half-step. The lossless core arithmetic is unchanged. Histories/scratch are
+allocated at setup. `BoundaryWorkOut()` records signed field-correction work,
+not a nonnegative material loss or far-field radiation. In the source-free
+controls the original leapfrog invariant plus this work closes to the stated
+tolerance. This ledger is not a general PML passivity/stability proof.
+
+`tests/test_cartesian_subgrid_pml.cpp` covers all six normals, a graded/local
+packet, PEC negative control, and six-face overlap/corners with one or two
+separate anisotropic refinement regions. The 100k-step local packet retains
+3.42e-5 of its initial field energy, with peak energy no greater than initial
+and a maximum corrected-work residual 7.22e-12 (gate 1e-9). Its nonzero residual
+is retained. The separate 10k-step corner control and native evidence are
+recorded with actual source/build hashes in the contributor's evidence archive.
+
+`python/Tests/Cartesian_Subgrid_PML.py` measures boundary-return amplitude
+against an otherwise matched long compact reference, with the remote echo
+outside a 6 ns window. Frequencies are 9.5/10/10.5 GHz. Oblique TE 30/45 and
+TM 30 degree labels apply at 10 GHz only; transverse wavenumber is fixed.
+The 4-to-6 ns window check must change amplitudes by <0.01, and the reflection
+gate is 0.02. The PEC negative control must reflect >0.8 in amplitude.
+This separates boundary returns from any scattering shared by the matched
+coarse/fine interface. It is not general interface-accuracy qualification.
+The ordinary-Yee comparison is an early-wavefront check (<0.7 ns), covering
+only about 6.2% of the eventual incident peak. Across the complete normal
+record the two different absorber paths differ by 1.31e-3 of the incident
+peak; this is recorded separately, not described as full-waveform equality
+or attributed to a solver defect. Existing lossless identity controls remain
+the check of the compact core against ordinary Yee.
+
+Observed 10 GHz amplitude returns are approximately 7.41e-5 (normal),
+6.20e-5/5.02e-5 (TE 30/45), 6.19e-5 (TM 30), and 1.59e-3 (graded TE 30).
+The local-refined normal control gives 7.42e-5. The larger graded-grid return
+remains visible; no claim of reflectionless discretization is made. These
+small 10 GHz controls do not qualify a 24 GHz antenna. Broad/near-cutoff/grazing
+spectra, general material traversals into PML, NF2FF, lossy conductors and
+GPU/multi-device subgridding remain open.
+
+Qualification build: macOS/arm64 Release, source parent `eaa1a31` plus this
+increment, with isolated CPU-only prefix. The actual loaded core SHA256 is
+`83682d094e5eb3aa073bb77be4158acd8e5bf2569e7448b1fdb2b4e144b5d893`;
+matching CSXCAD SHA256 is
+`f1485025adfe48c70aa8664db2dc34a0abdf55834620b7536d63e77cdd6da9f0`.
+Before/after source inventories and runtime hashes accompany the qualification
+logs. Embedded version text names the configure-time parent; source inventories
+identify the tested increment. The frozen earlier reference library remains unchanged.
+CTest 11/11, Python unit modules 13/13 and native subgrid groups 7/7 pass.
+The native ordinary CPU/cylindrical controls also pass (2/2 groups).
+Matlab PML serialization test source is present, but no local interpreter was
+available, so it was not executed. No device execution or performance result
+is claimed by this build.
 
 ## Tests and observed accuracy
 
@@ -514,6 +613,8 @@ build/tests/test_cartesian_subgrid_material --long
 build/tests/test_cartesian_subgrid_pec --long
 build/tests/test_cartesian_subgrid_ports --long
 build/tests/test_cartesian_subgrid_mur --long
+build/tests/test_cartesian_subgrid_pml --long
+build/tests/test_cartesian_subgrid_pml --long-corners
 build/tests/test_cartesian_subgrid_boundaries --long
 build/tests/test_cartesian_subgrid --mesh > mesh.json
 python3 python/Tests/run_testsuite.py --unittests Cartesian

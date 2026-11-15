@@ -31,6 +31,7 @@
 #include "FDTD/extensions/operator_ext_tfsf.h"
 #include "FDTD/extensions/operator_ext_mur_abc.h"
 #include "FDTD/extensions/operator_ext_cartesiansubgrid_mur.h"
+#include "FDTD/extensions/operator_ext_cartesiansubgrid_pml.h"
 #include "FDTD/extensions/operator_ext_upml.h"
 #include "FDTD/extensions/operator_ext_lorentzmaterial.h"
 #include "FDTD/extensions/operator_ext_debyematerial.h"
@@ -475,7 +476,21 @@ bool openEMS::SetupBoundaryConditions()
 
 
 	//create the upml
-	Operator_Ext_UPML::Create_UPML(FDTD_Op, m_BC_type, m_PML_size, string());
+	if (dynamic_cast<Operator_CartesianSubgrid *>(FDTD_Op))
+	{
+		std::array<unsigned int, 6> cells{};
+		for (unsigned int n = 0; n < 6; ++n)
+			if (m_BC_type[n] == 3)
+			{
+				if (m_PML_size[n] < 4)
+					throw std::invalid_argument("CartesianSubgrid: PML requires at least four base cells per face");
+				cells[n] = m_PML_size[n];
+			}
+		if (std::any_of(cells.begin(), cells.end(), [](unsigned int count) { return count != 0; }))
+			FDTD_Op->AddExtension(new Operator_Ext_CartesianSubgrid_PML(FDTD_Op, cells));
+	}
+	else
+		Operator_Ext_UPML::Create_UPML(FDTD_Op, m_BC_type, m_PML_size, string());
 
 	return true;
 }

@@ -1,0 +1,37 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+#ifndef ENGINE_EXT_CARTESIANSUBGRID_PML_H
+#define ENGINE_EXT_CARTESIANSUBGRID_PML_H
+
+#include "engine_extension.h"
+#include "operator_ext_cartesiansubgrid_pml.h"
+
+class Engine_Ext_CartesianSubgrid_PML : public Engine_Extension
+{
+  public:
+	explicit Engine_Ext_CartesianSubgrid_PML(Operator_Ext_CartesianSubgrid_PML *op);
+	void DoPreVoltageUpdates() override;
+	void DoPostVoltageUpdates() override;
+	void Apply2Voltages() override;
+	void DoPreCurrentUpdates() override;
+	void DoPostCurrentUpdates() override;
+	void Apply2Current() override;
+	//! Signed field work, not a nonnegative PML energy or radiated power.
+	double BoundaryWorkOut() const { return m_WorkOut; }
+
+  private:
+	struct State
+	{
+		std::vector<double> history, correction, previous, target;
+		explicit State(std::size_t size);
+	};
+	void Prepare(const std::vector<Operator_Ext_CartesianSubgrid_PML::Derivative> &nodes, State &state,
+				 const std::vector<double> &source, const std::vector<double> &field, double sign);
+	void Finish(const std::vector<Operator_Ext_CartesianSubgrid_PML::Derivative> &nodes, State &state,
+				const std::vector<double> &field);
+	void Apply(const std::vector<Operator_Ext_CartesianSubgrid_PML::Derivative> &nodes, const State &state,
+			   std::vector<double> &field);
+	Operator_Ext_CartesianSubgrid_PML *m_PML;
+	State m_Electric, m_Magnetic;
+	double m_WorkOut = 0;
+};
+#endif

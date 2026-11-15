@@ -19,6 +19,8 @@ set(SOURCES
   ${CMAKE_CURRENT_SOURCE_DIR}/operator_ext_mur_abc.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/operator_ext_cartesiansubgrid_mur.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_ext_cartesiansubgrid_mur.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/operator_ext_cartesiansubgrid_pml.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/engine_ext_cartesiansubgrid_pml.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/operator_ext_cylinder.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_ext_cylinder.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/operator_ext_excitation.cpp

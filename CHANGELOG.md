@@ -33,8 +33,11 @@ to what a user notices, in a few lines; the details belong in the commit.
   Outer PEC/PMC combinations support closed and symmetry-plane CPU controls;
   PMC planes lie on the physical outer base faces. First-order Mur supports
   parallel faces with a checked unrefined, homogeneous two-cell collar;
-  adjacent Mur corners remain unsupported. Distributed/LC ports,
-  PML and GPU subgridding remain unsupported; `engine=basic` is required.
+  adjacent Mur corners remain unsupported. Classical convolution PML supports
+  all six faces through the existing `PML_n` boundary setting, with a checked
+  homogeneous unrefined collar and one inner guard cell. Mixed Mur/PML,
+  distributed/LC ports and GPU subgridding remain unsupported;
+  `engine=basic` is required. Radiation/NF2FF remains unqualified.
 - **A GPU engine**, `--engine=gpu` (`engine='gpu'` from Python), for AMD and
   NVIDIA GPUs (HIP/CUDA) and on macOS (Metal), with Cartesian and cylindrical
   meshes and the usual extensions. `--gpu-device=N` picks one of the GPUs

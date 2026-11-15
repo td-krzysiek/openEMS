@@ -20,6 +20,10 @@
  */
 class CartesianSubgrid
 {
+    // Scoped absorbing extension needs the normalized curl and collar state;
+    // the lossless core update itself is unchanged.
+	friend class Operator_Ext_CartesianSubgrid_PML;
+	friend class Engine_Ext_CartesianSubgrid_PML;
   public:
 	using Point = std::array<double, 3>;
 	using Index = std::array<unsigned int, 3>;

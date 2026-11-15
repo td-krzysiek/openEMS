@@ -1,6 +1,6 @@
 # Cartesian subgridding — implementation and qualification checklist
 
-Last reviewed: **13 November 2026**.
+Last reviewed: **15 November 2026**.
 
 This is the canonical detailed checklist for extending the Cartesian subgridding prototype
 to the functionality of the regular Cartesian solver. Check an item only after
@@ -28,7 +28,8 @@ separate tasks; a passing test on one engine does not qualify another engine.
   of every platform or engine.
 - Current capability is a **serial CPU numerical reference**, with homogeneous
   lossless background, cell-aligned isotropic lossless material boxes and PEC/PMC
-  outer faces, plus scoped parallel first-order Mur faces. Internal PEC boxes/sheets and axis-aligned cylinders/shells have
+  outer faces, scoped parallel first-order Mur faces, and classical convolution
+  PML on a checked homogeneous unrefined collar. Internal PEC boxes/sheets and axis-aligned cylinders/shells have
   scoped geometry, contact and numerical controls. One-edge positive resistive
   ports and local U/I integration have short two-port CPU controls.
   It is not an antenna-ready solver.
@@ -176,7 +177,17 @@ unrefined two-cell collar. All six normals, a local packet, a 100k-step signed
 boundary-work ledger and native Yee/normal/oblique-TE/graded controls pass.
 The measured first-order reflection and temporal-window sensitivity are
 [documented separately](CARTESIAN_SUBGRID.md#first-order-mur-absorbing-faces).
-Adjacent Mur corners, UPML, oblique TM and broader scattering remain open.
+The separate classical convolution PML extension now supports any subset of
+six faces, including edge/corner overlaps, with an unrefined background-matched
+collar plus one inner guard cell. All six normals, a 100k-step local packet,
+a 10k-step six-face corner and separate anisotropic-region controls pass on
+serial CPU. Native 9.5/10/10.5 GHz normal, TE 30/45, TM 30, graded and local
+controls pass; the largest sampled amplitude return is 1.71e-3. Native scope
+rejections and the near-unit PEC reflection negative control pass.
+See [PML contract, build identity and reproduction](CARTESIAN_SUBGRID.md#classical-convolution-pml).
+This is not ordinary-Yee UPML or CFS parity. Adjacent Mur corners, mixed
+Mur/PML, broader/grazing/near-cutoff spectra and general material traversals
+remain open. The signed-work ledger is not a general passivity proof.
 
 Acceptance: a radiating PEC antenna must work before treating the prototype as
 an antenna solver. Correct E/H file creation alone does not qualify NF2FF.
@@ -277,9 +288,11 @@ their own integration checks; master parity does not automatically qualify them.
 | Pinned-master Cartesian parity | Full applicable feature/engine matrix and regression suites | Open |
 | Production multi-GPU subgridding | Relevant single-device physics qualified, then D01–D05 | Open |
 
-Suggested first implementation sequence: isotropic materials and internal PEC,
-50-ohm line/port, absorbing boundaries and small-antenna NF2FF, scalable
-interiors and one GPU, then lossy antenna validation and remaining parity work.
+Next numerical milestone: qualify small-antenna NF2FF with the scoped PML,
+actual PEC contacts and physical ports against regular-grid controls. Then
+implement scalable interiors and one GPU, followed by lossy antenna validation
+and remaining parity work. Absorbing boundaries have scoped implementation
+and CPU evidence; broader scattering and radiation qualification remain open.
 Nonuniform base geometry is implemented and qualified on small homogeneous
 controls; application compatibility still requires the material, port and
 boundary gates above. These are dependency gates, not a
@@ -302,3 +315,4 @@ numerical change invalidates their prior qualification.
 | 2026-11-12 | P02 scoped; partial P01/P03/P05 | This PR, physical-port increment (parent `4186af8`) | [Core power/integral controls](tests/test_cartesian_subgrid_ports.cpp), [native two-port comparisons](python/Tests/Cartesian_Subgrid_Ports.py), [contract and numerical results](CARTESIAN_SUBGRID.md#local-resistors-and-ui-integration); one independent native R edge, serial CPU; broader ports remain open |
 | 2026-11-13 | B01 scoped PMC/symmetry | This PR, PMC boundary increment (parent `19dd0f1`) | [Core cavity/energy/face controls](tests/test_cartesian_subgrid_boundaries.cpp), [native mirror-domain controls](python/Tests/Cartesian_Subgrid_Boundaries.py), [boundary planes and reconstruction limits](CARTESIAN_SUBGRID.md#outer-pecpmc-boundaries); serial CPU only. PML/NF2FF/GPU remain open. |
 | 2026-11-13 | Partial B02/B03, parallel Mur faces | This PR, paired Mur extension increment (parent `9de9020`) | [Pulse/energy/half-step controls](tests/test_cartesian_subgrid_mur.cpp), [native reflection and scope guards](python/Tests/Cartesian_Subgrid_Mur.py), [contract and limitations](CARTESIAN_SUBGRID.md#first-order-mur-absorbing-faces); serial basic CPU only. Adjacent corners, PML/NF2FF/GPU remain open. |
+| 2026-11-15 | Extended partial B02/B03, classical convolution PML | This PR, paired PML extension increment (parent `eaa1a31`) | [Six-normal/100k-packet/10k-corner/multiple-region controls](tests/test_cartesian_subgrid_pml.cpp), [native normal/TE/TM/graded/local reflection and rejection controls](python/Tests/Cartesian_Subgrid_PML.py), [contract and build evidence](CARTESIAN_SUBGRID.md#classical-convolution-pml). Scoped serial basic CPU only; not UPML/CFS parity, NF2FF, antenna, losses or GPU qualification. |
