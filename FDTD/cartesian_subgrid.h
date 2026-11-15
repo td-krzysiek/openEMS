@@ -192,6 +192,7 @@ class CartesianSubgrid
 
 	//! Checked upload and complete-step observation mirror for existing device backends.
 	CartesianSubgridDeviceData DeviceData() const;
+	void ImportDeviceLedger(double resistorLoss, double sourceWork);
 	void ImportDeviceFields(const float *electric, std::size_t electricCount,
 							const float *magnetic, std::size_t magneticCount);
 

@@ -12,7 +12,8 @@ angular interpolation or a slab copied from cylindrical multi-grid.
 It contains a **serial CPU numerical reference** and scoped shared device
 operations, qualified locally on the reference backend and physical Metal.
 Both are for small validation models. This is not yet a replacement for the
-production antenna engine; device ports and absorbers remain unsupported.
+production antenna engine. One-edge device RF port controls are now available;
+device absorbers and general accuracy/scalability remain open.
 
 [Implementation and qualification checklist](CARTESIAN_SUBGRID_CHECKLIST.md)
 tracks the completed controls and remaining feature/engine milestones in PR #29.
@@ -903,8 +904,9 @@ Apple M5 Pro only; HIP/CUDA hardware qualification remains open.** No additional
 backend or silent host half-step execution is introduced.
 
 The native adapter accepts `engine='gpu-reference'` and `engine='gpu'` for its
-lossless closed PEC/PMC field/source scope. It explicitly rejects resistive
-ports and Mur/PML extension combinations; those keep their scoped CPU support.
+lossless closed PEC/PMC field/source scope and the separately qualified
+one-edge RF resistor scope below. It explicitly rejects Mur/PML extension
+combinations; those retain their scoped CPU support.
 Device state and coefficients are FP32. The CPU reference remains double.
 Electric/magnetic fields stay on device between sweeps; complete-step field
 mirrors are refreshed once per processing batch for existing reconstruction,
@@ -931,7 +933,9 @@ lossless dielectric plus resolved PEC) compare full E/H time records and
 multi-frequency FD dumps. Maximum double-CPU/device difference is 5.30e-6;
 reference-backend/Metal records are identical, within the declared 2e-4 gate.
 Invalid device field dimensions, nonfinite fields, incomplete half-steps and
-unsupported native device ports/absorbers have rejection controls. The native
+unsupported native device absorbers have rejection controls. The first increment
+also rejected ports; the subsequent scoped RF increment below replaces that
+restriction with positive port tests. The native
 Python binding returns setup code4 for engine-construction failure; tests check
 that code, the actual native error reason and absence of propagated output.
 
@@ -959,6 +963,68 @@ prefixes, remain unchanged throughout this qualification.
 
 Device ports, absorbers, lossy media/conductors, native device antenna/NF2FF,
 structured topology scaling and multiple devices remain separate milestones.
+
+### Scoped device resistor ports
+
+The shared point operations now implement the CPU reference's small midpoint /
+Woodbury resistor solve, sparse port response, and ordered soft sources. The
+unsolved transpose curl is gathered only at source edges before mass solving;
+source mass neighbours preserve the CPU work identity. Device loss/work uses
+compensated float pairs, refreshed with the fields only at complete processing
+boundaries. No CPU resistor updates or half-step field downloads are used.
+Native geometry remains restricted to nonoverlapping positive R on independent
+local edges; distributed/reactive/modal ports remain unsupported.
+
+The default core port controls cover passive decay, a driven Norton pulse,
+zero-DC soft kicks at a mass-coupled interface edge, and mixed coupling through
+20k steps. Maximum double/device field error is 1.055e-4 (gate 2e-4); maximum
+work/loss/balance error is 1.167e-6 (gate 2e-4). Reference backend and physical
+Apple M5 Pro Metal controls agree. Native 24 GHz microstrip identity/outside/
+inside/reversed cases retain exactly identical deterministic-colour input XML.
+Across 20–28 GHz, max complex Z error is 1.501e-5 ohm and max complex S11/S21
+error is 1.273e-7 (gates 0.01 ohm / 2e-4). Time U/I, phase, power and polarity
+gates remain explicit. This is implementation precision on a deliberately
+coarse control, not a calibrated manufacturing line or device antenna.
+
+An inside-refinement fixture exposed Cholesky fill below normal FP32 range.
+The device conversion now explicitly drops only subnormal off-diagonal fill,
+retaining every normal entry and positive diagonal. Its summed perturbation
+per block must be below `eps(float)^2 * smallestDiagonal`; unsafe/diagonal
+underflow, nonfinite values and invalid dimensions fail. The observed fixture
+has 136 tails, total L1 4.088561e-39 and maximum block-relative bound
+1.023807e-39. Counts/bounds are logged in scientific notation. CPU double
+factors remain unchanged; this rule does not silently truncate fields or curl
+coefficients. Focused tests exercise preservation, bounds and rejection.
+
+Isolated canonical qualification passes CTest 17/17, Python unit modules 13/13,
+eight physical Metal core controls (fields and ports), four native field and
+four native port geometries, CPU base plus six increment groups, two unchanged
+merged-master dipoles and three ordinary-engine groups. Source/runtime
+inventories, including six earlier frozen prefixes, remain unchanged. Parent
+source is `4a7cf69`; contributor evidence:
+`experiments/openems-cartesian-local-subgrid-20261112/device-ports/`.
+Core SHA256: `bd64fa18e484a5393340a1c0473cf3bd0b180bffd17bca1b94afc420f3df1f49`;
+nf2ff: `0ac606c88ee32284b6e8f9b9b44735c4d39155609b02b24651ea0fa858b7fad5`.
+
+**Open precision limitation:** a strong unmodulated Gaussian soft kick on a
+mass-coupled edge misses the unchanged 2e-4 full-field target at 10k steps:
+2.956e-3 with ports, identically on reference and Metal. It also fails without
+ports on the immutable preceding `4a7cf69` runtime (2.774e-3). Changing only
+the pulse to a zero-DC derivative reduces that control to 5.604e-5. This supports
+a DC/FP32 diagnosis, not a proved cause or a correction, and is not labelled
+an upstream regular-engine defect. The failure remains reproducible:
+
+```sh
+build/tests/test_cartesian_subgrid_device_ports --dc-stress
+build/tests/test_cartesian_subgrid_device_ports --metal --dc-stress
+```
+
+These diagnostic commands currently fail their declared field target; they are
+not counted as passing controls or hidden by a higher tolerance. Default RF /
+zero-DC passes do not establish arbitrary-source accuracy. Investigate curl
+nullspace preservation, metric/factor representation and accumulation before
+closing U05 or claiming full device parity. Device PML/Mur, losses/conductors,
+antenna qualification and production scaling remain open.
 
 ## Tests and observed accuracy
 

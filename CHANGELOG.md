@@ -39,8 +39,10 @@ to what a user notices, in a few lines; the details belong in the commit.
   distributed/LC ports remain unsupported. `engine=basic` supplies this
   scoped CPU physics. Shared GPU/reference-backend operations now support
   compact lossless fields and soft sources with closed PEC/PMC boundaries;
-  physical Metal has small-model controls. Device resistive ports/absorbers
-  are explicitly rejected; HIP/CUDA and device antenna qualification remain open. A public vacuum PEC dipole now has scoped CPU
+  physical Metal has small-model controls. One-edge device RF resistor ports
+  now have midpoint/source-work and native two-port controls. Strong-DC field
+  accuracy remains limited; device absorbers, physical HIP/CUDA and device
+  antenna qualification remain open. A public vacuum PEC dipole now has scoped CPU
   port, power, near-field and NF2FF controls against regular grids, including
   mesh/time/PML sensitivity. Closed NF2FF surfaces and interpolation neighbours
   stay in homogeneous unrefined air outside refinement and PML. General
@@ -62,6 +64,11 @@ to what a user notices, in a few lines; the details belong in the commit.
   closed by PEC.
 
 ### Changed
+
+- The experimental compact device path explicitly represents negligible
+  subnormal Cholesky fill as zero only under a strict recorded perturbation
+  bound, preserving all normal entries and positive diagonals. CPU factors
+  remain double; unsupported/unsafe conversion still fails at setup.
 
 - The experimental Cartesian subgrid reference shares identical translated
   curl patterns and releases assembly scratch before field allocation, reducing

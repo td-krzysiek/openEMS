@@ -1,12 +1,14 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include "cartesian_subgrid.h"
 #include "subgrid_inverse_bound.h"
+#include "subgrid_device_precision.h"
 
 #include <algorithm>
 #include <cmath>
 #include <limits>
 #include <numeric>
 #include <stdexcept>
+#include <string>
 #include <tuple>
 
 namespace
@@ -1433,19 +1435,22 @@ double CartesianSubgrid::ResistorVoltage(std::size_t port) const
 CartesianSubgridDeviceData CartesianSubgrid::DeviceData() const
 {
 	Require(m_PendingMagneticTimestep == 0, "CartesianSubgrid: device upload requires a complete timestep");
-	Require(m_PortVoltage.empty(), "CartesianSubgrid: device resistor coupling is not implemented");
 	const auto index = [](std::size_t value)
 	{
 		Require(value <= std::numeric_limits<std::uint32_t>::max(),
 				"CartesianSubgrid: device metadata exceeds 32-bit indexing");
 		return static_cast<std::uint32_t>(value);
 	};
-	const auto scalar = [](double value)
+	const char *quantity = "electric state";
+	const auto scalar = [&](double value)
 	{
 		const float converted = static_cast<float>(value);
-		Require(std::isfinite(value) && std::isfinite(converted) &&
-				(value == 0 || std::abs(converted) >= std::numeric_limits<float>::min()),
-				"CartesianSubgrid: coefficient/state is not representable as normal FP32");
+		if (!std::isfinite(value) || !std::isfinite(converted) ||
+			(value != 0 && std::abs(converted) < std::numeric_limits<float>::min()))
+		{
+			throw std::invalid_argument(std::string("CartesianSubgrid: ") + quantity +
+				" is not representable as normal FP32; log10(abs(value))=" + std::to_string(std::log10(std::abs(value))));
+		}
 		return converted;
 	};
 	CartesianSubgridDeviceData data;
@@ -1454,10 +1459,12 @@ CartesianSubgridDeviceData CartesianSubgrid::DeviceData() const
 	{
 		data.electric.push_back(scalar(value));
 	}
+	quantity = "magnetic state";
 	for (double value : m_Magnetic)
 	{
 		data.magnetic.push_back(scalar(value));
 	}
+	quantity = "curl coefficient";
 	data.transposeStart.assign(m_Electric.size() + 1, 0);
 	for (std::size_t row = 0; row < m_Magnetic.size(); ++row)
 	{
@@ -1486,6 +1493,7 @@ CartesianSubgridDeviceData CartesianSubgrid::DeviceData() const
 			data.transposeWeight[target] = data.curlWeight[k];
 		}
 	}
+	quantity = "interface factor";
 	for (const auto &block : m_Blocks)
 	{
 		for (std::size_t edge : block.edges)
@@ -1494,17 +1502,66 @@ CartesianSubgridDeviceData CartesianSubgrid::DeviceData() const
 		}
 		data.blockStart.push_back(index(data.blockEdge.size()));
 		data.bandwidth.push_back(index(block.halfBandwidth));
-		for (double value : block.lower)
-		{
-			data.lower.push_back(scalar(value));
-		}
+		const auto factor = CartesianSubgridFloat::Factor(block.lower, block.edges.size(),
+			block.halfBandwidth, data.factorTails);
+		data.lower.insert(data.lower.end(), factor.begin(), factor.end());
 		data.lowerStart.push_back(index(data.lower.size()));
 	}
+	quantity = "source amplitude";
 	for (const auto &source : m_Sources)
 	{
 		data.sourceEdge.push_back(index(source.first));
 		data.sourceWeight.push_back(scalar(source.second));
 	}
+	data.portTimestep = m_PortTimestep;
+	for (std::size_t port = 0; port < m_PortVoltage.size(); ++port)
+	{
+		quantity = "port voltage";
+		for (const auto &term : m_PortVoltage[port].weights)
+		{
+			data.portEdge.push_back(index(term.first));
+			data.portWeight.push_back(scalar(term.second));
+		}
+		data.portStart.push_back(index(data.portEdge.size()));
+		quantity = "port response";
+		for (const auto &term : m_PortResponse[port].weights)
+		{
+			data.responseEdge.push_back(index(term.first));
+			data.responseWeight.push_back(scalar(term.second));
+		}
+		data.responseStart.push_back(index(data.responseEdge.size()));
+		quantity = "port conductance/current";
+		data.rootConductance.push_back(scalar(std::sqrt(m_PortConductance[port])));
+		data.portCurrent.push_back(scalar(m_PortCurrent[port]));
+	}
+	quantity = "port factor";
+	for (double value : m_PortLower)
+	{
+		data.portLower.push_back(scalar(value));
+	}
+	quantity = "source mass coupling";
+	for (const auto &source : m_Sources)
+	{
+		if (!m_PortVoltage.empty())
+		{
+			for (const auto &term : m_MassOffDiagonal)
+			{
+				if (term.first.first == source.first)
+				{
+					data.sourceOffEdge.push_back(index(term.first.second));
+					data.sourceOffWeight.push_back(scalar(term.second));
+				}
+				if (term.first.second == source.first)
+				{
+					data.sourceOffEdge.push_back(index(term.first.first));
+					data.sourceOffWeight.push_back(scalar(term.second));
+				}
+			}
+		}
+		data.sourceOffStart.push_back(index(data.sourceOffEdge.size()));
+	}
+	quantity = "ledger state";
+	data.ledger = {scalar(m_ResistorLoss), 0, scalar(m_SourceWork), 0};
 	return data;
 }
 
@@ -1519,4 +1576,12 @@ void CartesianSubgrid::ImportDeviceFields(const float *electric, std::size_t ele
 			"CartesianSubgrid: nonfinite device fields");
 	std::copy(electric, electric + electricCount, m_Electric.begin());
 	std::copy(magnetic, magnetic + magneticCount, m_Magnetic.begin());
+}
+
+void CartesianSubgrid::ImportDeviceLedger(double resistorLoss, double sourceWork)
+{
+	Require(m_PendingMagneticTimestep == 0 && std::isfinite(resistorLoss) && resistorLoss >= 0 &&
+			std::isfinite(sourceWork), "CartesianSubgrid: invalid device source/loss ledger");
+	m_ResistorLoss = resistorLoss;
+	m_SourceWork = sourceWork;
 }

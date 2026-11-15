@@ -103,7 +103,7 @@ for kind in ('local','graded','multiple','material-pec'):
 
 # Native engine construction errors return setup code4 through the current Python API.
 # Capture native stderr so an unrelated setup failure cannot satisfy this control.
-for kind in ('resistor','pml'):
+for kind in ('pml',):
     fdtd, csx = fixture(steps=8, source_x=0 if kind == 'pml' else -10)
     if kind == 'resistor':
         fdtd.AddLumpedPort(1,50,[-10,0,0],[-10,0,2],'z',1)

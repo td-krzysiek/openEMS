@@ -84,17 +84,127 @@ struct Op_SubgridElectric
 	}
 };
 
-//! Dispatched serially when source indices repeat, preserving additive source order.
+
+CM_FN void subgrid_add_work(CM_GLOBAL float *ledger, uint32_t slot, float value)
+{
+	const float corrected = value - ledger[slot + 1];
+	const float total = ledger[slot] + corrected;
+	ledger[slot + 1] = (total - ledger[slot]) - corrected;
+	ledger[slot] = total;
+}
+
+//! Preserve the unsolved transpose-curl only at source edges, before the mass solve.
+struct Op_SubgridSourceCurl
+{
+	CM_GLOBAL const float *increment;
+	CM_GLOBAL const uint32_t *edge;
+	CM_GLOBAL float *curl;
+
+	CM_FN void operator()(uint64_t source) const
+	{
+		curl[source] = increment[edge[source]];
+	}
+};
+
+//! One small coupled Woodbury system per invocation; ports retain their CPU order.
+struct Op_SubgridPortSolve
+{
+	CM_GLOBAL const uint32_t *start;
+	CM_GLOBAL const uint32_t *edge;
+	CM_GLOBAL const float *weight;
+	CM_GLOBAL const float *rootConductance;
+	CM_GLOBAL const float *current;
+	CM_GLOBAL const float *lower;
+	CM_GLOBAL const float *electric;
+	CM_GLOBAL const float *increment;
+	CM_GLOBAL float *rhs;
+	CM_GLOBAL float *ledger;
+	float timestep, amplitude;
+	uint32_t count;
+
+	CM_FN void operator()(uint64_t point) const
+	{
+		if (point != 0)
+		{
+			return;
+		}
+		for (uint32_t i = 0; i < count; ++i)
+		{
+			float voltage = 0;
+			for (uint32_t k = start[i]; k < start[i + 1]; ++k)
+			{
+				voltage += weight[k] * (electric[edge[k]] + .5f * timestep * increment[edge[k]]);
+			}
+			rhs[i] = amplitude * current[i] - rootConductance[i] * voltage;
+			for (uint32_t j = 0; j < i; ++j)
+			{
+				rhs[i] -= lower[i * count + j] * rhs[j];
+			}
+			rhs[i] /= lower[i * count + i];
+		}
+		for (uint32_t k = count; k > 0; --k)
+		{
+			const uint32_t i = k - 1;
+			for (uint32_t j = i + 1; j < count; ++j)
+			{
+				rhs[i] -= lower[j * count + i] * rhs[j];
+			}
+			rhs[i] /= lower[i * count + i];
+			const float midpoint = amplitude * current[i] - rhs[i];
+			subgrid_add_work(ledger, 0, timestep * midpoint * midpoint);
+			subgrid_add_work(ledger, 2, timestep * midpoint * amplitude * current[i]);
+		}
+	}
+};
+
+//! Dispatch serially: sparse responses of different ports may share a field edge.
+struct Op_SubgridPortApply
+{
+	CM_GLOBAL float *electric;
+	CM_GLOBAL const uint32_t *start;
+	CM_GLOBAL const uint32_t *edge;
+	CM_GLOBAL const float *weight;
+	CM_GLOBAL const float *rhs;
+	float timestep;
+
+	CM_FN void operator()(uint64_t port) const
+	{
+		for (uint32_t k = start[port]; k < start[port + 1]; ++k)
+		{
+			electric[edge[k]] += timestep * weight[k] * rhs[port];
+		}
+	}
+};
+
+//! Ordered soft sources, including the exact midpoint/source-work contribution.
 struct Op_SubgridSource
 {
 	CM_GLOBAL float *electric;
 	CM_GLOBAL const uint32_t *edge;
 	CM_GLOBAL const float *weight;
-	float amplitude;
+	CM_GLOBAL const uint32_t *offStart;
+	CM_GLOBAL const uint32_t *offEdge;
+	CM_GLOBAL const float *offWeight;
+	CM_GLOBAL const float *sourceCurl;
+	CM_GLOBAL float *ledger;
+	float amplitude, timestep;
+	uint32_t hasPorts;
 
 	CM_FN void operator()(uint64_t source) const
 	{
-		electric[edge[source]] += amplitude * weight[source];
+		const float change = amplitude * weight[source];
+		if (hasPorts)
+		{
+			float derivative = electric[edge[source]];
+			for (uint32_t k = offStart[source]; k < offStart[source + 1]; ++k)
+			{
+				derivative += offWeight[k] * electric[offEdge[k]];
+			}
+			subgrid_add_work(ledger, 2,
+				change * (derivative + .5f * change - .5f * timestep * sourceCurl[source]));
+		}
+		electric[edge[source]] += change;
 	}
 };
+
 #endif

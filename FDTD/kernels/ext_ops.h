@@ -332,6 +332,9 @@ struct Op_Dispersive
 //! The backends expand the list to their launches (GPU_Backend::RunPoints()), so a new operation goes here and into
 //! GPU_PointOp only
 #define CM_POINT_OPS(X) \
+	X(GPU_OP_SUBGRID_SOURCE_CURL, Op_SubgridSourceCurl, op_subgrid_source_curl) \
+	X(GPU_OP_SUBGRID_PORT_SOLVE, Op_SubgridPortSolve, op_subgrid_port_solve) \
+	X(GPU_OP_SUBGRID_PORT_APPLY, Op_SubgridPortApply, op_subgrid_port_apply) \
 	X(GPU_OP_SUBGRID_CURL, Op_SubgridCurl, op_subgrid_curl) \
 	X(GPU_OP_SUBGRID_MASS, Op_SubgridMass, op_subgrid_mass) \
 	X(GPU_OP_SUBGRID_ELECTRIC, Op_SubgridElectric, op_subgrid_electric) \

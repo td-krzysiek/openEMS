@@ -5,9 +5,12 @@
 #include "kernels/subgrid_update.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
 #include <memory>
+#include <iostream>
+#include <sstream>
 #include <stdexcept>
 
 namespace
@@ -20,7 +23,17 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 		: m_Backend(backend)
 	{
 		const auto data = grid.DeviceData();
+		if (data.factorTails.terms)
+		{
+			std::ostringstream message;
+			message << std::scientific << "CartesianSubgrid FP32 factor FTZ tails: " << data.factorTails.terms
+					<< "; dropped L1=" << data.factorTails.l1
+					<< "; maximum relative factor bound=" << data.factorTails.relativeBound;
+			std::cout << message.str() << std::endl;
+		}
 		m_StableStep = data.stableTimestep;
+		m_PortStep = data.portTimestep;
+		m_PortCount = data.rootConductance.size();
 		m_Electric.resize(data.electric.size());
 		m_Magnetic.resize(data.magnetic.size());
 		m_BlockCount = data.bandwidth.size();
@@ -34,7 +47,19 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 		m_Mass = {Upload(data.blockStart), Upload(data.blockEdge), Upload(data.bandwidth),
 			Upload(data.lowerStart), Upload(data.lower), increment};
 		m_Update = {electric, increment, 0};
-		m_Source = {electric, Upload(data.sourceEdge), Upload(data.sourceWeight), 0};
+		m_LedgerDevice = Upload(data.ledger);
+		auto *sourceEdge = Upload(data.sourceEdge);
+		auto *sourceCurl = Upload(std::vector<float>(data.sourceEdge.size(), 0));
+		m_SourceCurl = {increment, sourceEdge, sourceCurl};
+		m_Source = {electric, sourceEdge, Upload(data.sourceWeight), Upload(data.sourceOffStart),
+			Upload(data.sourceOffEdge), Upload(data.sourceOffWeight), sourceCurl, m_LedgerDevice,
+			0, 0, static_cast<std::uint32_t>(m_PortCount != 0)};
+		auto *portRHS = Upload(std::vector<float>(m_PortCount, 0));
+		m_PortSolve = {Upload(data.portStart), Upload(data.portEdge), Upload(data.portWeight),
+			Upload(data.rootConductance), Upload(data.portCurrent), Upload(data.portLower),
+			electric, increment, portRHS, m_LedgerDevice, 0, 0, static_cast<std::uint32_t>(m_PortCount)};
+		m_PortApply = {electric, Upload(data.responseStart), Upload(data.responseEdge),
+			Upload(data.responseWeight), portRHS, 0};
 	}
 
 	~CartesianSubgridExecution() override
@@ -47,16 +72,33 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 	{
 		const float dt = static_cast<float>(timestep), amplitude = static_cast<float>(sourceAmplitude);
 		if (!(timestep > 0) || timestep > m_StableStep || !std::isfinite(dt) ||
-			dt < std::numeric_limits<float>::min() || !std::isfinite(amplitude))
+			dt < std::numeric_limits<float>::min() || !std::isfinite(amplitude) ||
+			(m_PortCount && timestep != m_PortStep))
 		{
 			throw std::invalid_argument("CartesianSubgrid: invalid device step or drive");
 		}
 		m_Update.timestep = dt;
 		m_Curl.scale = -dt;
 		m_Source.amplitude = amplitude;
+		m_Source.timestep = dt;
+		m_PortSolve.timestep = dt;
+		m_PortSolve.amplitude = amplitude;
+		m_PortApply.timestep = dt;
 		m_Backend.RunPoints(GPU_OP_SUBGRID_CURL, &m_Transpose, 0, m_Electric.size(), false);
+		if (m_PortCount && m_SourceCount)
+		{
+			m_Backend.RunPoints(GPU_OP_SUBGRID_SOURCE_CURL, &m_SourceCurl, 0, m_SourceCount, false);
+		}
 		m_Backend.RunPoints(GPU_OP_SUBGRID_MASS, &m_Mass, 0, m_BlockCount, false);
+		if (m_PortCount)
+		{
+			m_Backend.RunPoints(GPU_OP_SUBGRID_PORT_SOLVE, &m_PortSolve, 0, 1, false);
+		}
 		m_Backend.RunPoints(GPU_OP_SUBGRID_ELECTRIC, &m_Update, 0, m_Electric.size(), false);
+		if (m_PortCount)
+		{
+			m_Backend.RunPoints(GPU_OP_SUBGRID_PORT_APPLY, &m_PortApply, 0, m_PortCount, true);
+		}
 		if (m_SourceCount && amplitude != 0)
 		{
 			m_Backend.RunPoints(GPU_OP_SUBGRID_SOURCE, &m_Source, 0, m_SourceCount, true);
@@ -69,6 +111,11 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 		m_Backend.DeviceDownload(m_Electric.data(), m_Update.electric, m_Electric.size() * sizeof(float));
 		m_Backend.DeviceDownload(m_Magnetic.data(), m_Curl.output, m_Magnetic.size() * sizeof(float));
 		grid.ImportDeviceFields(m_Electric.data(), m_Electric.size(), m_Magnetic.data(), m_Magnetic.size());
+		if (m_PortCount)
+		{
+			m_Backend.DeviceDownload(m_Ledger.data(), m_LedgerDevice, sizeof(m_Ledger));
+			grid.ImportDeviceLedger(m_Ledger[0], m_Ledger[2]);
+		}
 	}
 
 	std::size_t StorageBytes() const override
@@ -90,13 +137,18 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 	}
 
 	GPU_Backend &m_Backend;
-	std::size_t m_StorageBytes = 0, m_BlockCount = 0, m_SourceCount = 0;
-	double m_StableStep = 0;
+	std::size_t m_StorageBytes = 0, m_BlockCount = 0, m_SourceCount = 0, m_PortCount = 0;
+	double m_StableStep = 0, m_PortStep = 0;
 	std::vector<float> m_Electric, m_Magnetic;
 	Op_SubgridCurl m_Transpose{}, m_Curl{};
 	Op_SubgridMass m_Mass{};
 	Op_SubgridElectric m_Update{};
 	Op_SubgridSource m_Source{};
+	Op_SubgridSourceCurl m_SourceCurl{};
+	Op_SubgridPortSolve m_PortSolve{};
+	Op_SubgridPortApply m_PortApply{};
+	float *m_LedgerDevice = nullptr;
+	std::array<float, 4> m_Ledger{};
 };
 } // namespace
 

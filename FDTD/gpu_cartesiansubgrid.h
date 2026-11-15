@@ -3,6 +3,7 @@
 #define GPU_CARTESIANSUBGRID_H
 
 #include <cstddef>
+#include "subgrid_device_precision.h"
 #include <cstdint>
 #include <memory>
 #include <vector>
@@ -22,6 +23,12 @@ struct CartesianSubgridDeviceData
 	std::vector<std::uint32_t> blockStart{0}, blockEdge, bandwidth, lowerStart{0};
 	std::vector<std::uint32_t> sourceEdge;
 	std::vector<float> sourceWeight;
+	std::vector<std::uint32_t> portStart{0}, portEdge, responseStart{0}, responseEdge;
+	std::vector<float> portWeight, responseWeight, rootConductance, portCurrent, portLower;
+	std::vector<std::uint32_t> sourceOffStart{0}, sourceOffEdge;
+	std::vector<float> sourceOffWeight, ledger{0, 0, 0, 0};
+	CartesianSubgridFloat::TailInfo factorTails;
+	double portTimestep = 0;
 	double stableTimestep = 0;
 };
 
