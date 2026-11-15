@@ -30,6 +30,8 @@ def main():
     p.add_argument('--repeats', type=int, default=4)
     p.add_argument('--devices', default='0')
     p.add_argument('--fusion-only', action='store_true')
+    p.add_argument('--baseline-fusion', choices=['off', 'apply', 'all'], default='off')
+    p.add_argument('--one-step', action='store_true', help='disable temporal blocking, whole-step fusion and automatic trials on both builds')
     args = p.parse_args()
     root = args.output.resolve()
     root.mkdir(parents=True, exist_ok=False)
@@ -60,12 +62,13 @@ def main():
     raw = (root/'model.xml').read_bytes()
     spec = importlib.util.spec_from_file_location('comparison', Path(__file__).with_name('extension_profile.py'))
     comp = importlib.util.module_from_spec(spec); spec.loader.exec_module(comp)
-    variants = [('parent', args.baseline, 'off', 'auto'), ('off', args.binary, 'off', 'auto'),
+    variants = [('parent', args.baseline, args.baseline_fusion, 'auto'), ('off', args.binary, 'off', 'auto'),
                 ('apply', args.binary, 'apply', 'auto'), ('all', args.binary, 'all', 'auto')]
     if not args.fusion_only:
         variants += [('raw', args.binary, 'off', 'raw'), ('raw-all', args.binary, 'all', 'raw')]
     result = dict(status='RUNNING', synthetic=True, input_sha256=hashlib.sha256(raw).hexdigest(),
-                  shape=shape, steps=args.steps, devices=args.devices, runs=[])
+                  shape=shape, steps=args.steps, devices=args.devices, runs=[],
+                  baseline_fusion=args.baseline_fusion, one_step=args.one_step)
     reference = None
     for repeat in range(args.repeats):
         # Alternate forward/reverse order to reduce systematic thermal/order bias.
@@ -79,6 +82,8 @@ def main():
                 OPENEMS_DOMAIN_HALOS='overlap', OPENEMS_DOMAIN_HOST_BUFFERS='borrowed',
                 OPENEMS_PLUGIN_PATH=str(prefix/'lib/openEMS/plugins'),
                 LD_LIBRARY_PATH=str(prefix/'lib')+':/reference/deps/lib:/opt/openEMS/lib')
+            if args.one_step:
+                env.update(OPENEMS_GPU_TBLOCK='0', OPENEMS_GPU_FUSED='0', OPENEMS_GPU_TRIAL='0')
             command = [str(binary), 'model.xml', '--engine=gpu', '--numThreads=4', '--exact-endcriteria', '-vv']
             if ',' in args.devices:
                 command += ['--gpu-devices='+args.devices]

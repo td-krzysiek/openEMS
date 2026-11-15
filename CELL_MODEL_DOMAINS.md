@@ -75,3 +75,34 @@ and unequal cuts, and a one-owned-line slab. Repeat on actual HIP devices with
 `--engine gpu --two-only`, all fusion modes, serial/async/overlap, and runtime
 pause/DFT controls. Benchmark separately with timers disabled, identical
 inputs/stopping steps, interleaved repetitions and explicit baseline hashes.
+
+## Bounded Metal timing evidence
+
+Public graded grid 193x257x97 (4,811,297 nodes), two copper bodies,
+259,924 surface edges, 1536 fixed steps, one Apple GPU. Three interleaved
+repetitions per mode; setup is excluded, observations are included. Temporal
+blocking, whole-step fusion and timing instrumentation are disabled on both
+builds. Baseline: the previous optimized fork with full eight-branch fusion.
+
+| Variant | Median FDTD time |
+| --- | ---: |
+| Previous optimized runtime, full copper fusion | 3.65081 s |
+| CellModel, separate copper branches | 5.22000 s |
+| CellModel, apply-only copper fusion | 3.89041 s |
+| CellModel, full copper fusion | 3.27232 s |
+
+The last row uses 10.37% less time than the optimized old control (1.116x
+throughput). Maximum complex-field/probe differences from that control are
+6.01e-7 / 8.99e-7 of the respective control peak. This is not a prediction for
+an antenna or mixed physical GPUs. Automatic temporal-block selection is a
+separate comparison, not part of this table. Numerical source: `852c26e`.
+
+```
+python3 tests/manual/gpu_lossy_benchmark.py --binary NEW/bin/openEMS \
+  --baseline OLD/bin/openEMS --fusion-only --baseline-fusion all --one-step \
+  --shape 193,257,97 --steps 1536 --repeats 3 --output /tmp/cellmodel-timing
+```
+
+Raw per-repeat times, input/binary hashes and tolerances are preserved in
+`benchmark/cellmodel-domains-metal-20261115.json`. Keep rounded native timing
+precision and the synthetic workload in mind when interpreting the ratios.
