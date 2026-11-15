@@ -327,6 +327,45 @@ struct Op_Dispersive
 	}
 };
 
+//! The qualified eight voltage-only R-L branches, preserving branch order and
+//! the two separate rounding operations of Op_Dispersive. No pole reduction.
+struct Op_LossyBranches
+{
+	CM_GLOBAL float* field;
+	CM_GLOBAL const uint64_t* node;
+	CM_GLOBAL float* ade[8];
+	CM_GLOBAL const float* k_int[8];
+	CM_GLOBAL const float* k_ext[8];
+	uint64_t sN, count;
+	int32_t mode;
+
+	CM_FN void operator()(uint64_t p) const
+	{
+		for (uint64_t n = 0; n < 3; ++n)
+		{
+			const uint64_t j = n * count + p;
+			const uint64_t i = n * sN + node[p];
+			float value = field[i];
+			if (mode == 0)
+			{
+				for (unsigned int k = 0; k < 8; ++k)
+				{
+					ade[k][j] = ade[k][j] * k_int[k][j];
+					ade[k][j] = ade[k][j] + k_ext[k][j] * value;
+				}
+			}
+			else
+			{
+				for (unsigned int k = 0; k < 8; ++k)
+				{
+					value = value - ade[k][j];
+				}
+				field[i] = value;
+			}
+		}
+	}
+};
+
 //! Every point operation as X(kind, struct, kernel): its GPU_PointOp (gpu_backend.h), its struct and the name of its kernels.
 //! The backends expand the list to their launches (GPU_Backend::RunPoints()), so a new operation goes here and into
 //! GPU_PointOp only
@@ -338,6 +377,7 @@ struct Op_Dispersive
 	X(GPU_OP_STEADY_STATE, Op_SteadyState, op_steady_state) \
 	X(GPU_OP_CYLINDER,     Op_Cylinder,    op_cylinder) \
 	X(GPU_OP_MULTIGRID,    Op_MultiGrid,   op_multigrid) \
-	X(GPU_OP_DISPERSIVE,   Op_Dispersive,  op_dispersive)
+	X(GPU_OP_DISPERSIVE,   Op_Dispersive,  op_dispersive) \
+	X(GPU_OP_LOSSY_BRANCHES, Op_LossyBranches, op_lossy_branches)
 
 #endif // FDTD_KERNELS_EXT_OPS_H

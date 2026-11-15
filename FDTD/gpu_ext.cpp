@@ -16,6 +16,8 @@
 */
 
 #include "gpu_ext.h"
+#include "gpu_lossy_fusion.h"
+#include "extensions/operator_ext_lossymetal.h"
 
 #include <algorithm>
 #include <cstring>
@@ -49,12 +51,18 @@
 #include <map>
 #include <stdexcept>
 
-void GPU_PointList::Init(const std::vector<unsigned int>& x)
+void GPU_PointList::Init(const std::vector<unsigned int>& x, GPU_Backend* backend)
 {
-	m_Order.resize(x.size());
-	std::iota(m_Order.begin(), m_Order.end(), 0);
+	m_Order.clear();
+	for (size_t n = 0; n < x.size(); ++n)
+	{
+		if (!backend || backend->OwnsX(x[n]))
+		{
+			m_Order.push_back(n);
+		}
+	}
 	std::stable_sort(m_Order.begin(), m_Order.end(), [&](size_t a, size_t b) {return x[a]<x[b];});
-	m_X.resize(x.size());
+	m_X.resize(m_Order.size());
 	for (size_t n=0; n<m_Order.size(); ++n)
 		m_X[n] = x[m_Order[n]];
 }
@@ -123,10 +131,10 @@ protected:
 		for (size_t n=0; n<count; ++n)
 		{
 			x[n] = index[0][n];
-			flat[n] = FlatIndex(numLines, dir[n], index[0][n], index[1][n], index[2][n]);
-			s.serial |= !edges.insert(flat[n]).second;
+			flat[n] = m_B->LocalFlat(FlatIndex(numLines, dir[n], index[0][n], index[1][n], index[2][n]));
+			s.serial |= m_B->OwnsX(x[n]) && !edges.insert(flat[n]).second;
 		}
-		s.list.Init(x);
+		s.list.Init(x, m_B);
 		s.op.index = Upload(m_B, s.list.Sorted(flat));
 		s.flat.swap(flat);
 		s.op.amp = Upload(m_B, s.list.Sorted(std::vector<float>(amp, amp+count)));
@@ -310,10 +318,10 @@ public:
 		for (size_t n=0; n<count; ++n)
 		{
 			x[n] = op->v_RLC_pos[0][n];
-			flat[n] = FlatIndex(numLines, op->v_RLC_dir[n], op->v_RLC_pos[0][n], op->v_RLC_pos[1][n], op->v_RLC_pos[2][n]);
-			m_Serial |= !edges.insert(flat[n]).second;
+			flat[n] = m_B->LocalFlat(FlatIndex(numLines, op->v_RLC_dir[n], op->v_RLC_pos[0][n], op->v_RLC_pos[1][n], op->v_RLC_pos[2][n]));
+			m_Serial |= m_B->OwnsX(x[n]) && !edges.insert(flat[n]).second;
 		}
-		m_List.Init(x);
+		m_List.Init(x, m_B);
 		AddNodes(m_Nodes, flat, numLines);
 		auto up = [&](const FDTD_FLOAT* v) {return Upload(m_B, m_List.Sorted(std::vector<float>(v, v+count)));};
 		m_Op.index = Upload(m_B, m_List.Sorted(flat));
@@ -502,7 +510,7 @@ public:
 			x[n] = op->m_E_probe_pos[0].at(n);
 			flat[n] = FlatIndex(numLines, op->m_E_probe_dir.at(n), op->m_E_probe_pos[0].at(n), op->m_E_probe_pos[1].at(n), op->m_E_probe_pos[2].at(n));
 		}
-		m_List.Init(x);
+		m_List.Init(x, m_B);
 		m_Op.index = Upload(m_B, m_List.Sorted(flat));
 		m_Op.length = 2*m_Period;
 		m_Host.assign(std::max<size_t>(count, 1)*2*(size_t)m_Period, 0.0f);
@@ -629,6 +637,24 @@ public:
 	GPU_Ext_Dispersive(Operator_Ext_LorentzMaterial* op, GPU_Backend* b, const unsigned int lines[3]) : m_B(b), m_Debye(false)
 	{
 		Init(lines);
+		m_Fusion = GPU_ParseLossyFusion(std::getenv("OPENEMS_GPU_LOSSY_FUSION"));
+		std::vector<GPU_LossyBranch> branches;
+		for (int o = 0; o < op->m_Order; ++o)
+		{
+			branches.push_back({op->m_LM_Count.at(o), op->m_LM_pos[o],
+			    op->m_volt_ADE_On[o], op->m_curr_ADE_On[o],
+			    op->m_volt_Lor_ADE_On[o] || op->m_curr_Lor_ADE_On[o]});
+		}
+		if (!GPU_CanFuseLossy(dynamic_cast<Operator_Ext_LossyMetal*>(op) != nullptr, branches))
+		{
+			m_Fusion = GPU_LossyFusion::Off;
+		}
+		if (m_Fusion != GPU_LossyFusion::Off)
+		{
+			std::cout << "GPU LossyMetal branch fusion: "
+			          << (m_Fusion == GPU_LossyFusion::All ? "all" : "apply")
+			          << " (CellModel point operations, eight branches)" << std::endl;
+		}
 		for (int o=0; o<op->m_Order; ++o)
 			for (int f=0; f<2; ++f)
 			{
@@ -706,16 +732,16 @@ protected:
 		for (size_t i=0; i<count; ++i)
 		{
 			x[i] = pos[0][i];
-			o.nodes[i] = ((uint64_t)pos[0][i]*numLines[1] + pos[1][i])*numLines[2] + pos[2][i];
+			o.nodes[i] = m_B->LocalFlat(((uint64_t)pos[0][i]*numLines[1] + pos[1][i])*numLines[2] + pos[2][i]);
 		}
-		std::vector<uint64_t> sorted(o.nodes);
+		o.list.Init(x, m_B);
+		std::vector<uint64_t> sorted = o.list.Sorted(o.nodes);
 		std::sort(sorted.begin(), sorted.end());
 		o.serial = std::adjacent_find(sorted.begin(), sorted.end())!=sorted.end();
-		o.list.Init(x);
 		o.op.node = Upload(m_B, o.list.Sorted(o.nodes));
-		o.op.sN = (uint64_t)numLines[0]*numLines[1]*numLines[2];
-		o.op.count = count;
-		o.op.ade = Upload(m_B, std::vector<float>(3*count, 0.0f));
+		o.op.sN = m_B->IsDomain() ? m_B->DomainNodes() : (uint64_t)numLines[0]*numLines[1]*numLines[2];
+		o.op.count = o.list.Size();
+		o.op.ade = Upload(m_B, std::vector<float>(3*o.op.count, 0.0f));
 		return o;
 	}
 
@@ -733,6 +759,27 @@ protected:
 
 	void Run(int f, int mode, const Engine_Box& box)
 	{
+		if (f == 0 && m_Fusion != GPU_LossyFusion::Off &&
+		    (mode == 3 || (mode == 0 && m_Fusion == GPU_LossyFusion::All)))
+		{
+			Op_LossyBranches op;
+			const auto& first = m_Orders[0].front().op;
+			op.field = m_B->DeviceField(false);
+			op.node = first.node;
+			op.sN = first.sN;
+			op.count = first.count;
+			op.mode = mode;
+			for (unsigned int k = 0; k < 8; ++k)
+			{
+				op.ade[k] = m_Orders[0][k].op.ade;
+				op.k_int[k] = m_Orders[0][k].op.k_int;
+				op.k_ext[k] = m_Orders[0][k].op.k_ext;
+			}
+			uint64_t begin, end;
+			m_Orders[0].front().list.Range(box, begin, end);
+			m_B->RunPoints(GPU_OP_LOSSY_BRANCHES, &op, begin, end, false);
+			return;
+		}
 		for (Order& o : m_Orders[f])
 		{
 			uint64_t begin, end;
@@ -745,12 +792,25 @@ protected:
 
 	GPU_Backend* m_B;
 	bool m_Debye;
+	GPU_LossyFusion m_Fusion = GPU_LossyFusion::Off;
 	unsigned int numLines[3];
 	std::vector<Order> m_Orders[2];   //!< of the voltages, of the currents
 };
 
 GPU_Extension* GPU_CreateExtension(Engine_Extension* eng_ext, GPU_Backend* backend, const unsigned int numLines[3])
 {
+	if (backend->HasDomainPhases())
+	{
+		return backend->DomainExtension(eng_ext, numLines);
+	}
+	if (backend->IsDomain() && !dynamic_cast<Engine_Ext_Excitation*>(eng_ext) &&
+	    !dynamic_cast<Engine_Ext_LumpedRLC*>(eng_ext) &&
+	    !dynamic_cast<Engine_Ext_LorentzMaterial*>(eng_ext) &&
+	    !dynamic_cast<Engine_Ext_DebyeMaterial*>(eng_ext))
+	{
+		throw std::runtime_error("CellModel domains: unsupported device extension " + eng_ext->GetExtensionName());
+	}
+
 	if (dynamic_cast<Engine_Ext_Excitation*>(eng_ext))
 		if (Operator_Ext_Excitation* op = dynamic_cast<Operator_Ext_Excitation*>(eng_ext->GetOperatorExtension()))
 			return new GPU_Ext_Excitation(op, backend, numLines);

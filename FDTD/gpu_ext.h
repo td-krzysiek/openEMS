@@ -78,7 +78,7 @@ class GPU_PointList
 {
 public:
 	//! Sort the points by \a x; Order() gives the original index of each sorted point
-	void Init(const std::vector<unsigned int>& x);
+	void Init(const std::vector<unsigned int>& x, GPU_Backend* backend = nullptr);
 	size_t Size() const {return m_Order.size();}
 	const std::vector<size_t>& Order() const {return m_Order;}
 	//! The sorted points in [box.start[0], box.stop[0]) along x
@@ -88,7 +88,7 @@ public:
 	template <typename T>
 	std::vector<T> Sorted(const std::vector<T>& v) const
 	{
-		std::vector<T> s(v.size());
+		std::vector<T> s(m_Order.size());
 		for (size_t n=0; n<m_Order.size(); ++n)
 			s[n] = v[m_Order[n]];
 		return s;

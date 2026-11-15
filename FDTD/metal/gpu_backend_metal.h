@@ -67,6 +67,9 @@ public:
 	virtual void Download(bool currents, ArrayLib::ArrayNIJK<FDTD_FLOAT>& field);
 
 	virtual FDTD_FLOAT* GetShared(bool currents) const;
+	bool DownloadRange(bool currents, size_t offset, size_t count, float* dst) override;
+	bool UploadRange(bool currents, size_t offset, size_t count, const float* src) override;
+	bool CopyRange(bool currents, size_t source, size_t destination, size_t count) override;
 	virtual void Synchronize();
 	virtual bool CalcFastEnergy(const unsigned int numNodes[3], double& E_energy, double& H_energy);
 	virtual bool SnapshotFields(const FDTD_FLOAT* &volt, const FDTD_FLOAT* &curr);

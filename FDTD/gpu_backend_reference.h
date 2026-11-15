@@ -65,6 +65,8 @@ public:
 	virtual void UpdateVoltages(const Engine_Box& box);
 	virtual void UpdateCurrents(const Engine_Box& box);
 
+	bool UploadRange(bool currents, size_t offset, size_t count, const float* src) override;
+
 	virtual void Download(bool currents, ArrayLib::ArrayNIJK<FDTD_FLOAT>& field);
 
 	//! On the CPU there is no work stream to share, a sub-grid just gets its own backend

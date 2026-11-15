@@ -130,3 +130,7 @@ the CPU and is compared with the CPU engine on the same cell model: its probes
 bit-identical. With `--engine` it compares only that
 engine with basic (nothing for `--engine=basic`). Its docstring lists the cases
 and what each must show; `CPU_CellModel.py` checks the CPU engine's cell model on top.
+
+Opt-in native snapshot, runtime-gate and domain controls are in `tests/manual/`.
+They require an explicit binary/device and output directory; see
+`DFT_SNAPSHOTS.md`, `RUN_CONTROL.md` and `MULTI_GPU.md`.

@@ -1,0 +1,114 @@
+{
+  "tested_numerical_source_commit": "852c26e3b274119021603481c9b087e6aa36387d",
+  "driver_recorded_head_before_commit": "4db405ce31bebbaef7b1263662ad83091161b95b",
+  "note": "The driver started after the revision-02 build completed, before that already-built source tree was committed. Its original results.json is retained unchanged. The numerical source tree was subsequently committed as 852c26e; no source was rebuilt or changed during the benchmark.",
+  "old_optimized_binary_sha256": "8c8513cba252f4f24a11d2bc0a3701e77e3c6ad1b1dfa2c0d980232754825b80",
+  "new_binary_sha256": "f759663d345f83dbc6430e71b6225eb9e7e19135ba40709ec9b614058a61a48a",
+  "new_library_sha256": "ad416349c2787f2670a61b28227d65e52d304069171d8297567b31981f89f976",
+  "median_fdtd_seconds": {
+    "old-all": 3.65081,
+    "new-off": 5.22,
+    "new-apply": 3.89041,
+    "new-all": 3.27232
+  },
+  "fdtd_time_reduction_percent": 10.367288355186925,
+  "throughput_ratio": 1.1156641159788774,
+  "max_field_peak_relative_error": 6.010255263706016e-07,
+  "max_probe_peak_relative_error": 8.9883522442235e-07,
+  "exact_input_sha256": "2ca34895bb60cc1f445c8eccbf08859170d45d436664a102b46d55708a8bbd7e",
+  "shape": [
+    193,
+    257,
+    97
+  ],
+  "steps": 1536,
+  "repeats": 3,
+  "temporal_blocking_and_whole_step_fusion": false,
+  "physical_multi_gpu_performance_claim": false,
+  "runs": [
+    {
+      "variant": "old-all",
+      "repeat": 0,
+      "fdtd_seconds": 3.67123
+    },
+    {
+      "variant": "new-off",
+      "repeat": 0,
+      "fdtd_seconds": 5.12,
+      "max_field_peak_relative_error": 6.010255263706016e-07,
+      "probe_peak_relative_error": 8.9883522442235e-07
+    },
+    {
+      "variant": "new-apply",
+      "repeat": 0,
+      "fdtd_seconds": 3.89041,
+      "max_field_peak_relative_error": 6.010255263706016e-07,
+      "probe_peak_relative_error": 8.9883522442235e-07
+    },
+    {
+      "variant": "new-all",
+      "repeat": 0,
+      "fdtd_seconds": 3.27232,
+      "max_field_peak_relative_error": 6.010255263706016e-07,
+      "probe_peak_relative_error": 8.9883522442235e-07
+    },
+    {
+      "variant": "new-all",
+      "repeat": 1,
+      "fdtd_seconds": 3.2549,
+      "max_field_peak_relative_error": 6.010255263706016e-07,
+      "probe_peak_relative_error": 8.9883522442235e-07
+    },
+    {
+      "variant": "new-apply",
+      "repeat": 1,
+      "fdtd_seconds": 3.92971,
+      "max_field_peak_relative_error": 6.010255263706016e-07,
+      "probe_peak_relative_error": 8.9883522442235e-07
+    },
+    {
+      "variant": "new-off",
+      "repeat": 1,
+      "fdtd_seconds": 5.31,
+      "max_field_peak_relative_error": 6.010255263706016e-07,
+      "probe_peak_relative_error": 8.9883522442235e-07
+    },
+    {
+      "variant": "old-all",
+      "repeat": 1,
+      "fdtd_seconds": 3.62407,
+      "max_field_peak_relative_error": 0.0,
+      "probe_peak_relative_error": 0.0
+    },
+    {
+      "variant": "old-all",
+      "repeat": 2,
+      "fdtd_seconds": 3.65081,
+      "max_field_peak_relative_error": 0.0,
+      "probe_peak_relative_error": 0.0
+    },
+    {
+      "variant": "new-off",
+      "repeat": 2,
+      "fdtd_seconds": 5.22,
+      "max_field_peak_relative_error": 6.010255263706016e-07,
+      "probe_peak_relative_error": 8.9883522442235e-07
+    },
+    {
+      "variant": "new-apply",
+      "repeat": 2,
+      "fdtd_seconds": 3.88822,
+      "max_field_peak_relative_error": 6.010255263706016e-07,
+      "probe_peak_relative_error": 8.9883522442235e-07
+    },
+    {
+      "variant": "new-all",
+      "repeat": 2,
+      "fdtd_seconds": 3.28436,
+      "max_field_peak_relative_error": 6.010255263706016e-07,
+      "probe_peak_relative_error": 8.9883522442235e-07
+    }
+  ],
+  "hardware": "one Apple M5 Pro GPU, Metal",
+  "numerical_tolerance_peak_relative": 2e-05
+}

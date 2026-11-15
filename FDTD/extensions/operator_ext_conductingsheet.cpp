@@ -21,6 +21,10 @@
 #include "cond_sheet_parameter.h"
 
 #include "CSPropConductingSheet.h"
+#include <sstream>
+#include <map>
+#include <cmath>
+#include <stdexcept>
 
 using std::cerr;
 using std::endl;
@@ -42,6 +46,9 @@ Operator_Extension* Operator_Ext_ConductingSheet::Clone(Operator* op)
 
 bool Operator_Ext_ConductingSheet::BuildExtension()
 {
+	const auto sheets = m_Op->GetGeometryCSX()->GetPropertyByType(CSProperties::CONDUCTINGSHEET);
+	for (const auto prop : sheets)
+		if (prop->ExistAttribute("ExperimentalSheetAdmittanceV1")) return BuildFittedExtension();
 	double dT = m_Op->GetTimestep();
 	unsigned int pos[] = {0,0,0};
 	double coord[3];
@@ -263,4 +270,223 @@ bool Operator_Ext_ConductingSheet::BuildExtension()
 		}
 	}
 	return true;
+}
+
+// Experimental opt-in surface admittance. GPL-3.0-or-later, same as openEMS.
+// Y(s) = G + sum(weight / (1+s*tau)), in siemens per square.
+// Positive coefficients use the existing Lorentz/Drude ADE engine, including
+// its tiled hooks. This prototype retains the legacy symmetric-sheet geometry.
+bool Operator_Ext_ConductingSheet::BuildFittedExtension()
+{
+    struct Fit {
+        double g;
+        std::vector<double> weight, tau;
+    };
+    std::map<CSProperties*, Fit> fits;
+    unsigned int order = 0;
+    for (auto prop : m_Op->GetGeometryCSX()->GetPropertyByType(CSProperties::CONDUCTINGSHEET))
+    {
+        if (!prop->ExistAttribute("ExperimentalSheetAdmittanceV1"))
+            throw std::runtime_error("Experimental sheet fits cannot be mixed with legacy conducting sheets");
+        std::istringstream stream(prop->GetAttributeValue("ExperimentalSheetAdmittanceV1"));
+        std::string part;
+        Fit fit;
+        if (!std::getline(stream, part, ';')) throw std::runtime_error("Missing sheet conductance");
+        size_t consumed = 0;
+        fit.g = std::stod(part, &consumed);
+        if (consumed != part.size() || !std::isfinite(fit.g) || fit.g < 0)
+            throw std::runtime_error("Invalid sheet conductance");
+        while (std::getline(stream, part, ';'))
+        {
+            const auto comma = part.find(',');
+            if (comma == std::string::npos) throw std::runtime_error("Missing sheet weight/tau separator");
+            const std::string first = part.substr(0, comma), second = part.substr(comma+1);
+            double weight = std::stod(first, &consumed);
+            if (consumed != first.size()) throw std::runtime_error("Invalid sheet weight");
+            double tau = std::stod(second, &consumed);
+            if (consumed != second.size() || !std::isfinite(weight) || !std::isfinite(tau) || weight <= 0 || tau <= 0)
+                throw std::runtime_error("Sheet branches require positive finite weight/tau");
+            fit.weight.push_back(weight);
+            fit.tau.push_back(tau);
+        }
+        if (fit.weight.empty() || fit.weight.size() > 128)
+            throw std::runtime_error("Experimental sheet fit requires 1..128 branches");
+        order = std::max(order, static_cast<unsigned int>(fit.weight.size()));
+        fits[prop] = fit;
+    }
+	double dT = m_Op->GetTimestep();
+	unsigned int pos[] = {0,0,0};
+	double coord[3];
+	unsigned int numLines[3] = {m_Op->GetNumberOfLines(0,true),m_Op->GetNumberOfLines(1,true),m_Op->GetNumberOfLines(2,true)};
+
+	m_Order = 0;
+	std::vector<unsigned int> v_pos[3];
+	ArrayLib::ArrayNIJK<int8_t> tanDir("tanDir", numLines);
+	ArrayLib::ArrayNIJK<float> Conductivity("Conductivity", numLines);
+	ArrayLib::ArrayNIJK<float> Thickness("Thickness", numLines);
+
+	CSPrimitives* cs_sheet = NULL;
+	double box[6];
+	int nP, nPP;
+	bool b_pos_on;
+	bool disable_pos;
+	for (pos[0]=0; pos[0]<numLines[0]; ++pos[0])
+	{
+		for (pos[1]=0; pos[1]<numLines[1]; ++pos[1])
+		{
+			std::vector<CSPrimitives*> vPrims = m_Op->GetPrimitivesBoundBox(
+				pos[0], pos[1], -1,
+				(CSProperties::PropertyType)(CSProperties::MATERIAL | CSProperties::METAL)
+			);
+
+			for (pos[2]=0; pos[2]<numLines[2]; ++pos[2])
+			{
+				b_pos_on = false;
+				disable_pos = false;
+				// disable conducting sheet model inside the boundary conditions, especially inside a pml
+				for (int m=0;m<3;++m)
+					if ((pos[m]<=(unsigned int)m_Op->GetBCSize(2*m)) || (pos[m]>=(numLines[m]-m_Op->GetBCSize(2*m+1)-1)))
+						disable_pos = true;
+
+				for (int n=0; n<3; ++n)
+				{
+					nP = (n+1)%3;
+					nPP = (n+2)%3;
+
+					tanDir(n, pos[0], pos[1], pos[2]) = -1; //deactivate by default
+					Conductivity(n, pos[0], pos[1], pos[2]) = 0; //deactivate by default
+					Thickness(n, pos[0], pos[1], pos[2]) = 0; //deactivate by default
+
+					if (m_Op->GetYeeCoords(n,pos,coord,false)==false)
+						continue;
+
+					// Ez at r==0 not supported --> set to PEC
+					if (m_CC_R0_included && (n==2) && (pos[0]==0))
+						disable_pos = true;
+
+//					CSProperties* prop = m_Op->GetGeometryCSX()->GetPropertyByCoordPriority(coord,(CSProperties::PropertyType)(CSProperties::METAL | CSProperties::MATERIAL), false, &cs_sheet);
+					CSProperties* prop = m_Op->GetGeometryCSX()->GetPropertyByCoordPriority(coord, vPrims, false, &cs_sheet);
+					CSPropConductingSheet* cs_prop = dynamic_cast<CSPropConductingSheet*>(prop);
+					if (cs_prop)
+					{
+						if (cs_sheet==NULL)
+							return false; //sanity check, this should never happen
+						if (cs_sheet->GetDimension()!=2)
+						{
+							cerr << "Operator_Ext_ConductingSheet::BuildExtension: A conducting sheet primitive (ID: " << cs_sheet->GetID() << ") with dimension: " << cs_sheet->GetDimension() << " found, fallback to PEC!" << endl;
+							m_Op->SetVV(n,pos[0],pos[1],pos[2], 0 );
+							m_Op->SetVI(n,pos[0],pos[1],pos[2], 0 );
+							++m_Op->m_Nr_PEC[n];
+							continue;
+						}
+						cs_sheet->SetPrimitiveUsed(true);
+
+						if (disable_pos)
+						{
+							m_Op->SetVV(n,pos[0],pos[1],pos[2], 0 );
+							m_Op->SetVI(n,pos[0],pos[1],pos[2], 0 );
+							++m_Op->m_Nr_PEC[n];
+							continue;
+						}
+
+						Conductivity(n, pos[0], pos[1], pos[2]) = cs_prop->GetConductivity();
+						Thickness(n, pos[0], pos[1], pos[2]) = cs_prop->GetThickness();
+
+						if ((Conductivity(n, pos[0], pos[1], pos[2])<=0) || (Thickness(n, pos[0], pos[1], pos[2])<=0))
+						{
+							cerr << "Operator_Ext_ConductingSheet::BuildExtension: Warning: Zero conductivity or thickness detected... fallback to PEC!" << endl;
+							m_Op->SetVV(n,pos[0],pos[1],pos[2], 0 );
+							m_Op->SetVI(n,pos[0],pos[1],pos[2], 0 );
+							++m_Op->m_Nr_PEC[n];
+							continue;
+						}
+
+						cs_sheet->GetBoundBox(box);
+						if (box[2*nP]!=box[2*nP+1])
+							tanDir(n, pos[0], pos[1], pos[2]) = nP;
+						if (box[2*nPP]!=box[2*nPP+1])
+							tanDir(n, pos[0], pos[1], pos[2]) = nPP;
+						b_pos_on = true;
+					}
+				}
+				if (b_pos_on)
+				{
+					for (int n=0; n<3; ++n)
+						v_pos[n].push_back(pos[n]);
+				}
+			}
+		}
+	}
+
+	size_t numCS = v_pos[0].size();
+	if (numCS==0)
+		return false;
+
+
+
+    m_Order = order;
+    m_volt_ADE_On = new bool[order];
+    m_curr_ADE_On = new bool[order];
+    m_volt_Lor_ADE_On = new bool[order];
+    m_curr_Lor_ADE_On = new bool[order];
+    m_LM_pos = new unsigned int**[order];
+    v_int_ADE = new FDTD_FLOAT**[order];
+    v_ext_ADE = new FDTD_FLOAT**[order];
+    for (unsigned int o=0; o<order; ++o)
+    {
+        m_LM_Count.push_back(numCS);
+        m_volt_ADE_On[o] = true;
+        m_curr_ADE_On[o] = false;
+        m_volt_Lor_ADE_On[o] = m_curr_Lor_ADE_On[o] = false;
+        m_LM_pos[o] = new unsigned int*[3];
+        v_int_ADE[o] = new FDTD_FLOAT*[3];
+        v_ext_ADE[o] = new FDTD_FLOAT*[3];
+        for (int n=0; n<3; ++n)
+        {
+            m_LM_pos[o][n] = new unsigned int[numCS];
+            v_int_ADE[o][n] = new FDTD_FLOAT[numCS]();
+            v_ext_ADE[o][n] = new FDTD_FLOAT[numCS]();
+            for (unsigned int i=0; i<numCS; ++i) m_LM_pos[o][n][i] = v_pos[n][i];
+        }
+    }
+    for (unsigned int i=0; i<numCS; ++i)
+    {
+        for (int n=0; n<3; ++n) pos[n] = v_pos[n][i];
+        const auto index = m_Op->MainOp->SetPos(pos[0],pos[1],pos[2]);
+        for (int n=0; n<3; ++n)
+        {
+            const int t_dir = tanDir(n,pos[0],pos[1],pos[2]);
+            if (t_dir < 0) continue;
+            m_Op->GetYeeCoords(n,pos,coord,false);
+            auto prop = m_Op->GetGeometryCSX()->GetPropertyByCoordPriority(coord,
+                    (CSProperties::PropertyType)(CSProperties::METAL | CSProperties::MATERIAL));
+            const Fit& fit = fits.at(prop);
+            unsigned int tpos[] = {pos[0],pos[1],pos[2]};
+            double factor = tanDir(t_dir,pos[0],pos[1],pos[2]) < 0 ? 2.0 : 1.0;
+            --tpos[t_dir];
+            if (tanDir(t_dir,tpos[0],tpos[1],tpos[2]) < 0) factor = 2.0;
+            const double scale = m_Op->GetEdgeLength(n,pos)/m_Op->GetNodeWidth(t_dir,pos)*factor;
+            double inv_l_sum = 0, inv_l_max = 0;
+            for (size_t o=0; o<fit.weight.size(); ++o)
+            {
+                const double inv_l = fit.weight[o]/fit.tau[o]/scale;
+                inv_l_sum += inv_l;
+                inv_l_max = std::max(inv_l_max, inv_l);
+            }
+            m_Op->EC_G[n][index] = fit.g/scale;
+            // Same stabilizing-capacitance rule as the legacy 2-branch sheet.
+            // Its phase error must be checked by timestep/mesh refinement.
+            m_Op->EC_C[n][index] = dT*dT/4.0*(16.0*inv_l_max + inv_l_sum);
+            m_Op->Calc_ECOperatorPos(n,pos);
+            for (size_t o=0; o<fit.weight.size(); ++o)
+            {
+                const double tau = fit.tau[o], weight = fit.weight[o]/scale;
+                v_int_ADE[o][n][i] = (2*tau-dT)/(2*tau+dT);
+                v_ext_ADE[o][n][i] = dT*weight/(tau+dT/2)*m_Op->GetVI(n,pos[0],pos[1],pos[2]);
+            }
+        }
+    }
+    cerr << "EXPERIMENTAL_POSITIVE_RL_SHEET_V1 active: " << order
+         << " branches, " << numCS << " sheet positions" << endl;
+    return true;
 }

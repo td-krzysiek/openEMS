@@ -167,7 +167,7 @@ __global__ void cm_late_currents(float* __restrict__ I, float* __restrict__ Iout
 
 bool GPU_Backend_HIP::Init(const Operator* op, const GPU_CellModel& m)
 {
-	if (!InitFields(op))
+	if (!InitFields(m))
 		return false;
 	if ((m.numLines[0]!=d->dim.nx) || (m.numLines[1]!=d->dim.ny) || (m.numLines[2]!=d->dim.nz))
 		return false;
