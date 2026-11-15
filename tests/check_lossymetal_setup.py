@@ -20,18 +20,21 @@ out.mkdir(parents=True, exist_ok=False)
 fixtures = Path(__file__).parent / 'fixtures/lossymetal-setup'
 for source in sorted(fixtures.glob('*.xml')):
     expected = None
-    variants = [(reference, 'serial', 4)]
-    variants += [(helper, mode, threads) for mode, threads in
+    variants = [(reference, 'serial', 4, False)]
+    variants += [(helper, mode, threads, False) for mode, threads in
                  [('serial', 4), ('cache', 4), ('parallel-no-cache', 4),
                   ('parallel', 1), ('parallel', 2), ('parallel', 4)]]
-    for index, (binary, mode, threads) in enumerate(variants):
-        folder = out / source.stem / f'{index}-{mode}-{threads}'
+    variants += [(helper, mode, threads, True) for mode, threads in
+                 [('serial', 4), ('parallel', 1), ('parallel', 4)]]
+    for index, (binary, mode, threads, skip_empty) in enumerate(variants):
+        folder = out / source.stem / f'{index}-{mode}-{threads}-skip{int(skip_empty)}'
         folder.mkdir(parents=True)
         shutil.copy2(source, folder / 'model.xml')
         env = dict(os.environ, OPENEMS_LOSSY_SETUP=mode,
+                   OPENEMS_LOSSY_SKIP_EMPTY=str(int(skip_empty)),
                    OPENEMS_PROFILE_LOSSY_SETUP='0')
         with (folder / 'setup.log').open('w') as log:
-            result = subprocess.run([str(binary), 'model.xml', str(threads)] + ([] if source.stem in ('unchanged-pec', 'zero-height-no-thickness') else ['--expect-surface']),
+            result = subprocess.run([str(binary), 'model.xml', str(threads)] + ([] if source.stem in ('unchanged-pec', 'zero-height-no-thickness', 'zero-conductivity') else ['--expect-surface']),
                                     cwd=folder, env=env, stdout=log,
                                     stderr=subprocess.STDOUT, timeout=180)
         if result.returncode:
