@@ -23,6 +23,15 @@ to what a user notices, in a few lines; the details belong in the commit.
 - Experimental opt-in GPU LossyMetal branch fusion
   (`OPENEMS_GPU_LOSSY_FUSION=apply|all`) reduces repeated field accesses while
   retaining all eight branches. Default off; HIP and Metal are supported.
+- Optional `OPENEMS_LOSSY_SKIP_EMPTY=1` skips Cartesian LossyMetal scan blocks
+  only when conservative bounds prove they cannot contain lossy metal.
+
+- Experimental CPU LossyMetal setup modes (`OPENEMS_LOSSY_SETUP=cache|parallel`)
+  reuse metal-boundary searches and optionally scan on the setup threads.
+  The default remains sequential; the time-stepping scheme is unchanged.
+
+- Optional `OPENEMS_PROFILE_LOSSY_SETUP=1` reports LossyMetal setup phases,
+  query counts and sampled inclusive query timings without per-cell logging.
 
 - Optional `--profile-setup` (`OPENEMS_PROFILE_SETUP=1`) records coarse host-wall
   setup phases as JSON; the existing speed benchmark preserves the hierarchy.
