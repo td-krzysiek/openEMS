@@ -59,3 +59,13 @@ fixtures, 4096-step basic/CPU/Metal controls with PEC and PML, and the standard
 interleaved `benchmark/lossymetal_cpu.py` adapter. Full-antenna scaling and
 CUDA/HIP execution remain separate checks. Frozen production builds are not
 replaced by this change.
+
+## Public setup-only timing fixture
+
+`benchmark/fixtures/lossymetal-cavity-1m.xml` is the exact public
+1,044,480-location cavity timing input (six smooth-copper boxes), derived from
+the public PR242 wall-test geometry. It contains no source or RF measurement
+claim. Use it with the setup-only command above; require the completed
+operator-only profile and no FDTD-engine start. The polygon-heavy private
+diagnostic is not distributed; synthetic polygon correctness controls are in
+`tests/fixtures/lossymetal-setup/`.
