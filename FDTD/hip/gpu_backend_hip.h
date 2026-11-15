@@ -67,6 +67,14 @@ public:
 
 	virtual void Download(bool currents, ArrayLib::ArrayNIJK<FDTD_FLOAT>& field);
 
+	bool DownloadRange(bool currents, size_t offset, size_t count, float* dst) override;
+	bool UploadRange(bool currents, size_t offset, size_t count, const float* src) override;
+	bool CopyRange(bool currents, size_t source, size_t destination, size_t count) override;
+	GPU_HaloBuffer* NewHaloBuffer(size_t samples) override;
+	bool CanOverlapCurrentInterior() const override { return m_Domain; }
+	void UpdateCurrentRegion(bool interior) override;
+	void Activate() override;
+	GPU_DeviceTimer* NewDeviceTimer() override;
 	virtual void Synchronize();
 	virtual bool SnapshotFields(const FDTD_FLOAT* &volt, const FDTD_FLOAT* &curr);
 	virtual void WaitSnapshot();
@@ -86,7 +94,7 @@ protected:
 	GPU_Backend_HIP(Impl* impl);
 
 	//! The grid dimensions and the device fields (all zero), the first part of Init()
-	bool InitFields(const Operator* op);
+	bool InitFields(const GPU_CellModel& model);
 
 	Impl* d;
 };

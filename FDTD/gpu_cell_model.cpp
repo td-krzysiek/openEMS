@@ -231,3 +231,59 @@ double GPU_CellModel::NodeBytes() const
 	}
 	return bytes;
 }
+
+// One owned slab and one halo plane on either side. Global coefficient tables are
+// immutable; per-node indices, mesh factors and ADE state slots are local.
+GPU_CellModel::GPU_CellModel(const GPU_CellModel& model, unsigned int begin, unsigned int end)
+{
+	if (begin >= end || end > model.numLines[0])
+	{
+		throw std::invalid_argument("GPU_CellModel: invalid domain interval");
+	}
+	numLines[0] = end - begin + 2;
+	numLines[1] = model.numLines[1];
+	numLines[2] = model.numLines[2];
+	const size_t plane = size_t(numLines[1]) * numLines[2];
+	for (int f = 0; f < 2; ++f)
+	{
+		const Field& src = model.field[f];
+		Field& dst = field[f];
+		dst.combos = src.combos;
+		dst.poles = src.poles;
+		dst.slotFloats = src.slotFloats;
+		for (int q = 0; q < 5; ++q)
+		{
+			dst.profile[q] = src.profile[q];
+		}
+		dst.index.resize(size_t(numLines[0]) * plane);
+		if (!src.slot.empty())
+		{
+			dst.slot.assign(dst.index.size(), UINT32_MAX);
+		}
+		for (unsigned int x = 0; x < numLines[0]; ++x)
+		{
+			const int gx = std::max(0, std::min(int(model.numLines[0]) - 1, int(begin) + int(x) - 1));
+			std::copy_n(src.index.data() + size_t(gx) * plane, plane, dst.index.data() + size_t(x) * plane);
+			// The halo is read only: it owns no ADE history.
+			if (x > 0 && x + 1 < numLines[0] && !src.slot.empty())
+			{
+				for (size_t i = 0; i < plane; ++i)
+				{
+					if (src.slot[size_t(gx) * plane + i] != UINT32_MAX)
+					{
+						dst.slot[size_t(x) * plane + i] = uint32_t(dst.numSlots++);
+					}
+				}
+			}
+			for (int n = 0; n < 3; ++n)
+			{
+				dst.gxy[n].insert(dst.gxy[n].end(), src.gxy[n].begin() + size_t(gx) * numLines[1],
+				    src.gxy[n].begin() + size_t(gx + 1) * numLines[1]);
+			}
+		}
+		for (int n = 0; n < 3; ++n)
+		{
+			dst.gz[n] = src.gz[n];
+		}
+	}
+}

@@ -86,7 +86,7 @@ kernel void energy_lines(const device float* volt [[buffer(0)]], const device fl
 		return;
 	const ulong sn = (ulong)N.nx*N.ny*N.nz;
 	float E = 0, H = 0;
-	for (uint x=0; x<L.nx; ++x)
+	for (uint x=L.x0; x<L.nx; ++x)
 	{
 		const ulong i = ((ulong)x*N.ny + y)*N.nz + z;
 		E += volt[i]*volt[i];
@@ -97,4 +97,14 @@ kernel void energy_lines(const device float* volt [[buffer(0)]], const device fl
 		H += curr[2*sn+i]*curr[2*sn+i];
 	}
 	partial[(ulong)y*L.nz + z] = float2(E, H);
+}
+
+
+kernel void copy_field_range(device float* field [[buffer(0)]], constant uint4& range [[buffer(1)]],
+                             uint i [[thread_position_in_grid]])
+{
+	if (i < range.z)
+	{
+		field[range.y + i] = field[range.x + i];
+	}
 }

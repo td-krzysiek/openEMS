@@ -66,7 +66,7 @@ __global__ void field_dft(const float* __restrict__ f, HIP_GatherRegion R, HIP_G
 // Field energy: the squared voltages and currents of the nodes below L, summed along x
 // in float, one thread per (y,z) line. The host sums the lines in double.
 __global__ void energy_lines(const float* __restrict__ volt, const float* __restrict__ curr, float2* partial,
-                             HIP_GridDim N, HIP_GridDim L)
+                             HIP_GridDim N, HIP_GridDim L, unsigned int x0)
 {
 	const unsigned int z = blockIdx.x*blockDim.x + threadIdx.x;
 	const unsigned int y = blockIdx.y*blockDim.y + threadIdx.y;
@@ -74,7 +74,7 @@ __global__ void energy_lines(const float* __restrict__ volt, const float* __rest
 		return;
 	const size_t sn = (size_t)N.nx*N.ny*N.nz;
 	float E = 0, H = 0;
-	for (unsigned int x=0; x<L.nx; ++x)
+	for (unsigned int x=x0; x<L.nx; ++x)
 	{
 		const size_t i = nijk(N, 0, x, y, z);
 		E += volt[i]*volt[i];
@@ -470,11 +470,11 @@ size_t GPU_Backend_HIP::CacheBytes(std::string& source) const
 	return d->ctx->cache_bytes;
 }
 
-bool GPU_Backend_HIP::InitFields(const Operator* op)
+bool GPU_Backend_HIP::InitFields(const GPU_CellModel& model)
 {
 	unsigned int numLines[3];
 	for (int n=0; n<3; ++n)
-		numLines[n] = op->GetNumberOfLines(n, true);
+		numLines[n] = model.numLines[n];
 	d->dim.nx = numLines[0];
 	d->dim.ny = numLines[1];
 	d->dim.nz = numLines[2];
@@ -668,10 +668,15 @@ bool GPU_Backend_HIP::CalcFastEnergy(const unsigned int numNodes[3], double& E_e
 {
 	E_energy = H_energy = 0;
 	HIP_GridDim L = {numNodes[0], numNodes[1], numNodes[2]};
+	const unsigned int x0 = m_Domain ? 1 : 0;
+	if (m_Domain)
+	{
+		L.nx = std::min(numNodes[0], m_End) > m_Begin ? std::min(numNodes[0], m_End) - m_Begin + 1 : 1;
+	}
 	if ((L.nx>d->dim.nx) || (L.ny>d->dim.ny) || (L.nz>d->dim.nz))
 		return false;
 	const size_t count = (size_t)L.ny*L.nz;
-	if (L.nx==0 || count==0)
+	if (L.nx==x0 || count==0)
 		return true;
 	if (d->energy_count<count)
 	{
@@ -679,7 +684,7 @@ bool GPU_Backend_HIP::CalcFastEnergy(const unsigned int numNodes[3], double& E_e
 		d->energy_count = count;
 		d->energy_host.resize(count);   // small, not pinned
 	}
-	HIP_Launch(d, "energy_lines", energy_lines, L.nz, L.ny, 1, (const float*)d->volt, (const float*)d->curr, d->energy, d->dim, L);
+	HIP_Launch(d, "energy_lines", energy_lines, L.nz, L.ny, 1, (const float*)d->volt, (const float*)d->curr, d->energy, d->dim, L, x0);
 	HIP_Check(hipMemcpyAsync(d->energy_host.data(), d->energy, count*sizeof(float2), hipMemcpyDeviceToHost, d->Stream()), "energy download");
 	d->Flush();
 	for (size_t k=0; k<count; ++k)
@@ -688,4 +693,134 @@ bool GPU_Backend_HIP::CalcFastEnergy(const unsigned int numNodes[3], double& E_e
 		H_energy += d->energy_host[k].y;
 	}
 	return true;
+}
+
+bool GPU_Backend_HIP::DownloadRange(bool currents, size_t offset, size_t count, FDTD_FLOAT* dst)
+{
+	if (offset+count > 3*d->numCells)
+		return false;
+	const float* src = (currents ? d->curr : d->volt) + offset;
+	HIP_Check(hipMemcpyAsync(dst, src, count*sizeof(float), hipMemcpyDeviceToHost, d->Stream()), "range download");
+	d->Flush();
+	return true;
+}
+
+bool GPU_Backend_HIP::CopyRange(bool currents, size_t source, size_t destination, size_t count)
+{
+	const size_t size = 3 * d->numCells;
+	if (source > size || count > size - source || destination > size || count > size - destination)
+	{
+		return false;
+	}
+	if (!count || source == destination)
+	{
+		return true;
+	}
+	if (source < destination + count && destination < source + count)
+	{
+		return false;
+	}
+	float* field = currents ? d->curr : d->volt;
+	HIP_Check(hipMemcpyAsync(field + destination, field + source, count * sizeof(float),
+	              hipMemcpyDeviceToDevice, d->Stream()),
+	    "device-local field copy");
+	return true;
+}
+
+bool GPU_Backend_HIP::UploadRange(bool currents, size_t offset, size_t count, const FDTD_FLOAT* src)
+{
+	if (offset > 3 * d->numCells || count > 3 * d->numCells - offset)
+	{
+		return false;
+	}
+	float* dst = (currents ? d->curr : d->volt) + offset;
+	HIP_Check(hipMemcpyAsync(dst, src, count * sizeof(float), hipMemcpyHostToDevice, d->Stream()),
+	    "domain range upload");
+	d->Flush();
+	return true;
+}
+
+namespace
+{
+class HIP_DeviceTimer : public GPU_DeviceTimer
+{
+public:
+	explicit HIP_DeviceTimer(std::shared_ptr<HIP_Context> context) : m_Context(context)
+	{
+		HIP_Check(hipSetDevice(m_Context->device), "profile device selection");
+		HIP_Check(hipEventCreate(&m_Start), "profile start event");
+		const auto error = hipEventCreate(&m_Stop);
+		if (error != hipSuccess)
+		{
+			hipEventDestroy(m_Start);
+			HIP_Check(error, "profile stop event");
+		}
+	}
+	~HIP_DeviceTimer() override
+	{
+		// Profiling cleanup must not throw during solver error unwinding.
+		hipSetDevice(m_Context->device);
+		hipEventDestroy(m_Start);
+		hipEventDestroy(m_Stop);
+	}
+	void Begin() override
+	{
+		HIP_Check(hipSetDevice(m_Context->device), "profile device selection");
+		HIP_Check(hipEventRecord(m_Start, m_Context->stream), "profile begin");
+	}
+	void End() override
+	{
+		HIP_Check(hipEventRecord(m_Stop, m_Context->stream), "profile end");
+	}
+	bool ReadSeconds(double& seconds) override
+	{
+		HIP_Check(hipSetDevice(m_Context->device), "profile device selection");
+		const auto error = hipEventQuery(m_Stop);
+		if (error == hipErrorNotReady)
+		{
+			return false;
+		}
+		HIP_Check(error, "profile event query");
+		float milliseconds = 0;
+		HIP_Check(hipEventElapsedTime(&milliseconds, m_Start, m_Stop), "profile elapsed");
+		seconds = milliseconds * 1e-3;
+		return true;
+	}
+
+private:
+	std::shared_ptr<HIP_Context> m_Context;
+	hipEvent_t m_Start, m_Stop;
+};
+}
+
+GPU_DeviceTimer* GPU_Backend_HIP::NewDeviceTimer()
+{
+	return new HIP_DeviceTimer(d->ctx);
+}
+void GPU_Backend_HIP::Activate()
+{
+	HIP_Check(hipSetDevice(d->ctx->device), "activate domain device");
+}
+
+
+#include <limits>
+#include "FDTD/engine_plan.h"
+#include "hip_halo_buffer.hiph"
+
+GPU_HaloBuffer* GPU_Backend_HIP::NewHaloBuffer(size_t samples)
+{
+	Activate();
+	return new HIP_HaloBuffer(d, samples);
+}
+
+void GPU_Backend_HIP::UpdateCurrentRegion(bool interior)
+{
+	if (!m_Domain)
+	{
+		throw std::logic_error("current overlap requires a CellModel domain");
+	}
+	const unsigned int boundary = m_End - m_Begin;
+	Engine_Box box = {{interior ? 1u : boundary, 0, 0},
+	    {interior ? boundary : boundary + 1, d->dim.ny, d->dim.nz}};
+	UpdateCurrents(box);
 }

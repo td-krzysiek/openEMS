@@ -67,6 +67,7 @@ set(SOURCES
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_interface_gpu_fdtd.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_field_gather.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_gpu.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/gpu_backend_domains.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/gpu_backend.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/gpu_plugins.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/gpu_backend_reference.cpp

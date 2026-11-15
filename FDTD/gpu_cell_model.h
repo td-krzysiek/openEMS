@@ -51,6 +51,8 @@ struct GPU_CellModel
 	//! Expand \a model (built along z, split x, mid y); throws if it was built along other axes
 	explicit GPU_CellModel(const CellModel& model, const unsigned int numLines[3]);
 
+	GPU_CellModel(const GPU_CellModel& model, unsigned int begin, unsigned int end);
+
 	//! Whether a device stores the node index in 16 bit: both fields have at most 65536 combinations
 	bool Index16() const {return (field[0].combos.size()<=65536) && (field[1].combos.size()<=65536);}
 	//! The device memory a main update reads per node, on average: the fields, the node index, the state slot and the state (the tile size of the temporal blocking)

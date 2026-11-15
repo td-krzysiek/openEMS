@@ -459,6 +459,47 @@ IF(ENABLE_HIP)
     ENDIF()
   ENDIF()
 ENDIF()
+# Experimental internal domain runtime. Existing engines and language frontends
+# keep their selection and behavior; this does not add an antenna-ready mode.
+option(ENABLE_DOMAIN_RUNTIME "Build experimental backend-independent domain runtime" OFF)
+if(ENABLE_DOMAIN_RUNTIME)
+  target_compile_definitions(openEMS PRIVATE OPENEMS_WITH_DOMAIN_RUNTIME=1)
+  add_subdirectory(FDTD/distributed)
+  target_link_libraries(openEMS openEMS_domain_runtime)
+  add_library(openEMS_domain_operator STATIC FDTD/distributed/operator_slice.cpp)
+  set_target_properties(openEMS_domain_operator PROPERTIES CXX_STANDARD 11 POSITION_INDEPENDENT_CODE ON)
+  target_link_libraries(openEMS_domain_operator PUBLIC openEMS_domain_runtime openEMS)
+  if(OPENEMS_DOMAIN_TESTS)
+    enable_testing()
+    add_executable(test_dispersive_domain TESTSUITE/distributed/test_dispersive_domain.cpp)
+    target_link_libraries(test_dispersive_domain openEMS)
+    add_test(NAME dispersive_domain COMMAND test_dispersive_domain)
+    add_executable(test_domain_operator TESTSUITE/distributed/test_operator.cpp)
+    target_link_libraries(test_domain_operator openEMS_domain_operator)
+    add_executable(test_domain_energy TESTSUITE/distributed/test_native_energy.cpp)
+    target_link_libraries(test_domain_energy openEMS)
+    add_executable(test_domain_performance TESTSUITE/distributed/test_domain_performance.cpp)
+    target_link_libraries(test_domain_performance openEMS)
+    add_test(NAME domain_performance COMMAND test_domain_performance
+      ${CMAKE_CURRENT_BINARY_DIR}/domain-performance-test.jsonl)
+    if(APPLE AND ENABLE_METAL)
+      # Explicit manual-test path only: several queues on one physical GPU.
+      # Not installed, and never added to the normal plugin search directory.
+      add_library(openEMS_gpu_metal_domain_test MODULE TESTSUITE/distributed/metal_test_plugin.cpp)
+      # Resolve against the solver already loaded by the executable/bindings.
+      # Linking the build-tree dylib loads a second copy beside an installed
+      # libopenEMS on macOS, duplicating global settings and thread limits.
+      target_link_options(openEMS_gpu_metal_domain_test PRIVATE "LINKER:-undefined,dynamic_lookup")
+      add_dependencies(openEMS_gpu_metal_domain_test openEMS)
+      set_target_properties(openEMS_gpu_metal_domain_test PROPERTIES
+        PREFIX "" SUFFIX ".so" LIBRARY_OUTPUT_DIRECTORY "${CMAKE_CURRENT_BINARY_DIR}/test-plugins")
+    endif()
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+      target_compile_options(test_domain_operator PRIVATE -ffp-contract=off)
+    endif()
+  endif()
+endif()
+
 IF(ENABLE_HIP AND OPENEMS_HIP_AS_CUDA)
   target_include_directories( ${HIP_TARGET} PRIVATE ${HIP_INCLUDE_DIR} )
   target_compile_definitions( ${HIP_TARGET} PRIVATE __HIP_PLATFORM_NVIDIA__=1 )

@@ -35,7 +35,7 @@ GPU_Backend_Reference::GPU_Backend_Reference()
 bool GPU_Backend_Reference::Init(const Operator* op, const GPU_CellModel& model)
 {
 	for (int n=0; n<3; ++n)
-		numLines[n] = op->GetNumberOfLines(n, true);
+		numLines[n] = model.numLines[n];
 	if ((model.numLines[0]!=numLines[0]) || (model.numLines[1]!=numLines[1]) || (model.numLines[2]!=numLines[2]))
 		return false;
 	m_volt.Init("gpu_volt", numLines);
@@ -119,7 +119,7 @@ bool GPU_Backend_Reference::CalcFastEnergy(const unsigned int numNodes[3], doubl
 {
 	E_energy = H_energy = 0;
 	unsigned int pos[3];
-	for (pos[0]=0; pos[0]<numNodes[0]; ++pos[0])
+	for (pos[0]=(m_Domain ? 1 : 0); pos[0]<(m_Domain ? (std::min(numNodes[0], m_End) > m_Begin ? std::min(numNodes[0], m_End) - m_Begin + 1 : 1) : numNodes[0]); ++pos[0])
 		for (pos[1]=0; pos[1]<numNodes[1]; ++pos[1])
 			for (pos[2]=0; pos[2]<numNodes[2]; ++pos[2])
 			{
@@ -159,4 +159,16 @@ void GPU_Backend_Reference::RunPoints(GPU_PointOp kind, const void* op, uint64_t
 	CM_POINT_OPS(RUN)
 #undef RUN
 	}
+}
+
+
+bool GPU_Backend_Reference::UploadRange(bool currents, size_t offset, size_t count, const float* src)
+{
+	auto& field = currents ? m_curr : m_volt;
+	if (offset > field.size() || count > field.size() - offset)
+	{
+		throw std::out_of_range("reference domain upload");
+	}
+	std::copy_n(src, count, field.data() + offset);
+	return true;
 }

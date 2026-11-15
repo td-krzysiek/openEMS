@@ -76,6 +76,13 @@ Engine_GPU::~Engine_GPU()
 
 void Engine_GPU::Init()
 {
+	if (const char* policy = std::getenv("OPENEMS_GPU_MAIN_COEFF"))
+	{
+		if (std::string(policy) != "auto")
+		{
+			throw std::invalid_argument("CellModel replaces legacy coefficient storage; OPENEMS_GPU_MAIN_COEFF must be unset or auto");
+		}
+	}
 	// a sub-grid shares the device work stream of its parent grid
 	if (m_ParentBackend)
 		m_Backend = m_ParentBackend->NewSubGridBackend();
@@ -135,11 +142,22 @@ void Engine_GPU::Init()
 	}
 	if (!missing.empty())
 		throw std::runtime_error("Engine_GPU: no device implementation (gpu_ext.h) of the " + missing);
+	cout << "Engine_GPU: all extensions run on the device" << endl;
 	m_BlockingPrepared = false;
 }
 
 void Engine_GPU::PrepareBlocking()
 {
+	if (m_Backend->HasDomainPhases())
+	{
+		m_BlockCandidates.clear();
+		m_Block = m_Trial = -1;
+		m_TrialSeconds = 0;
+		m_Fused = false;
+		m_FlatSplit = true;
+		cout << "Engine_GPU: domain half-step exchange; temporal blocking disabled" << endl;
+		return;
+	}
 	m_BlockCandidates.clear();
 	m_Block = -1;
 	m_Trial = -1;
@@ -313,6 +331,14 @@ void Engine_GPU::DeviceHalfStep(bool currents, const Engine_Box& box, unsigned i
 		ext->Hook(currents, GPU_POST, hook, ts);
 	for (GPU_Extension* ext : m_GPU_exts)
 		ext->Hook(currents, GPU_APPLY, hook, ts);
+	if (currents)
+	{
+		m_Backend->FinishCurrentPhase();
+	}
+	else
+	{
+		m_Backend->FinishVoltagePhase();
+	}
 }
 
 void Engine_GPU::FusedStep()
@@ -504,7 +530,7 @@ FDTD_FLOAT Engine_GPU::ReadStale(bool currents, unsigned int n, unsigned int x, 
 	if (!field.full_last_batch && (field.lines.size()<MAX_STALE_LINES))
 	{
 		std::vector<FDTD_FLOAT> line(numLines[2]);
-		m_Backend->DeviceDownload(line.data(), m_Backend->DeviceField(currents) + key*numLines[2], numLines[2]*sizeof(FDTD_FLOAT));
+		m_Backend->DownloadRange(currents, key*numLines[2], numLines[2], line.data());
 		const FDTD_FLOAT value = line.at(z);
 		field.lines[key].swap(line);
 		return value;

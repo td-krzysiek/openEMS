@@ -132,6 +132,26 @@ public:
 
 protected:
 	void collectCommandLineArguments();
+	void CheckDFTSnapshot(double energy, double maxEnergy);
+	bool WriteDFTSnapshot(const std::string& id, double energy, double maxEnergy);
+	bool m_dftSnapshots;
+	void ValidateRuntimeGates();
+	bool CheckRuntimeGates(double energy, double maxEnergy, double iterationSeconds);
+	bool WaitRunGate(const std::string& id, const std::string& reason, int threshold,
+		double energy, double maxEnergy, double iterationSeconds);
+	bool m_runtimeControl;
+	unsigned int m_runtimeExcitationEnd;
+	void FlushProcessingForGate();
+	std::string m_runtimeGateSchedule;
+	std::string m_runtimeGateID;
+	unsigned int m_runtimeGateTimeout;
+	std::vector<int> m_runtimeGateLevels;
+	size_t m_runtimeGateIndex;
+	void ValidateStartupGate() const;
+	bool WaitStartupGate(double energy, double maxEnergy, double iterationSeconds);
+	unsigned int m_startupGateStep;
+	unsigned int m_startupGateTimeout;
+	std::string m_startupGateID;
 
 	bool CylinderCoords;
 	std::vector<double> m_CC_MultiGrid;
@@ -152,6 +172,7 @@ protected:
 	bool m_debugCSX;
 	bool m_DumpStats;
 	bool m_debugBox, m_debugPEC, m_no_simulation;
+	bool m_profileSetup;
 	bool m_exactEndCriteria;
 
 	double endCrit;

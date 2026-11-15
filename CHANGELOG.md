@@ -16,6 +16,51 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Added
 
+- Experimental CellModel multi-device Cartesian slabs with unequal X cuts,
+  owned material state, and half-step halo exchange. Multi-device temporal
+  blocking remains disabled; use a separately qualified runtime.
+
+
+- Experimental opt-in GPU LossyMetal branch fusion
+  (`OPENEMS_GPU_LOSSY_FUSION=apply|all`) reduces repeated field accesses while
+  retaining all eight branches. Default off; HIP and Metal are supported.
+- Optional `OPENEMS_LOSSY_SKIP_EMPTY=1` skips Cartesian LossyMetal scan blocks
+  only when conservative bounds prove they cannot contain lossy metal.
+
+- Experimental CPU LossyMetal setup modes (`OPENEMS_LOSSY_SETUP=cache|parallel`)
+  reuse metal-boundary searches and optionally scan on the setup threads.
+  The default remains sequential; the time-stepping scheme is unchanged.
+
+- Optional `OPENEMS_PROFILE_LOSSY_SETUP=1` reports LossyMetal setup phases,
+  query counts and sampled inclusive query timings without per-cell logging.
+
+- Optional `--profile-setup` (`OPENEMS_PROFILE_SETUP=1`) records coarse host-wall
+  setup phases as JSON; the existing speed benchmark preserves the hierarchy.
+
+- Optional per-extension/per-hook detail in sampled domain timing records
+  (`OPENEMS_DOMAIN_PROFILE_EXTENSIONS=1`) reuses the existing device events;
+  no additional timers or device waits are inserted.
+
+- Optional borrowed pinned host payloads for local asynchronous HIP domains
+  (`OPENEMS_DOMAIN_HOST_BUFFERS=borrowed`) remove intermediate CPU halo copies.
+  The default remains `copy`; rebuild core and plugins together.
+
+- Experimental HIP domain halo modes (`OPENEMS_DOMAIN_HALOS=async|overlap`)
+  use pinned host staging and optionally overlap E exchange with the H interior.
+  Default execution remains serial; rebuild core and plugins together.
+
+- Optional sampled multi-GPU timing records for external planning of subsequent
+  runs (`OPENEMS_DOMAIN_PROFILE`); a running simulation keeps its fixed partition.
+- Experimental local GPU domain execution (`ENABLE_DOMAIN_RUNTIME`,
+  `--gpu-devices`, optional fixed `--gpu-domain-cuts`) supports PEC, PML,
+  excitation, lumped elements and owned dispersive histories on HIP and Metal.
+  Unsupported extensions fail explicitly; MPI antenna execution is not enabled.
+- Optional startup/runtime pause gates and DFT snapshots preserve fields and
+  material histories for external qualification and NF2FF processing.
+- PR242 LossyMetal surface impedance and the experimental opaque conductor
+  extension, including HIP/Metal device execution, remain available.
+- Optional HIP/CUDA NF2FF integration and Python/Matlab control helpers.
+
 - **A GPU engine**, `--engine=gpu` (`engine='gpu'` from Python), for AMD and
   NVIDIA GPUs (HIP/CUDA) and on macOS (Metal), with Cartesian and cylindrical
   meshes and the usual extensions. `--gpu-device=N` picks one of the GPUs
@@ -33,6 +78,9 @@ to what a user notices, in a few lines; the details belong in the commit.
   closed by PEC.
 
 ### Changed
+
+- The integrated CellModel GPU backend replaces legacy main coefficient tables;
+  the old experimental `OPENEMS_GPU_MAIN_COEFF=raw` selection is rejected.
 
 - The Python bindings need Python 3.6 or newer (was 3.4).
 - Field dumps slow the simulation down less: they are evaluated on several
@@ -56,6 +104,9 @@ to what a user notices, in a few lines; the details belong in the commit.
   now, and openEMS prints how long it took.
 
 ### Fixed
+
+- The non-installed Metal logical-domain test plugin reuses the loaded solver
+  library, avoiding duplicate globals when testing an installed macOS build.
 
 - More than 2^31 timesteps made the setup fail; the number is now limited to
   that.
@@ -89,6 +140,10 @@ to what a user notices, in a few lines; the details belong in the commit.
   along.
 
 ### Upgrade notes
+
+The old experimental `--engine=tiling` is retired on this integration branch.
+Use the upstream experimental `--engine=cpu` for temporal blocking. Rebuild all
+GPU plugins and Python bindings together with the solver.
 
 - **Rebuild the Python bindings** together with openEMS.
 - `basic`, `sse` and `sse-compressed` use all threads now; for one thread

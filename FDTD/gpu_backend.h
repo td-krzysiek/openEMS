@@ -19,6 +19,7 @@
 #define GPU_BACKEND_H
 
 #include <complex>
+#include <memory>
 #include <cstdint>
 #include <stdexcept>
 #include <string>
@@ -32,6 +33,7 @@
 #include "multigrid_interpolation.h"
 
 class Operator;
+class Engine_Extension;
 struct GPU_CellModel;
 struct Engine_Box;
 
@@ -77,6 +79,44 @@ enum GPU_PointOp
 	GPU_OP_CYLINDER,
 	GPU_OP_MULTIGRID,
 	GPU_OP_DISPERSIVE,
+	GPU_OP_LOSSY_BRANCHES,
+};
+
+//! Optional sampled device-clock interval. Reading must never wait for work.
+class GPU_DeviceTimer
+{
+public:
+	virtual ~GPU_DeviceTimer()
+	{
+	}
+	virtual void Begin() = 0;
+	virtual void End() = 0;
+	virtual bool ReadSeconds(double& seconds) = 0;
+};
+
+//! Reusable pinned staging and completion events for two tangential components.
+//! The backend and its field storage must outlive this object.
+class GPU_HaloBuffer
+{
+public:
+	virtual ~GPU_HaloBuffer()
+	{
+	}
+	virtual FDTD_FLOAT* Data() = 0;
+	virtual void Download(bool currents, const size_t offsets[2], size_t count) = 0;
+	virtual void Upload(bool currents, const size_t offsets[2], size_t count) = 0;
+	virtual bool Ready() = 0;
+	virtual void Wait() = 0;
+	virtual bool CanUploadBorrowed() const
+	{
+		return false;
+	}
+	// The implementation must retain owner through completion, including
+	// enqueue failure and destruction before the caller obtains a token.
+	virtual void UploadBorrowed(bool, const size_t[2], size_t, const FDTD_FLOAT *, std::shared_ptr<void>)
+	{
+		throw std::logic_error("backend cannot upload a borrowed host halo");
+	}
 };
 
 //! Abstract interface to the device used by Engine_GPU
@@ -133,6 +173,28 @@ public:
 	  step, snapshots) is optional: without it the backend takes the slower path.
 	  */
 	virtual bool Init(const Operator* op, const GPU_CellModel& model) = 0;
+
+
+	//! Fixed X ownership. The cell model and field buffers contain only this slab and two halos.
+	bool InitDomain(const Operator* op, const GPU_CellModel& model, unsigned int begin, unsigned int end);
+	bool IsDomain() const { return m_Domain; }
+	bool OwnsX(unsigned int x) const { return !m_Domain || (x >= m_Begin && x < m_End); }
+	unsigned int DomainBegin() const { return m_Begin; }
+	unsigned int DomainEnd() const { return m_End; }
+	uint64_t DomainNodes() const { return m_LocalNodes; }
+	uint64_t LocalFlat(uint64_t global) const;
+	virtual bool HasDomainPhases() const { return false; }
+	virtual void FinishVoltagePhase() {}
+	virtual void FinishCurrentPhase() {}
+	virtual GPU_Extension* DomainExtension(Engine_Extension*, const unsigned int[3]) { return nullptr; }
+	virtual void Activate() {}
+	virtual GPU_DeviceTimer* NewDeviceTimer() { return nullptr; }
+	virtual GPU_HaloBuffer* NewHaloBuffer(size_t) { return nullptr; }
+	virtual bool CanOverlapCurrentInterior() const { return false; }
+	virtual void UpdateCurrentRegion(bool) { throw std::logic_error("domain overlap is not qualified for CellModel"); }
+	virtual bool DownloadRange(bool currents, size_t offset, size_t count, float* dst);
+	virtual bool UploadRange(bool currents, size_t offset, size_t count, const float* src) { return false; }
+	virtual bool CopyRange(bool currents, size_t source, size_t destination, size_t count) { return false; }
 
 	//! Device memory of \a bytes, initialized with \a host or zero, freed with the backend
 	virtual void* DeviceAlloc(size_t bytes, const void* host=NULL) = 0;
@@ -205,6 +267,10 @@ public:
 
 	//! Create a backend for a sub-grid (e.g. a cylindrical multi-grid level) whose work is ordered with the work of this backend. It's the responsibility of the caller to free it.
 	virtual GPU_Backend* NewSubGridBackend() = 0;
+protected:
+	bool m_Domain = false;
+	unsigned int m_Begin = 0, m_End = 0;
+	uint64_t m_GlobalNodes = 0, m_LocalNodes = 0, m_Plane = 0;
 };
 
 #endif // GPU_BACKEND_H
