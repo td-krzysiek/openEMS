@@ -823,6 +823,40 @@ explicitly records Metal on Apple M5 Pro with all extensions on device.
 These ordinary-engine regressions do not qualify subgrid GPU execution.
 No project antenna, conductor or multi-device adoption is included.
 
+### Exact translated curl stencils
+
+The CPU reference streams normalized curl rows into shared exact translated
+patterns. Each row retains its base index and pattern ID; every coefficient
+and relative column offset is compared exactly before reuse. There is no
+quantization, dropped term or change in row/term order. Transpose updates and
+classical PML consume the same patterns. Setup no longer materializes a global
+curl CSR before compression, and releases temporary mass assembly before
+allocating the fields. Topology maps and duplicated magnetic quadrature states
+remain; this is an intermediate memory reduction, not structured Yee interiors.
+
+An independent CSR oracle checks forward/transpose arithmetic, repeated and
+unique rows, empty rows, one-ULP coefficient distinctions and malformed input.
+Seven fixtures with three interleaved pairs against parent `cb36dde` have
+identical retained E/H arrays and timestep/invariant checks. The 24-cell local
+fixture uses 32.85/17.05 MiB accounted storage and 39.72/20.56 MiB peak RSS;
+the 512-cell strip uses 86.72/51.18 MiB and 112.05/62.34 MiB respectively.
+The memory saving has a CPU cost: updates change from 0.2896 to 0.3254 s and
+0.4223 to 0.4598 s respectively. Setup is nearly unchanged. These small-core
+measurements do not establish production speedup or memory requirements.
+
+Isolated Release qualification passes CTest14/14, Python unit modules13/13,
+long core invocations9/9, native groups8/8 (including the ten dipoles), and
+ordinary groups4/4. All frozen dipole port/field/radiation arrays are unchanged.
+Source and four earlier frozen runtime inventories remain unchanged during
+qualification. Loaded core SHA256:
+`9db83252b72729aabaefc64135abae80f072cd54115b05cabf23b0b90d3a82d9`;
+nf2ff: `3677d50a93a2d6d9a711fd105e7fb1fd21f0477b47c854ba848f49d4b1265835`.
+Reproducible contributor evidence is in
+`experiments/openems-cartesian-local-subgrid-20261112/translated-stencils/`,
+including final benchmark `core-comparison-r05-final.json`. Earlier timing
+attempts are retained but are not the final benchmark. This increment does
+not qualify GPU, lossy conductor, PCB antenna or multi-device execution.
+
 ## Tests and observed accuracy
 
 ```sh

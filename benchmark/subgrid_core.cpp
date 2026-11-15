@@ -84,6 +84,10 @@ int main(int argc, char **argv)
 				  << ",\"interface_work_entries\":" << info.workspaceEntries;
 		std::cout << ",\"inverse_bound_solves\":" << info.inverseBoundSolves
 				  << ",\"bipartite_bound_blocks\":" << info.bipartiteBoundBlocks;
+#ifdef SUBGRID_CURL_STATS
+		std::cout << ",\"curl_allocated_bytes\":" << grid.CurlStorageBytes()
+				  << ",\"curl_patterns\":" << grid.CurlPatternCount();
+#endif
 #endif
 		std::cout << ",\"fields\":[";
 		bool first = true;

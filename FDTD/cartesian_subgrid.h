@@ -2,6 +2,7 @@
 #ifndef CARTESIAN_SUBGRID_H
 #define CARTESIAN_SUBGRID_H
 
+#include "subgrid_curl.h"
 #include <array>
 #include <cstddef>
 #include <functional>
@@ -162,6 +163,14 @@ class CartesianSubgrid
 		return m_Leaves.size();
 	}
 	std::size_t StorageBytes() const;
+	std::size_t CurlStorageBytes() const
+	{
+		return m_CurlOperator.AllocationBytes();
+	}
+	std::size_t CurlPatternCount() const
+	{
+		return m_CurlOperator.PatternCount();
+	}
 	//! C++ reference diagnostics; counts allocated factor/work entries, not process RSS.
 	struct InterfaceStorageInfo
 	{
@@ -243,8 +252,7 @@ class CartesianSubgrid
 	std::vector<double> m_InterfaceWork;
 	std::size_t m_InverseBoundSolves = 0, m_BipartiteBoundBlocks = 0;
 	std::vector<std::pair<std::pair<std::size_t, std::size_t>, double>> m_MassOffDiagonal;
-	std::vector<std::size_t> m_RowStart, m_Columns;
-	std::vector<double> m_Values;
+	CartesianSubgridCurl m_CurlOperator;
 	std::vector<double> m_Electric, m_Magnetic, m_Increment, m_Curl;
 	std::vector<std::pair<std::size_t, double>> m_Sources;
 	std::vector<Integral> m_PortVoltage, m_PortResponse;

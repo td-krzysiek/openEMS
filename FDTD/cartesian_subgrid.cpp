@@ -427,7 +427,6 @@ void CartesianSubgrid::Build(const MediumSampler &medium, const PECSelector &pec
 	// condition at the outer physical face. No ghost-field time update is added.
 	std::vector<double> mass(m_Edges.size(), 0);
 	std::map<std::pair<std::size_t, std::size_t>, double> off;
-	m_RowStart.push_back(0);
 	for (std::size_t cellIndex = 0; cellIndex < m_Leaves.size(); ++cellIndex)
 	{
 		const Leaf &cell = m_Leaves[cellIndex];
@@ -462,6 +461,30 @@ void CartesianSubgrid::Build(const MediumSampler &medium, const PECSelector &pec
 				}
 			}
 		}
+	}
+	for (double value : mass)
+	{
+		Require(value > 0 && std::isfinite(value), "CartesianSubgrid: non-positive electric mass");
+		m_SqrtMass.push_back(std::sqrt(value));
+	}
+	std::vector<double>().swap(mass);
+	const double inverseMassBound = FactorMass(off);
+	off.clear();
+	std::vector<double> columns(m_Edges.size(), 0);
+	double maxRow = 0;
+	CartesianSubgridCurl::Builder curl(m_CurlOperator, 6 * m_Leaves.size(), m_Edges.size());
+	std::vector<std::pair<std::size_t, double>> normalizedRow;
+	normalizedRow.reserve(8);
+	for (std::size_t cellIndex = 0; cellIndex < m_Leaves.size(); ++cellIndex)
+	{
+		const Leaf &cell = m_Leaves[cellIndex];
+		const Medium &material = m_Media[cellIndex];
+		Point length;
+		for (unsigned int n = 0; n < 3; ++n)
+		{
+			length[n] = Length(cell, n);
+		}
+		const double volume = length[0] * length[1] * length[2];
 		for (unsigned int n = 0; n < 3; ++n)
 		{
 			const unsigned int a = (n + 1) % 3;
@@ -488,43 +511,32 @@ void CartesianSubgrid::Build(const MediumSampler &medium, const PECSelector &pec
 				edge(b, a, 0, -1);
 				edge(a, b, 1, -1);
 				edge(a, b, 0, 1);
+				const double reluctance = std::sqrt(volume / (2 * material.permeability * area * area));
+				normalizedRow.clear();
+				double sum = 0;
 				for (const auto &term : row)
 				{
 					if (term.second != 0)
 					{
-						m_Columns.push_back(term.first);
-						m_Values.push_back(term.second);
+						const double coefficient = term.second * (reluctance / m_SqrtMass[term.first]);
+						normalizedRow.push_back({term.first, coefficient});
+						sum += std::abs(coefficient);
+						columns[term.first] += std::abs(coefficient);
 					}
 				}
-				m_RowStart.push_back(m_Values.size());
+				maxRow = std::max(maxRow, sum);
+				curl.Append(normalizedRow.begin(), normalizedRow.end());
 				m_PECFaces.push_back(zeroTrace && touchesPEC);
 				// One half-volume per face. Coincident faces are deliberately
 				// separate quadrature histories, not a global fine H lattice.
-				m_SqrtReluctance.push_back(std::sqrt(volume / (2 * material.permeability * area * area)));
+				m_SqrtReluctance.push_back(reluctance);
 			}
 		}
 	}
-	for (double value : mass)
-	{
-		Require(value > 0 && std::isfinite(value), "CartesianSubgrid: non-positive electric mass");
-		m_SqrtMass.push_back(std::sqrt(value));
-	}
-	const double inverseMassBound = FactorMass(off);
-	std::vector<double> columns(m_Edges.size(), 0);
-	double maxRow = 0;
-	for (std::size_t row = 0; row + 1 < m_RowStart.size(); ++row)
-	{
-		double sum = 0;
-		for (std::size_t i = m_RowStart[row]; i < m_RowStart[row + 1]; ++i)
-		{
-			m_Values[i] *= m_SqrtReluctance[row] / m_SqrtMass[m_Columns[i]];
-			sum += std::abs(m_Values[i]);
-			columns[m_Columns[i]] += std::abs(m_Values[i]);
-		}
-		maxRow = std::max(maxRow, sum);
-	}
+	curl.Finish();
 	const double bound = std::sqrt(maxRow * *std::max_element(columns.begin(), columns.end()) * inverseMassBound);
 	Require(bound > 0 && std::isfinite(bound), "CartesianSubgrid: invalid coupled spectral bound");
+	std::vector<double>().swap(columns);
 	m_StableStep = 1.98 / bound;
 	m_Electric.assign(m_Edges.size(), 0);
 	m_Magnetic.assign(m_SqrtReluctance.size(), 0);
@@ -690,27 +702,11 @@ double CartesianSubgrid::FactorMass(const std::map<std::pair<std::size_t, std::s
 
 void CartesianSubgrid::Curl(const std::vector<double> &electric, std::vector<double> &magnetic) const
 {
-	for (std::size_t row = 0; row < magnetic.size(); ++row)
-	{
-		double value = 0;
-		for (std::size_t i = m_RowStart[row]; i < m_RowStart[row + 1]; ++i)
-		{
-			value += m_Values[i] * electric[m_Columns[i]];
-		}
-		magnetic[row] = value;
-	}
+	m_CurlOperator.Apply(electric, magnetic);
 }
-
 void CartesianSubgrid::CurlTranspose(const std::vector<double> &magnetic, std::vector<double> &electric) const
 {
-	std::fill(electric.begin(), electric.end(), 0);
-	for (std::size_t row = 0; row < magnetic.size(); ++row)
-	{
-		for (std::size_t i = m_RowStart[row]; i < m_RowStart[row + 1]; ++i)
-		{
-			electric[m_Columns[i]] += m_Values[i] * magnetic[row];
-		}
-	}
+	m_CurlOperator.ApplyTranspose(magnetic, electric);
 }
 
 void CartesianSubgrid::SolveMass(std::vector<double> &values)
@@ -1064,12 +1060,12 @@ std::size_t CartesianSubgrid::StorageBytes() const
 	bytes += m_EdgeMap.size() * (sizeof(Edge) + sizeof(std::size_t) + 4 * sizeof(void *));
 	bytes += m_PECEdges.size() * (sizeof(Edge) + 4 * sizeof(void *)) + m_PECFaces.capacity();
 	for (const auto *values :
-		 {&m_SqrtMass, &m_SqrtReluctance, &m_Values, &m_Electric, &m_Magnetic, &m_Increment, &m_Curl,
+		 {&m_SqrtMass, &m_SqrtReluctance, &m_Electric, &m_Magnetic, &m_Increment, &m_Curl,
 		  &m_InterfaceWork})
 	{
 		bytes += values->capacity() * sizeof(double);
 	}
-	bytes += (m_RowStart.capacity() + m_Columns.capacity()) * sizeof(std::size_t);
+	bytes += m_CurlOperator.AllocationBytes();
 	bytes += m_MassOffDiagonal.capacity() * sizeof(decltype(m_MassOffDiagonal)::value_type);
 	bytes += m_Sources.capacity() * sizeof(decltype(m_Sources)::value_type);
 	for (const MassBlock &block : m_Blocks)

@@ -218,8 +218,11 @@ preserved and remains an expected-negative mesh control.
   remains open. See [factor representation and measurements](CARTESIAN_SUBGRID.md#banded-interface-factors).
 - [ ] **C03** Reduce reference-only storage overhead, with regression coverage
   for any change to magnetic-face histories or numerical quadrature.
-  Partial: interface factors/workspace only. Sparse curls, topology maps,
-  duplicated magnetic quadrature histories and field precision are unchanged.
+  Partial: banded interface factors/workspace and exact translated curl
+  patterns now reduce setup/steady storage. Topology maps, duplicated magnetic
+  quadrature histories and field precision remain unchanged. The pattern
+  representation is not a structured-interior kernel; CPU updates are slower
+  in the scoped memory benchmark. See [exact stencil evidence](CARTESIAN_SUBGRID.md#exact-translated-curl-stencils).
 - [ ] **C04** Integrate the regular CPU execution options, threading and SIMD
   where applicable; document remaining engine differences explicitly.
 - [ ] **C05** Benchmark peak setup/steady-state memory, setup time and time to
@@ -314,8 +317,9 @@ their own integration checks; master parity does not automatically qualify them.
 
 Next implementation milestone: structured interiors and further interface
 scaling, with measured CPU cost before one GPU. Exact banded interface factors
-have scoped CPU evidence; the inverse-bound calculation and current guards
-remain. The public PEC dipole
+and the one-solve inverse bound have scoped CPU evidence. Exact translated
+curl patterns reduce memory but increase measured CPU update time; current
+allocation guards remain. The public PEC dipole
 provides a port/radiation regression for those changes. Dielectric PCB geometry,
 broader scattering/ports/NF2FF placements and representative antenna spatial
 qualification remain open, followed by lossy antenna validation and parity work.
@@ -345,3 +349,5 @@ numerical change invalidates their prior qualification.
 | 2026-11-15 | B04/B05 scoped, public PEC CPU antenna milestone; extended partial P05 | This PR, radiation qualification increment (numerical source `55fe3e2`) | [Ten-case native dipole regression](python/Tests/Cartesian_Subgrid_Radiation.py), [results, actual build hashes and limitations](CARTESIAN_SUBGRID.md#scoped-pec-dipole-radiation). Existing numerical engine/NF2FF algorithms unchanged. Homogeneous unrefined closed surfaces, vacuum solid PEC dipole and one-edge port only; coarser-Z case retained as an expected negative. Not project-array, losses, GPU, speedup or production qualification. |
 | 2026-11-15 | Partial C02/C03/C05, banded interface representation | This PR, factor increment (parent `fb98953`) | [Frozen dense-oracle/guard regression](tests/test_cartesian_subgrid_factor.cpp), [interleaved core benchmark](benchmark/subgrid_compare.py), [factor contract and qualified build](CARTESIAN_SUBGRID.md#banded-interface-factors). Same SPD mass/curl/timestep scheme; 1024-edge guard unchanged. Serial CPU only, no structured-interior, GPU or production performance qualification. |
 | 2026-11-15 | Further partial C02/C05, signed inverse-norm setup | This PR, signed-bound increment (parent `571766f`) | [Independent dense-inverse controls](tests/test_cartesian_subgrid_bound.cpp), frozen factor oracle, [derivation/build and regression results](CARTESIAN_SUBGRID.md#signed-inverse-norm-setup). One solve for positive bipartite graphs; old general fallback and guards retained. CTest13/13, Python13/13, long9/9, native8/8 and ordinary4/4; ten frozen dipole arrays unchanged. Ordinary Metal is a regression only, not subgrid GPU qualification. |
+
+| 2026-11-15 | Further partial C01/C03/C05, exact translated curl patterns | This PR, stencil increment (parent `cb36dde`) | [Independent CSR oracle](tests/test_cartesian_subgrid_curl.cpp), [memory/performance and loaded build evidence](CARTESIAN_SUBGRID.md#exact-translated-curl-stencils). CTest14/14, Python13/13, long9/9, native8/8, ordinary4/4; ten frozen dipoles unchanged. Memory reduced about40–50%, CPU updates about9–12% slower. Structured interiors, topology scaling and GPU remain open. |

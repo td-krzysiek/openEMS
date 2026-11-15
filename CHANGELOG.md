@@ -60,6 +60,11 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Changed
 
+- The experimental Cartesian subgrid reference shares identical translated
+  curl patterns and releases assembly scratch before field allocation, reducing
+  memory on the scoped controls. CPU updates can be slower; this is not a
+  production acceleration claim.
+
 - The Cartesian subgrid CPU reference stores exact interface Cholesky factors
   in a lower band and uses block-sized solve workspace, reducing interface
   storage and work. Its numerical scheme, timestep bound and allocation guards

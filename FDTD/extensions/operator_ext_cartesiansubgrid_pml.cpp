@@ -148,15 +148,14 @@ bool Operator_Ext_CartesianSubgrid_PML::BuildExtension()
 		const auto length = g.LeafLengths(leaf);
 		for (unsigned int n = 0; n < 3; ++n)
 			point[n] += length[n] * (n == normal ? double(side) : .5);
-		for (std::size_t term = g.m_RowStart[row]; term < g.m_RowStart[row + 1]; ++term)
+		g.m_CurlOperator.ForEach(row, [&](std::size_t edge, double coefficient)
 		{
-			const std::size_t edge = g.m_Columns[term];
 			const unsigned int tangent = g.EdgeDirection(edge);
 			Require(normal != tangent, "CartesianSubgrid: invalid PML curl orientation");
 			const unsigned int axis = 3 - normal - tangent;
-			add(magnetic, row, axis, point[axis], edge, g.m_Values[term]);
-			add(electric, edge, axis, g.EdgePosition(edge)[axis], row, g.m_Values[term]);
-		}
+			add(magnetic, row, axis, point[axis], edge, coefficient);
+			add(electric, edge, axis, g.EdgePosition(edge)[axis], row, coefficient);
+		});
 	}
 	// Collar corrections cannot bypass the non-diagonal interface mass.
 	for (const auto &block : g.m_Blocks)
