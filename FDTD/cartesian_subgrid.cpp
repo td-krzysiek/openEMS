@@ -2,6 +2,7 @@
 #include "cartesian_subgrid.h"
 #include "subgrid_inverse_bound.h"
 #include "subgrid_device_precision.h"
+#include "subgrid_interface_limits.h"
 
 #include <algorithm>
 #include <cmath>
@@ -25,7 +26,8 @@ CartesianSubgrid::Axes UniformLines(CartesianSubgrid::Index cells, CartesianSubg
 	CartesianSubgrid::Axes lines;
 	for (unsigned int n = 0; n < 3; ++n)
 	{
-		Require(cells[n] >= 4 && cells[n] <= 1024 && spacing[n] > 0 && std::isfinite(spacing[n]),
+		Require(cells[n] >= 4 && cells[n] <= CartesianSubgridDetail::MaxBaseIntervals &&
+				spacing[n] > 0 && std::isfinite(spacing[n]),
 				"CartesianSubgrid: invalid base dimensions or spacing");
 		for (unsigned int i = 0; i <= cells[n]; ++i)
 		{
@@ -86,8 +88,8 @@ CartesianSubgrid::CartesianSubgrid(const Axes &lines, double epsilon, double per
 	std::size_t count = 1;
 	for (unsigned int n = 0; n < 3; ++n)
 	{
-		Require(lines[n].size() >= 5 && lines[n].size() <= 1025,
-				"CartesianSubgrid: expected 4 through 1024 base intervals per axis");
+		Require(lines[n].size() >= 5 && lines[n].size() <= CartesianSubgridDetail::MaxBaseIntervals + 1,
+				"CartesianSubgrid: expected 4 through 16384 base intervals per axis");
 		m_Cells[n] = unsigned(lines[n].size() - 1);
 		for (double value : lines[n])
 		{
@@ -614,7 +616,8 @@ double CartesianSubgrid::FactorMass(const std::map<std::pair<std::size_t, std::s
 			}
 		}
 		const std::size_t n = block.edges.size();
-		Require(n <= 1024, "CartesianSubgrid: prototype interface mass block exceeds 1024 edges");
+		Require(n <= CartesianSubgridDetail::MaxInterfaceEdges,
+				"CartesianSubgrid: interface mass block exceeds 16384 edges");
 		// The existing breadth-first order is retained. Its graph bandwidth
 		// bounds Cholesky fill for this SPD matrix; no coefficient is dropped.
 		std::map<std::size_t, std::size_t> position;
@@ -627,7 +630,7 @@ double CartesianSubgrid::FactorMass(const std::map<std::pair<std::size_t, std::s
 				block.halfBandwidth = std::max(block.halfBandwidth, i > j ? i - j : j - i);
 			}
 		const std::size_t stride = block.halfBandwidth + 1;
-		block.lower.assign(n * stride, 0);
+		block.lower.assign(CartesianSubgridDetail::InterfaceFactorEntries(n, block.halfBandwidth), 0);
 		for (std::size_t i = 0; i < n; ++i)
 		{
 			block.lower[i * stride] = 1;
@@ -685,6 +688,7 @@ double CartesianSubgrid::FactorMass(const std::map<std::pair<std::size_t, std::s
 				block.Solve(rhs);
 			},
 			blockBound);
+		CartesianSubgridDetail::RequireInterfaceBoundMethod(n, bipartite);
 		if (bipartite)
 		{
 			++m_BipartiteBoundBlocks;

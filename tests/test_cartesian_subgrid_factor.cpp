@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include "FDTD/cartesian_subgrid.h"
+#include "FDTD/subgrid_interface_limits.h"
 
 #include <algorithm>
 #include <array>
@@ -14,7 +15,9 @@ constexpr double epsilon = 8.85418781762e-12, mu = 1.2566370614359173e-6;
 static void Require(bool condition, const char *message)
 {
 	if (!condition)
+	{
 		throw std::runtime_error(message);
+	}
 }
 
 static Grid Strip(unsigned int n)
@@ -73,26 +76,76 @@ static void DenseReference()
 
 static void AllocationGuard()
 {
-	// Keep the previous limit explicit: the representation improvement is not
-	// qualification for arbitrarily large interfaces or a reason to raise it.
-	Grid supported = Strip(512);
-	Require(supported.InterfaceStorage().largestBlock == 1024, "largest supported interface was not exercised");
-	Require(supported.InterfaceStorage().workspaceEntries == 1024, "workspace scales with the global field");
+	// Exercise the previous rejection boundary, not merely a helper's constants.
+	Grid supported = Strip(514);
+	Require(supported.InterfaceStorage().largestBlock == 1028, "extended interface was not exercised");
+	Require(supported.InterfaceStorage().workspaceEntries == 1028, "workspace scales with the global field");
 	bool rejected = false;
 	try
 	{
-		Grid invalid = Strip(514);
+		Grid invalid = Strip(16385);
 	}
 	catch (const std::invalid_argument &error)
 	{
-		rejected = std::string(error.what()).find("1024 edges") != std::string::npos;
+		rejected = std::string(error.what()).find("invalid base dimensions") != std::string::npos;
 	}
-	Require(rejected, "oversized interface escaped the unchanged guard");
+	Require(rejected, "oversized axis escaped its guard");
 	Grid ordinary({8, 8, 8}, {.001, .001, .001}, {{2, 2, 2}, {6, 6, 6}}, epsilon, mu, false, {1, 1, 1});
 	Require(ordinary.InterfaceStorage().blocks == 0 && ordinary.InterfaceStorage().workspaceEntries == 0,
 			"uncoupled grid allocated an interface solve workspace");
 	ordinary.SetElectric(Seed);
 	ordinary.Step(.8 * ordinary.StableTimestep());
+}
+
+template <class Action> static void Reject(Action action)
+{
+	try
+	{
+		action();
+	}
+	catch (const std::invalid_argument &)
+	{
+		return;
+	}
+	throw std::runtime_error("invalid interface allocation or bound method accepted");
+}
+
+static void ResourcePolicy()
+{
+	using namespace CartesianSubgridDetail;
+	Require(InterfaceFactorEntries(1024, 1023) == 1048576, "old bounded general factor rejected");
+	Require(InterfaceFactorEntries(16384, 4) == 81920, "largest narrow factor rejected");
+	RequireInterfaceBoundMethod(1024, false);
+	RequireInterfaceBoundMethod(16384, true);
+	Reject([] { InterfaceFactorEntries(0, 0); });
+	Reject([] { InterfaceFactorEntries(1024, 1024); });
+	Reject([] { InterfaceFactorEntries(1025, 5); });
+	Reject([] { InterfaceFactorEntries(16385, 2); });
+	Reject([] { InterfaceFactorEntries(16384, std::size_t(-1)); });
+	Reject([] { RequireInterfaceBoundMethod(1025, false); });
+}
+
+static void LongInterface()
+{
+	Grid grid = Strip(2048);
+	const auto info = grid.InterfaceStorage();
+	Require(info.largestBlock == 4096 && info.largestHalfBandwidth == 2,
+			"long narrow interface not exercised");
+	Require(info.inverseBoundSolves == info.blocks && info.bipartiteBoundBlocks == info.blocks,
+			"large interface used a quadratic bound sweep");
+	Require(info.factorEntries * 100 < info.denseEquivalentEntries,
+			"large factor storage is not band-sized");
+	grid.SetElectric(Seed);
+	grid.SetMagnetic([](unsigned int n, const Grid::Point &p) { return Seed(n, p) / 376.730313668; });
+	const double dt = .8 * grid.StableTimestep(), initial = grid.Energy(dt);
+	for (unsigned int step = 0; step < 2000; ++step)
+	{
+		grid.Step(dt);
+	}
+	const double drift = std::abs(grid.Energy(dt) / initial - 1);
+	Require(std::isfinite(drift) && drift < 1e-10, "large interface invariant failed");
+	std::cout << "large interface edges=" << info.largestBlock << " drift=" << drift
+			  << " factor_entries=" << info.factorEntries << '/' << info.denseEquivalentEntries << '\n';
 }
 
 int main()
@@ -101,6 +154,8 @@ int main()
 	{
 		DenseReference();
 		AllocationGuard();
+		ResourcePolicy();
+		LongInterface();
 	}
 	catch (const std::exception &error)
 	{

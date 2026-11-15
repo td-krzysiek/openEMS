@@ -72,6 +72,10 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Changed
 
+- Experimental Cartesian subgridding accepts longer narrow interface factors
+  (up to 16,384 edges), with guarded bandwidth and stability-bound computation.
+  Base axes may have up to 16,384 intervals; total cell caps remain unchanged.
+
 - Experimental Cartesian subgrid independent-edge addressing uses structured
   base/local slots instead of a tree. State numbering and numerical results
   remain unchanged in scoped controls; measured small-core setup and memory

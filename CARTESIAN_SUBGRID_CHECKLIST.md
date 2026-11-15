@@ -58,9 +58,9 @@ fdtd.AddCartesianSubgrid(box=[7, 2, 2, 10, 6, 6], ratio=[4, 1, 2])
 
 `AddCartesianSubgrid` appends; `SetCartesianSubgrids([...])` replaces the list.
 Prototype guards currently allow 64 regions, factors 1/2/4/8/16 per axis,
-1024 base intervals per axis, one million base cells, one million total leaves,
-and 1024 coupled degrees of
-freedom per interface factor. These are implementation guards, not
+16,384 base intervals per axis, one million base cells, one million total leaves,
+and 16,384 coupled degrees of freedom per interface factor. Above 1,024 edges,
+half-bandwidth must be at most four and the one-RHS inverse bound must succeed. These are implementation guards, not
 universal limits of subgridding. A shared timestep is retained.
 
 ## 0. Reference scheme and configuration — implemented
@@ -226,10 +226,14 @@ preserved and remains an expected-negative mesh control.
   measure setup cost, factor memory and per-step cost before raising guards.
   Partial: exact banded Cholesky in the existing breadth-first order, local
   inverse-bound columns and one reusable block-sized solve workspace. The
-  1024-edge guard stays unchanged. A subsequent implemented one-RHS signed
+  initial 1024-edge guard was retained at that milestone. A subsequent one-RHS signed
   inverse norm applies to positive bipartite graphs, with the old all-column
   fallback and scoped CPU/ordinary-Metal regression. General large-interface scaling
-  remains open. See [factor representation and measurements](CARTESIAN_SUBGRID.md#banded-interface-factors).
+  remains open. The [bounded larger-interface increment](CARTESIAN_SUBGRID.md#bounded-larger-interface-factors)
+  now admits at most 16,384 edges with strict bandwidth/bound-method guards,
+  CPU/reference/Metal controls and unchanged small-model results. This does not
+  qualify general large matrices or structured production fields. See also
+  [factor representation and measurements](CARTESIAN_SUBGRID.md#banded-interface-factors).
 - [ ] **C03** Reduce reference-only storage overhead, with regression coverage
   for any change to magnetic-face histories or numerical quadrature.
   Partial: banded interface factors/workspace and exact translated curl
@@ -399,3 +403,4 @@ numerical change invalidates their prior qualification.
 
 | 2026-11-15 | Further partial C01/C03/C05: structured edge addressing | This PR, address-index increment (parent `f5aedf2`) | [Address/oracle regression](tests/test_cartesian_subgrid_edge_index.cpp), [build/evidence/benchmarks](CARTESIAN_SUBGRID.md#structured-independent-edge-address-index). CTest 21/21, Python14/14, standalone ASan/UBSan and full prior CPU/reference/Metal matrix; 11,255 numerical arrays unchanged. Seven interleaved core cases show setup 43–51% shorter; update unchanged. Structured field kernels, larger guards, PCB/lossy, physical CUDA and multi-device remain open. |
 | 2026-11-15 | Extended partial G01/G03/G04/G06: native planar/extruded PEC CAD | This PR, polygon increment (parent `a846ebf`) | [Native fields/contacts/alignment/shape controls](python/Tests/Cartesian_Subgrid_Polygons.py), [build, results and limits](CARTESIAN_SUBGRID.md#native-planar-and-extruded-pec-polygons). All17 qualification stages pass; CTest21/21, Python14/14, full previous CPU/reference/Metal and ordinary matrix. Eleven prior core/NF2FF prefixes and11,255 numerical arrays retained. No polygonal material, transform, lossy, representative PCB or physical CUDA/multi-device qualification for this increment. |
+| 2026-11-15 | Further partial C02/U02/U05/U06: bounded larger interfaces | This PR, larger-interface increment (parent `3a502cc`) | [Resource-policy and CPU controls](tests/test_cartesian_subgrid_factor.cpp), [three-orientation/device source controls](tests/test_cartesian_subgrid_device_large.cpp), [runtime and exact limits](CARTESIAN_SUBGRID.md#bounded-larger-interface-factors). All 18 stages pass, CTest 22/22 and Python 14/14; twelve prior prefixes and 11,255 arrays unchanged. Actual 16,384-edge CPU/Metal controls pass, 16,386-edge construction rejects. No new arithmetic, CUDA, lossy, structured-field or representative antenna qualification. |

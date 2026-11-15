@@ -825,7 +825,8 @@ not a speed or resource comparison against optimized Yee/GPU execution or a
 production antenna. Regular interiors still use sparse curl rows; topology
 maps and duplicated H quadrature histories remain. A broad graph band may
 give little saving; non-bipartite inverse-bound setup still needs n solves.
-The 1024-edge cap is deliberately retained. Larger/general interfaces, native
+At this earlier milestone the 1024-edge cap was deliberately retained; see
+[the later bounded extension](#bounded-larger-interface-factors). Larger/general interfaces, native
 structured kernels, threading/SIMD and GPU execution remain separate work.
 
 `test_cartesian_subgrid_factor` checks a frozen dense E/H oracle and timestep,
@@ -1374,9 +1375,11 @@ common timestep, even if it conserves the discrete energy. Conservation and
 allocation success are not accuracy qualification. Staged/nested transitions
 and local timesteps remain future work.
 
-The prototype has explicit allocation guards: at most 1024 base cells per
+The prototype has explicit allocation guards: at most 16,384 base intervals per
 axis, one million base cells, one million leaves summed across all regions,
-64 regions and 1024 coupled edges per interface factor. These are
+64 regions and 16,384 coupled edges per interface factor. Above 1,024 edges,
+half-bandwidth must be at most four and the one-RHS inverse bound must succeed;
+see [bounded larger interfaces](#bounded-larger-interface-factors). These are
 implementation safeguards, not physical limits of subgridding. Exact banded
 storage reduces current interface cost; increasing the guards still requires
 separate memory/setup/stability qualification rather than removing assertions.
@@ -1442,3 +1445,54 @@ metadata, memory/RSS and interleaved native benchmarks. Then device kernels,
 domain partitioning and communication can reuse this numerical contract.
 Nested refinement levels and local subcycling are separate changes. No
 running or frozen production model should adopt this prototype silently.
+
+
+## Bounded larger interface factors
+
+Configure-time parent `3a502cc`; no mass, factorization, curl, state ordering or
+update arithmetic changes. The old per-axis and per-component caps blocked long
+narrow regions despite their already banded factors. Base intervals and coupled
+interface edges may now reach 16,384. Components above 1,024 edges additionally
+require half-bandwidth<=4 and a verified positive-bipartite one-RHS inverse
+bound. Reject broad factors before allocation and reject an unavailable large
+one-RHS bound instead of falling back to a quadratic column sweep. The existing
+one-million base/leaf caps and 64-region/non-nesting constraints remain.
+
+[CPU/resource controls](tests/test_cartesian_subgrid_factor.cpp) preserve the
+frozen dense oracle, exercise the old rejection boundary, test guard boundaries
+and a 4,096-edge component over 2,000 steps. The latter invariant drift is
+7.33e-15; factor/work storage stays band/block-sized. [Device controls](tests/test_cartesian_subgrid_device_large.cpp)
+exercise 1,536-edge components in XYZ orientations and a driven case, retaining
+processing reads without restarting fields. Physical Metal maximum error against
+double is 1.08e-6 (gate 2e-4); independent FP32 oracle arrays are identical.
+
+Additional standalone maximum-bound controls use base cells `{8194,4,4}`,
+spacing `{.001,.0013,.0009}` metres and region `{{2,1,1},{8192,3,3}}` with
+ratio 2/2/2. The actual 16,384-edge component (half-bandwidth 2, 360,424 leaves)
+retains its invariant over 2,000 CPU steps within 1.0e-14. Its 393,168 factor
+entries replace 1,074,265,984 dense-equivalent entries. Physical Metal 512-step
+passive/driven controls have double error 1.56e-6 and identical FP32 oracle
+arrays. Raising only the long dimension to 8195 produces an actual 16,386-edge
+component, rejected before factor allocation. These are functional/resource
+controls, not RF convergence or production throughput measurements.
+
+The immutable full suite passes all 18 stages: CTest 22/22, Python 14/14, the
+previous native CPU/reference/Metal, ports, DC, PML, dipole, polygon and ordinary
+engine controls. Twelve older core/NF2FF prefixes remain unchanged; 11,255 prior
+numerical arrays exactly equal the frozen polygon-qualified runtime. Separate
+maximum-bound sources, hashes and logs are retained with
+`experiments/openems-cartesian-local-subgrid-20261112/large-interface/` in the
+project evidence tree; `qualification.json` distinguishes those controls from
+the full suite. No new ASan or physical CUDA claim is made.
+
+Frozen candidate prefix:
+`output/openems-subgrid-large-qualified-20261115/install`.
+
+- Core SHA256: `3eea599befbe5c3bd590e6a50e8e2f0cae8dd6ee44d9ddf669adff31da1b59cd`.
+- NF2FF SHA256: `bc6961138b4d8dba3689c773567d9bf82d492a0fb5742c819a0715cee64c046e`.
+
+General broad-interface scaling, structured interior fields, proportional
+setup memory, losses/conductors, representative PCB spatial accuracy and
+multi-device execution remain open. Allocation success and energy conservation
+do not establish antenna accuracy; this increment changes no active or
+production runtime.
