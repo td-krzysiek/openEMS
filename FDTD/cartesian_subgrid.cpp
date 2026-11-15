@@ -533,22 +533,23 @@ void CartesianSubgrid::Build(const MediumSampler &medium, const PECSelector &pec
 
 void CartesianSubgrid::MassBlock::Solve(std::vector<double> &values) const
 {
-	const std::size_t n = edges.size();
+	const std::size_t n = edges.size(), stride = halfBandwidth + 1;
 	for (std::size_t i = 0; i < n; ++i)
 	{
-		for (std::size_t j = 0; j < i; ++j)
+		const std::size_t first = i > halfBandwidth ? i - halfBandwidth : 0;
+		for (std::size_t j = first; j < i; ++j)
 		{
-			values[edges[i]] -= lower[i * n + j] * values[edges[j]];
+			values[i] -= lower[i * stride + i - j] * values[j];
 		}
-		values[edges[i]] /= lower[i * n + i];
+		values[i] /= lower[i * stride];
 	}
 	for (std::size_t i = n; i-- > 0;)
 	{
-		for (std::size_t j = i + 1; j < n; ++j)
+		for (std::size_t j = i + 1; j < std::min(n, i + halfBandwidth + 1); ++j)
 		{
-			values[edges[i]] -= lower[j * n + i] * values[edges[j]];
+			values[i] -= lower[j * stride + j - i] * values[j];
 		}
-		values[edges[i]] /= lower[i * n + i];
+		values[i] /= lower[i * stride];
 	}
 }
 
@@ -586,58 +587,74 @@ double CartesianSubgrid::FactorMass(const std::map<std::pair<std::size_t, std::s
 		}
 		const std::size_t n = block.edges.size();
 		Require(n <= 1024, "CartesianSubgrid: prototype interface mass block exceeds 1024 edges");
-		block.lower.assign(n * n, 0);
+		// The existing breadth-first order is retained. Its graph bandwidth
+		// bounds Cholesky fill for this SPD matrix; no coefficient is dropped.
+		std::map<std::size_t, std::size_t> position;
+		for (std::size_t i = 0; i < n; ++i)
+			position.emplace(block.edges[i], i);
+		for (std::size_t i = 0; i < n; ++i)
+			for (std::size_t neighbour : graph.at(block.edges[i]))
+			{
+				const std::size_t j = position.at(neighbour);
+				block.halfBandwidth = std::max(block.halfBandwidth, i > j ? i - j : j - i);
+			}
+		const std::size_t stride = block.halfBandwidth + 1;
+		block.lower.assign(n * stride, 0);
 		for (std::size_t i = 0; i < n; ++i)
 		{
-			block.lower[i * n + i] = 1;
-			for (std::size_t j = 0; j < i; ++j)
+			block.lower[i * stride] = 1;
+			const std::size_t first = i > block.halfBandwidth ? i - block.halfBandwidth : 0;
+			for (std::size_t j = first; j < i; ++j)
 			{
 				const auto pair = std::minmax(block.edges[i], block.edges[j]);
 				const auto found = off.find({pair.first, pair.second});
 				if (found != off.end())
 				{
-					block.lower[i * n + j] = found->second / (m_SqrtMass[pair.first] * m_SqrtMass[pair.second]);
+					block.lower[i * stride + i - j] =
+						found->second / (m_SqrtMass[pair.first] * m_SqrtMass[pair.second]);
 				}
 			}
 		}
 		for (std::size_t i = 0; i < n; ++i)
 		{
-			for (std::size_t j = 0; j <= i; ++j)
+			const std::size_t first = i > block.halfBandwidth ? i - block.halfBandwidth : 0;
+			for (std::size_t j = first; j <= i; ++j)
 			{
-				double value = block.lower[i * n + j];
-				for (std::size_t k = 0; k < j; ++k)
+				double value = block.lower[i * stride + i - j];
+				for (std::size_t k = first; k < j; ++k)
 				{
-					value -= block.lower[i * n + k] * block.lower[j * n + k];
+					value -= block.lower[i * stride + i - k] * block.lower[j * stride + j - k];
 				}
 				if (i == j)
 				{
 					Require(value > 0 && std::isfinite(value), "CartesianSubgrid: interface mass is not SPD");
-					block.lower[i * n + j] = std::sqrt(value);
+					block.lower[i * stride] = std::sqrt(value);
 				}
 				else
 				{
-					block.lower[i * n + j] = value / block.lower[j * n + j];
+					block.lower[i * stride + i - j] = value / block.lower[j * stride];
 				}
 			}
 		}
 		// A conservative ||S^-1||_2 <= ||S^-1||_infinity bound, computed once.
-		std::vector<double> rowSum(n, 0), column(m_Edges.size(), 0);
+		std::vector<double> rowSum(n, 0), column(n, 0);
 		for (std::size_t j = 0; j < n; ++j)
 		{
-			for (std::size_t index : block.edges)
-			{
-				column[index] = 0;
-			}
-			column[block.edges[j]] = 1;
+			std::fill(column.begin(), column.end(), 0);
+			column[j] = 1;
 			block.Solve(column);
 			for (std::size_t i = 0; i < n; ++i)
 			{
-				rowSum[i] += std::abs(column[block.edges[i]]);
+				rowSum[i] += std::abs(column[i]);
 			}
 		}
 		inverseBound = std::max(inverseBound, *std::max_element(rowSum.begin(), rowSum.end()));
 		m_Blocks.push_back(std::move(block));
 	}
+	std::size_t largest = 0;
+	for (const auto &block : m_Blocks)
+		largest = std::max(largest, block.edges.size());
+	m_InterfaceWork.resize(largest);
 	return inverseBound * (1 + 1e-12);
 }
 
@@ -666,11 +683,15 @@ void CartesianSubgrid::CurlTranspose(const std::vector<double> &magnetic, std::v
 	}
 }
 
-void CartesianSubgrid::SolveMass(std::vector<double> &values) const
+void CartesianSubgrid::SolveMass(std::vector<double> &values)
 {
 	for (const MassBlock &block : m_Blocks)
 	{
-		block.Solve(values);
+		for (std::size_t i = 0; i < block.edges.size(); ++i)
+			m_InterfaceWork[i] = values[block.edges[i]];
+		block.Solve(m_InterfaceWork);
+		for (std::size_t i = 0; i < block.edges.size(); ++i)
+			values[block.edges[i]] = m_InterfaceWork[i];
 	}
 }
 
@@ -1013,7 +1034,8 @@ std::size_t CartesianSubgrid::StorageBytes() const
 	bytes += m_EdgeMap.size() * (sizeof(Edge) + sizeof(std::size_t) + 4 * sizeof(void *));
 	bytes += m_PECEdges.size() * (sizeof(Edge) + 4 * sizeof(void *)) + m_PECFaces.capacity();
 	for (const auto *values :
-		 {&m_SqrtMass, &m_SqrtReluctance, &m_Values, &m_Electric, &m_Magnetic, &m_Increment, &m_Curl})
+		 {&m_SqrtMass, &m_SqrtReluctance, &m_Values, &m_Electric, &m_Magnetic, &m_Increment, &m_Curl,
+		  &m_InterfaceWork})
 	{
 		bytes += values->capacity() * sizeof(double);
 	}
@@ -1036,6 +1058,21 @@ std::size_t CartesianSubgrid::StorageBytes() const
 		}
 	}
 	return bytes;
+}
+
+CartesianSubgrid::InterfaceStorageInfo CartesianSubgrid::InterfaceStorage() const
+{
+	InterfaceStorageInfo info;
+	info.blocks = m_Blocks.size();
+	info.workspaceEntries = m_InterfaceWork.capacity();
+	for (const auto &block : m_Blocks)
+	{
+		info.largestBlock = std::max(info.largestBlock, block.edges.size());
+		info.largestHalfBandwidth = std::max(info.largestHalfBandwidth, block.halfBandwidth);
+		info.factorEntries += block.lower.capacity();
+		info.denseEquivalentEntries += block.edges.size() * block.edges.size();
+	}
+	return info;
 }
 
 CartesianSubgrid::Integral CartesianSubgrid::LineIntegral(bool magnetic, const Point &start,

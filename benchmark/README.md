@@ -1,5 +1,37 @@
 # openEMS speed benchmark
 
+## Compact Cartesian subgrid core
+
+`subgrid_core.cpp` measures the experimental serial reference in isolation.
+It reports constructor time, fixed-step update time, accounted storage,
+process peak RSS, timestep, invariant drift and E/H samples. It does not include
+native processing or measure ordinary Yee/GPU antenna performance. Peak RSS
+uses `getrusage` on Unix/macOS; zero means unavailable on other platforms.
+
+Compare the dense PR29 parent with the banded candidate using the same compiler:
+
+```sh
+mkdir -p /tmp/subgrid-dense
+git show fb98953:FDTD/cartesian_subgrid.h > /tmp/subgrid-dense/cartesian_subgrid.h
+git show fb98953:FDTD/cartesian_subgrid.cpp > /tmp/subgrid-dense/cartesian_subgrid.cpp
+c++ -O3 -std=c++17 -I/tmp/subgrid-dense /tmp/subgrid-dense/cartesian_subgrid.cpp \
+    benchmark/subgrid_core.cpp -o /tmp/subgrid-dense/core
+c++ -O3 -std=c++17 -DSUBGRID_FACTOR_STATS -IFDTD FDTD/cartesian_subgrid.cpp \
+    benchmark/subgrid_core.cpp -o /tmp/subgrid-banded
+python3 benchmark/subgrid_compare.py --baseline /tmp/subgrid-dense/core \
+    --candidate /tmp/subgrid-banded --repeat 3 --output /tmp/subgrid-comparison.json
+```
+
+The driver interleaves three repetitions (reversing order on alternating pairs),
+checks identical topology/timestep and peak-normalized E/H agreement, and
+retains every measurement and spread. Seven cases include an uncoupled control,
+two separate regions with different refinement ratios and interface lengths through the unchanged
+1024-edge block limit. Pinned master cannot configure Cartesian subgridding;
+the reference-core comparison therefore uses its prior PR29 implementation.
+Use the native benchmark below separately for ordinary-engine regression.
+
+## Native engines
+
 A small, fixed set of cases that each isolate one cost of the solver, timed
 with the `openEMS` binary. It answers two questions about a build: how fast
 is it on this machine, and — against another build — is it faster, slower,

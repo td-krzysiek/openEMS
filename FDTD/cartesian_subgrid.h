@@ -162,6 +162,13 @@ class CartesianSubgrid
 		return m_Leaves.size();
 	}
 	std::size_t StorageBytes() const;
+	//! C++ reference diagnostics; counts allocated factor/work entries, not process RSS.
+	struct InterfaceStorageInfo
+	{
+		std::size_t blocks = 0, largestBlock = 0, largestHalfBandwidth = 0;
+		std::size_t factorEntries = 0, denseEquivalentEntries = 0, workspaceEntries = 0;
+	};
+	InterfaceStorageInfo InterfaceStorage() const;
 	const std::vector<Leaf> &Leaves() const
 	{
 		return m_Leaves;
@@ -187,7 +194,10 @@ class CartesianSubgrid
 	struct MassBlock
 	{
 		std::vector<std::size_t> edges;
+		std::size_t halfBandwidth = 0;
+		//! Lower band, diagonal first in each row: L(i,j) at i*(b+1)+i-j.
 		std::vector<double> lower;
+		//! Solve a contiguous local RHS; caller gathers/scatters independent edges.
 		void Solve(std::vector<double> &values) const;
 	};
 	Edge LocalEdge(const Leaf &cell, unsigned int axis, unsigned int first, unsigned int second) const;
@@ -203,7 +213,7 @@ class CartesianSubgrid
 	double FactorMass(const std::map<std::pair<std::size_t, std::size_t>, double> &offDiagonal);
 	void Curl(const std::vector<double> &electric, std::vector<double> &magnetic) const;
 	void CurlTranspose(const std::vector<double> &magnetic, std::vector<double> &electric) const;
-	void SolveMass(std::vector<double> &values) const;
+	void SolveMass(std::vector<double> &values);
 	void CheckStep(double timestep) const;
 	Integral LineIntegral(bool magnetic, const Point &start, const Point &stop) const;
 	void ApplyResistors(double timestep, double sourceAmplitude);
@@ -229,6 +239,7 @@ class CartesianSubgrid
 	std::vector<Edge> m_Edges;
 	std::vector<double> m_SqrtMass, m_SqrtReluctance;
 	std::vector<MassBlock> m_Blocks;
+	std::vector<double> m_InterfaceWork;
 	std::vector<std::pair<std::pair<std::size_t, std::size_t>, double>> m_MassOffDiagonal;
 	std::vector<std::size_t> m_RowStart, m_Columns;
 	std::vector<double> m_Values;

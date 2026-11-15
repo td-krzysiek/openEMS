@@ -49,7 +49,8 @@ refine unselected cells or override any region's ratio. No full lattice of
 field states is allocated. `LatticeRatio()` (and compatibility alias `Ratio()`)
 reports this coordinate scale, while `Regions()` reports each local ratio. In the test with 8x8x8 base cells and a
 4x4x4 selected block, the counts are 960 versus 4096. Accounted persistent
-storage is about 1.10 versus 4.40 MB **for this same reference core**. These
+storage in the current banded reference is 1,105,364 versus 4,502,212 bytes
+**for this same reference core**. These
 numbers are not process RSS, peak setup memory or a comparison with the
 optimized native Yee/GPU storage. Sparse topology, double fields, duplicated
 face quadrature histories and map nodes have significant overhead.
@@ -78,6 +79,8 @@ The **same** constrained trace appears in G and its transpose. Electric mass
 is not replaced by row-sum lumping after applying constraints. Away from an
 interface it is diagonal. Connected interface blocks are SPD and are Cholesky
 factored once at setup; timesteps perform triangular solves without allocation.
+The factors use their exact lower band in the existing breadth-first edge
+order, with one reusable block-sized local RHS; see the measurements below.
 There is no iterative solve or user-selected residual tolerance in a half-step.
 
 The face flux histories are local quadrature variables. Coincident faces have
@@ -705,6 +708,86 @@ engine/field/radiation groups 4/4 pass on this actual build.
 Matlab/Octave remains unexecuted. General CAD/ports/surfaces, the project array,
 losses, device execution, resource savings and production adoption remain open.
 
+### Banded interface factors
+
+The serial reference stores each connected SPD interface factor in a lower
+band instead of a full square. The existing breadth-first edge order is
+unchanged. For a block of n edges, its graph determines half-bandwidth b;
+Cholesky fill remains within that band. Every in-band coefficient and fill
+term is retained, including zeros. `L(i,j)` is stored at
+`i*(b+1)+i-j`, with the diagonal first. No mass lumping, iterative tolerance,
+changed quadrature or dropped coupling is introduced.
+
+Electric updates gather each block RHS into one preallocated local vector,
+solve in place, then scatter to the same independent edges. Nonzero products
+retain their previous ascending order. The workspace is the largest block,
+not a global field vector. The conservative inverse-mass norm still solves
+all n unit RHS vectors and sums the absolute inverse entries; the inverse
+itself is generally dense. Those setup columns are now n entries long.
+The norm formula, 1.98 safety factor, common timestep and all existing
+allocation guards remain unchanged. A step allocates no new workspace.
+
+`InterfaceStorage()` exposes read-only C++ reference counts: blocks, largest
+block/half-bandwidth, allocated factor entries, equivalent dense entries and
+workspace entries. It adds no Python/Matlab input setting or XML attribute.
+`StorageBytes()` includes the new workspace and band allocation. Its map-node
+accounting remains approximate; it is not process RSS or peak memory.
+
+The public [core benchmark](benchmark/README.md#compact-cartesian-subgrid-core)
+compares unchanged dense parent `fb98953` with the candidate using the same
+O3/C++17 compiler. Three interleaved pairs per case retain topology, stable
+timestep, invariant and E/H checks. Selected medians on macOS/arm64:
+
+| Core fixture | Constructor, dense/banded [s] | Update, dense/banded [s] | Accounted storage [MiB] | Peak process RSS [MiB] |
+|---|---:|---:|---:|---:|
+| Uncoupled 16³, 1000 steps |0.0116/0.0112|0.0819/0.0823|4.36/4.36|7.06/7.08|
+| Local 24³, 500 steps |0.0893/0.0874|0.3091/0.2920|33.44/32.85|40.39/39.78|
+| Two regions 16³, 500 steps |0.0580/0.0560|0.2007/0.1904|17.79/17.34|23.44/22.98|
+| Strip 128×8×8, 1000 steps |0.1766/0.0788|0.8884/0.5245|25.72/21.57|30.58/27.16|
+| Strip 512×8×8, 200 steps |9.2803/0.3775|2.2238/0.4249|151.32/86.72|176.61/112.02|
+
+The largest fixture has 89,664 leaves, 229,044 independent E states and 537,984 local
+H histories. Its largest block has 1024 edges and half-bandwidth 2; allocated
+factor doubles fall 8,518,656→48,960, with 1024 workspace doubles. E/H differences
+across all seven fixtures are at most 3.0e−15 of the reference peak. The
+uncoupled control adds 24 accounted bytes; its timing difference is within spread.
+Largest-case update spreads are 16.8% dense and 0.9% banded; constructor spreads
+are 7.3%/5.4%. Raw repetitions are retained; these medians are not universal
+performance bounds.
+
+This measures the compact reference core, excluding native processing. It is
+not a speed or resource comparison against optimized Yee/GPU execution or a
+production antenna. Regular interiors still use sparse curl rows; topology
+maps and duplicated H quadrature histories remain. The exact inverse-bound
+setup still needs n solves, and a broad graph band may give little saving.
+The 1024-edge cap is deliberately retained. Larger/general interfaces, native
+structured kernels, threading/SIMD and GPU execution remain separate work.
+
+`test_cartesian_subgrid_factor` checks a frozen dense E/H oracle and timestep,
+10,200-step invariant, block-local workspace, an accepted 1024-edge block and
+rejection above that unchanged guard. Existing million-step reference,
+100k-step material/PEC/port/boundary/absorber and 10k-step PML corner controls
+are repeated. The ten-case native PEC dipole also reruns with identical
+input hashes and is compared to its frozen dense-build complex port, near-field
+and radiation arrays. Native ordinary-engine tests and the interleaved native
+master comparison remain separate from the core timing table. All ten native
+cases retain identical complex arrays (maximum normalized difference zero);
+CTest 12/12, Python unit modules 13/13, long core invocations 9/9, native
+subgrid groups 8/8 and ordinary groups 4/4 pass. The four XS/basic ordinary
+master/candidate benchmark pairs have identical probe traces; their update
+rate differences are classified as measurement noise, including the antenna
+case with 24.5% spread.
+
+Qualification build: isolated macOS/arm64 Release, source parent `fb98953`
+plus this increment. Actual loaded core SHA256:
+`8f4cef1025a9de8442389085f7c2fddfbfbec3df4f62e64e3783a2a86b629e91`;
+nf2ff SHA256:
+`e1ec4b39e47d4554f51a545e44a5605cfb2141e78a64368b684abf2b49e4554c`.
+The source inventory identifies the tested files; embedded version text names
+the configure-time parent. Prior reference/PML/radiation binaries are frozen
+and checked before/after. Local source/build/test and benchmark evidence:
+`experiments/openems-cartesian-local-subgrid-20261112/banded-interface/`.
+
 ## Tests and observed accuracy
 
 ```sh
@@ -756,10 +839,10 @@ and local timesteps remain future work.
 
 The prototype has explicit allocation guards: at most 1024 base cells per
 axis, one million base cells, one million leaves summed across all regions,
-64 regions and 1024 coupled edges per
-dense interface factor. These are implementation safeguards, not physical
-limits of subgridding. Increasing them requires memory accounting and a
-sparser/scalable interface solve, rather than merely removing assertions.
+64 regions and 1024 coupled edges per interface factor. These are
+implementation safeguards, not physical limits of subgridding. Exact banded
+storage reduces current interface cost; increasing the guards still requires
+separate memory/setup/stability qualification rather than removing assertions.
 
 Additional ratio checks cover 1x1x1, 1x2x8 and axis permutations, 2x4x8,
 4x4x4 and 1x1x16: leaf counts, six-face traces, div(curl) and energy invariants.

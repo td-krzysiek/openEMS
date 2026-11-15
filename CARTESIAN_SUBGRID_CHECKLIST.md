@@ -55,7 +55,7 @@ fdtd.AddCartesianSubgrid(box=[7, 2, 2, 10, 6, 6], ratio=[4, 1, 2])
 `AddCartesianSubgrid` appends; `SetCartesianSubgrids([...])` replaces the list.
 Prototype guards currently allow 64 regions, factors 1/2/4/8/16 per axis,
 one million base cells, one million total leaves, and 1024 coupled degrees of
-freedom per dense interface factor. These are implementation guards, not
+freedom per interface factor. These are implementation guards, not
 universal limits of subgridding. A shared timestep is retained.
 
 ## 0. Reference scheme and configuration — implemented
@@ -210,12 +210,23 @@ preserved and remains an expected-negative mesh control.
   reserve compact constraint metadata and solves for the interfaces.
 - [ ] **C02** Replace or scale the current dense interface-factor approach;
   measure setup cost, factor memory and per-step cost before raising guards.
+  Partial: exact banded Cholesky in the existing breadth-first order, local
+  inverse-bound columns and one reusable block-sized solve workspace. The
+  1024-edge guard stays unchanged; computing the exact inverse-norm bound
+  still requires one solve per block column. General large-interface scaling
+  remains open. See [factor representation and measurements](CARTESIAN_SUBGRID.md#banded-interface-factors).
 - [ ] **C03** Reduce reference-only storage overhead, with regression coverage
   for any change to magnetic-face histories or numerical quadrature.
+  Partial: interface factors/workspace only. Sparse curls, topology maps,
+  duplicated magnetic quadrature histories and field precision are unchanged.
 - [ ] **C04** Integrate the regular CPU execution options, threading and SIMD
   where applicable; document remaining engine differences explicitly.
 - [ ] **C05** Benchmark peak setup/steady-state memory, setup time and time to
   the same simulated physical duration and accuracy, against regular grids.
+  Partial: three interleaved repetitions of seven standalone core cases against
+  the previous PR29 source, with actual peak RSS, accounted storage, unchanged
+  timestep and E/H/invariant checks. This is not a resource comparison against
+  an optimized ordinary Yee/GPU engine or a production antenna.
 
 Acceptance: do not infer production memory or speed gains from leaf counts.
 Record minimum timestep, interface overhead, field precision and build identity.
@@ -300,8 +311,10 @@ their own integration checks; master parity does not automatically qualify them.
 | Pinned-master Cartesian parity | Full applicable feature/engine matrix and regression suites | Open |
 | Production multi-GPU subgridding | Relevant single-device physics qualified, then D01–D05 | Open |
 
-Next implementation milestone: scalable structured interiors and interface
-storage/solves, with measured CPU cost before one GPU. The public PEC dipole
+Next implementation milestone: structured interiors and further interface
+scaling, with measured CPU cost before one GPU. Exact banded interface factors
+have scoped CPU evidence; the inverse-bound calculation and current guards
+remain. The public PEC dipole
 provides a port/radiation regression for those changes. Dielectric PCB geometry,
 broader scattering/ports/NF2FF placements and representative antenna spatial
 qualification remain open, followed by lossy antenna validation and parity work.
@@ -329,3 +342,4 @@ numerical change invalidates their prior qualification.
 | 2026-11-13 | Partial B02/B03, parallel Mur faces | This PR, paired Mur extension increment (parent `9de9020`) | [Pulse/energy/half-step controls](tests/test_cartesian_subgrid_mur.cpp), [native reflection and scope guards](python/Tests/Cartesian_Subgrid_Mur.py), [contract and limitations](CARTESIAN_SUBGRID.md#first-order-mur-absorbing-faces); serial basic CPU only. Adjacent corners, PML/NF2FF/GPU remain open. |
 | 2026-11-15 | Extended partial B02/B03, classical convolution PML | This PR, paired PML extension increment (parent `eaa1a31`) | [Six-normal/100k-packet/10k-corner/multiple-region controls](tests/test_cartesian_subgrid_pml.cpp), [native normal/TE/TM/graded/local reflection and rejection controls](python/Tests/Cartesian_Subgrid_PML.py), [contract and build evidence](CARTESIAN_SUBGRID.md#classical-convolution-pml). Scoped serial basic CPU only; not UPML/CFS parity, NF2FF, antenna, losses or GPU qualification. |
 | 2026-11-15 | B04/B05 scoped, public PEC CPU antenna milestone; extended partial P05 | This PR, radiation qualification increment (numerical source `55fe3e2`) | [Ten-case native dipole regression](python/Tests/Cartesian_Subgrid_Radiation.py), [results, actual build hashes and limitations](CARTESIAN_SUBGRID.md#scoped-pec-dipole-radiation). Existing numerical engine/NF2FF algorithms unchanged. Homogeneous unrefined closed surfaces, vacuum solid PEC dipole and one-edge port only; coarser-Z case retained as an expected negative. Not project-array, losses, GPU, speedup or production qualification. |
+| 2026-11-15 | Partial C02/C03/C05, banded interface representation | This PR, factor increment (parent `fb98953`) | [Frozen dense-oracle/guard regression](tests/test_cartesian_subgrid_factor.cpp), [interleaved core benchmark](benchmark/subgrid_compare.py), [factor contract and qualified build](CARTESIAN_SUBGRID.md#banded-interface-factors). Same SPD mass/curl/timestep scheme; 1024-edge guard unchanged. Serial CPU only, no structured-interior, GPU or production performance qualification. |

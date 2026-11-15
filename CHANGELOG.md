@@ -60,6 +60,10 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Changed
 
+- The Cartesian subgrid CPU reference stores exact interface Cholesky factors
+  in a lower band and uses block-sized solve workspace, reducing interface
+  storage and work. Its numerical scheme, timestep bound and allocation guards
+  are unchanged; general large-interface and device support remain experimental.
 - The Python bindings need Python 3.6 or newer (was 3.4).
 - Field dumps slow the simulation down less: they are evaluated on several
   threads, and time-domain HDF5 dumps are written in the background.

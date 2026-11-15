@@ -15,6 +15,7 @@ set(TESTS
   test_cartesian_subgrid_boundaries
   test_cartesian_subgrid_mur
   test_cartesian_subgrid_pml
+  test_cartesian_subgrid_factor
 )
 
 foreach(test ${TESTS})
