@@ -111,8 +111,8 @@ rejected('multi-unaligned', lambda f,c: f.SetCartesianSubgrids([
     {'box': [-6, -4, -4, -2.1, 4, 4]}, {'box': [2, -4, -4, 6, 4, 4]}]))
 rejected('multi-boundary', lambda f,c: f.SetCartesianSubgrids([
     {'box': [-8, -4, -4, -2, 4, 4]}, {'box': [2, -4, -4, 6, 4, 4]}]))
-rejected('multi-gpu', lambda f,c: f.SetCartesianSubgrids([
-    {'box': [-6, -4, -4, -2, 4, 4]}, {'box': [2, -4, -4, 6, 4, 4]}]), engine='gpu')
+rejected('multi-cpu', lambda f,c: f.SetCartesianSubgrids([
+    {'box': [-6, -4, -4, -2, 4, 4]}, {'box': [2, -4, -4, 6, 4, 4]}]), engine='cpu')
 
 # Nonuniform mesh, physical source placement and coordinate-origin invariance.
 for label, offset in [('graded', [0,0,0]), ('graded-shifted', [31,-23,17])]:
@@ -131,7 +131,7 @@ rejected('almost-aligned', lambda f,c: f.SetCartesianSubgrid([-4,-4,-4,4+1e-9,4,
 
 rejected('pml', lambda f, c: f.SetBoundaryCond(['PML_2'] * 6))
 rejected('sse', lambda f, c: None, engine='sse')
-rejected('gpu', lambda f, c: None, engine='gpu')
+rejected('cpu', lambda f, c: None, engine='cpu')
 rejected('unaligned', lambda f, c: f.SetCartesianSubgrid([-3.9, -4, -4, 4, 4, 4]))
 rejected('boundary-box', lambda f, c: f.SetCartesianSubgrid([-8, -4, -4, 4, 4, 4]))
 rejected('subcell-material', lambda f, c: c.AddMaterial('slab', epsilon=2).AddBox([-1.1]*3, [1]*3))

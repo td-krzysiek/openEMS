@@ -3,6 +3,7 @@
 #define CARTESIAN_SUBGRID_H
 
 #include "subgrid_curl.h"
+#include "gpu_cartesiansubgrid.h"
 #include <array>
 #include <cstddef>
 #include <functional>
@@ -188,6 +189,11 @@ class CartesianSubgrid
 	double MagneticEnergy() const;
 	//! Sum of the six oriented flux changes must vanish per leaf (D C = 0).
 	double CurlDivergenceResidual(const Field &field) const;
+
+	//! Checked upload and complete-step observation mirror for existing device backends.
+	CartesianSubgridDeviceData DeviceData() const;
+	void ImportDeviceFields(const float *electric, std::size_t electricCount,
+							const float *magnetic, std::size_t magneticCount);
 
   private:
 	struct Edge

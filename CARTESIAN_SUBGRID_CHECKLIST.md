@@ -26,7 +26,7 @@ separate tasks; a passing test on one engine does not qualify another engine.
   evidence archive; they are not attached to this PR. Checked items refer to
   the recorded runs summarized in the numerical documentation, not CI coverage
   of every platform or engine.
-- Current capability is a **serial CPU numerical reference**, with homogeneous
+- Current capability includes a **serial CPU numerical reference**, with homogeneous
   lossless background, cell-aligned isotropic lossless material boxes and PEC/PMC
   outer faces, scoped parallel first-order Mur faces, and classical convolution
   PML on a checked homogeneous unrefined collar. Internal PEC boxes/sheets and axis-aligned cylinders/shells have
@@ -34,6 +34,8 @@ separate tasks; a passing test on one engine does not qualify another engine.
   ports and local U/I integration have short two-port CPU controls. A public
   vacuum PEC dipole has scoped port, near-field, power and NF2FF CPU evidence;
   this does not qualify the project PCB antenna or general antenna workflows.
+  A narrower native device field/source path has reference-backend and physical
+  Metal controls; device ports/absorbers/losses/antenna qualification remain open.
 - The new feature concerns Cartesian coordinates. Preserve the existing
   cylindrical modes and test them for regressions; implementing a new
   cylindrical subgrid is outside this scope.
@@ -249,6 +251,15 @@ Record minimum timestep, interface overhead, field precision and build identity.
 - [ ] **U06** Measure actual VRAM, setup time, update/interface costs and total
   time to an equivalent result on one GPU. Check allocation cleanup.
 
+Partial U01/U02/U03/U05/U06: shared portable point operations now run compact
+lossless E/H, banded interface solves and ordered sources through the existing
+backend. Independent FP32 full-field and 20k-step controls plus native E/H/FD
+reconstruction pass on the reference backend and physical Metal (Apple M5 Pro).
+HIP compiles the same operation definitions but has no physical qualification
+here. Expanded curl/transpose metadata, host batch mirrors and existing guards
+remain; this is not structured block scalability, device ports/PML/DFT or a
+qualified device antenna. [Scope, source/build and tests](CARTESIAN_SUBGRID.md#scoped-native-device-execution).
+
 Acceptance: one supported antenna case runs on one GPU without hidden CPU
 execution. The ordinary master GPU path still working does not complete this
 stage for subgridding.
@@ -350,6 +361,8 @@ numerical change invalidates their prior qualification.
 | 2026-11-15 | Partial C02/C03/C05, banded interface representation | This PR, factor increment (parent `fb98953`) | [Frozen dense-oracle/guard regression](tests/test_cartesian_subgrid_factor.cpp), [interleaved core benchmark](benchmark/subgrid_compare.py), [factor contract and qualified build](CARTESIAN_SUBGRID.md#banded-interface-factors). Same SPD mass/curl/timestep scheme; 1024-edge guard unchanged. Serial CPU only, no structured-interior, GPU or production performance qualification. |
 | 2026-11-15 | Further partial C02/C05, signed inverse-norm setup | This PR, signed-bound increment (parent `571766f`) | [Independent dense-inverse controls](tests/test_cartesian_subgrid_bound.cpp), frozen factor oracle, [derivation/build and regression results](CARTESIAN_SUBGRID.md#signed-inverse-norm-setup). One solve for positive bipartite graphs; old general fallback and guards retained. CTest13/13, Python13/13, long9/9, native8/8 and ordinary4/4; ten frozen dipole arrays unchanged. Ordinary Metal is a regression only, not subgrid GPU qualification. |
 
-| 2026-11-15 | Further partial C01/C03/C05, exact translated curl patterns | This PR, stencil increment (parent `cb36dde`) | [Independent CSR oracle](tests/test_cartesian_subgrid_curl.cpp), [memory/performance and loaded build evidence](CARTESIAN_SUBGRID.md#exact-translated-curl-stencils). CTest14/14, Python13/13, long9/9, native8/8, ordinary4/4; ten frozen dipoles unchanged. Memory reduced about40–50%, CPU updates about9–12% slower. Structured interiors, topology scaling and GPU remain open. |
+| 2026-11-15 | Further partial C01/C03/C05, exact translated curl patterns | This PR, stencil increment (parent `cb36dde`) | [Independent CSR oracle](tests/test_cartesian_subgrid_curl.cpp), [memory/performance and loaded build evidence](CARTESIAN_SUBGRID.md#exact-translated-curl-stencils). CTest 14/14, Python13/13, long9/9, native8/8, ordinary4/4; ten frozen dipoles unchanged. Memory reduced about40–50%, CPU updates about9–12% slower. Structured interiors, topology scaling and GPU remain open. |
 
-| 2026-11-15 | Reconcile pinned master; preserve scoped CPU/ordinary GPU coverage | Merge upstream `92cd92a` into parent `f5d1b16` | [Integration and rounding evidence](CARTESIAN_SUBGRID.md#upstream-92cd92a-integration). CTest14/14, Python13/13, long9/9, native8/8, ordinary4/4. Ten frozen dipoles within6.45e-7, not bit-identical after upstream disables extension FMA. Isolated old-contraction identity control recovers exact frozen arrays. This does not qualify subgrid GPU/lossy/PCB operation. |
+| 2026-11-15 | Reconcile pinned master; preserve scoped CPU/ordinary GPU coverage | Merge upstream `92cd92a` into parent `f5d1b16` | [Integration and rounding evidence](CARTESIAN_SUBGRID.md#upstream-92cd92a-integration). CTest 14/14, Python13/13, long9/9, native8/8, ordinary4/4. Ten frozen dipoles within 6.45e-7, not bit-identical after upstream disables extension FMA. Isolated old-contraction identity control recovers exact frozen arrays. This does not qualify subgrid GPU/lossy/PCB operation. |
+
+| 2026-11-15 | Partial U01/U02/U03/U05/U06, shared native device field/source path | This PR, native-device increment (parent `039b128`) | [Shared operations](FDTD/kernels/subgrid_update.h), [independent FP32 oracle and fields](tests/test_cartesian_subgrid_device.cpp), [native probes/dumps and guards](python/Tests/Cartesian_Subgrid_Device.py), [scope/build evidence](CARTESIAN_SUBGRID.md#scoped-native-device-execution). CTest 15/15; physical fields 4/4; Python 13/13; native device 4/4, CPU base plus six groups, two frozen CPU dipoles unchanged, ordinary three groups. Metal on Apple M5 Pro and explicit reference backend; no physical HIP/CUDA, ports/absorbers/losses, device antenna or production scaling qualification. |

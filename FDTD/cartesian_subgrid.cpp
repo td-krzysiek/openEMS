@@ -1428,3 +1428,95 @@ double CartesianSubgrid::ResistorVoltage(std::size_t port) const
 {
 	return Evaluate(m_PortVoltage.at(port));
 }
+
+// Checked FP32 upload contract; no CPU numerical update is changed.
+CartesianSubgridDeviceData CartesianSubgrid::DeviceData() const
+{
+	Require(m_PendingMagneticTimestep == 0, "CartesianSubgrid: device upload requires a complete timestep");
+	Require(m_PortVoltage.empty(), "CartesianSubgrid: device resistor coupling is not implemented");
+	const auto index = [](std::size_t value)
+	{
+		Require(value <= std::numeric_limits<std::uint32_t>::max(),
+				"CartesianSubgrid: device metadata exceeds 32-bit indexing");
+		return static_cast<std::uint32_t>(value);
+	};
+	const auto scalar = [](double value)
+	{
+		const float converted = static_cast<float>(value);
+		Require(std::isfinite(value) && std::isfinite(converted) &&
+				(value == 0 || std::abs(converted) >= std::numeric_limits<float>::min()),
+				"CartesianSubgrid: coefficient/state is not representable as normal FP32");
+		return converted;
+	};
+	CartesianSubgridDeviceData data;
+	data.stableTimestep = m_StableStep;
+	for (double value : m_Electric)
+	{
+		data.electric.push_back(scalar(value));
+	}
+	for (double value : m_Magnetic)
+	{
+		data.magnetic.push_back(scalar(value));
+	}
+	data.transposeStart.assign(m_Electric.size() + 1, 0);
+	for (std::size_t row = 0; row < m_Magnetic.size(); ++row)
+	{
+		m_CurlOperator.ForEach(row, [&](std::size_t edge, double value)
+		{
+			data.curlColumn.push_back(index(edge));
+			data.curlWeight.push_back(scalar(value));
+			++data.transposeStart[edge + 1];
+		});
+		data.curlStart.push_back(index(data.curlColumn.size()));
+	}
+	for (std::size_t edge = 0; edge < m_Electric.size(); ++edge)
+	{
+		data.transposeStart[edge + 1] = index(std::size_t(data.transposeStart[edge + 1]) +
+														 data.transposeStart[edge]);
+	}
+	data.transposeColumn.resize(data.curlColumn.size());
+	data.transposeWeight.resize(data.curlColumn.size());
+	auto cursor = data.transposeStart;
+	for (std::size_t row = 0; row < m_Magnetic.size(); ++row)
+	{
+		for (std::size_t k = data.curlStart[row]; k < data.curlStart[row + 1]; ++k)
+		{
+			const auto target = cursor[data.curlColumn[k]]++;
+			data.transposeColumn[target] = index(row);
+			data.transposeWeight[target] = data.curlWeight[k];
+		}
+	}
+	for (const auto &block : m_Blocks)
+	{
+		for (std::size_t edge : block.edges)
+		{
+			data.blockEdge.push_back(index(edge));
+		}
+		data.blockStart.push_back(index(data.blockEdge.size()));
+		data.bandwidth.push_back(index(block.halfBandwidth));
+		for (double value : block.lower)
+		{
+			data.lower.push_back(scalar(value));
+		}
+		data.lowerStart.push_back(index(data.lower.size()));
+	}
+	for (const auto &source : m_Sources)
+	{
+		data.sourceEdge.push_back(index(source.first));
+		data.sourceWeight.push_back(scalar(source.second));
+	}
+	return data;
+}
+
+void CartesianSubgrid::ImportDeviceFields(const float *electric, std::size_t electricCount,
+										const float *magnetic, std::size_t magneticCount)
+{
+	Require(m_PendingMagneticTimestep == 0 && electric && magnetic &&
+			electricCount == m_Electric.size() && magneticCount == m_Magnetic.size(),
+			"CartesianSubgrid: invalid complete-step device field dimensions");
+	Require(std::all_of(electric, electric + electricCount, [](float value) { return std::isfinite(value); }) &&
+			std::all_of(magnetic, magnetic + magneticCount, [](float value) { return std::isfinite(value); }),
+			"CartesianSubgrid: nonfinite device fields");
+	std::copy(electric, electric + electricCount, m_Electric.begin());
+	std::copy(magnetic, magnetic + magneticCount, m_Magnetic.begin());
+}

@@ -18,6 +18,7 @@ set(TESTS
   test_cartesian_subgrid_factor
   test_cartesian_subgrid_bound
   test_cartesian_subgrid_curl
+  test_cartesian_subgrid_device
 )
 
 foreach(test ${TESTS})
@@ -25,5 +26,9 @@ foreach(test ${TESTS})
   # the tests use the headers of the source tree, not the installed ones
   target_include_directories(${test} PRIVATE ${openEMS_SOURCE_DIR})
   target_link_libraries(${test} openEMS)
+
+  if(test STREQUAL "test_cartesian_subgrid_device" AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|IntelLLVM")
+    target_compile_options(${test} PRIVATE -ffp-contract=off)
+  endif()
   add_test(NAME ${test} COMMAND ${test})
 endforeach()

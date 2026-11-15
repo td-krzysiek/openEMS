@@ -534,6 +534,11 @@ void openEMS::SetupAbsorbingSheets()
 //! The engine interface for the field storage of the engine of \a op; what depends on the mesh, the interfaces ask the operator
 static Engine_Interface_FDTD* NewEngineInterface(Operator* op)
 {
+	// Compact local fields use their virtual reconstruction, not Engine_GPU's rectangular arrays.
+	if (dynamic_cast<Operator_CartesianSubgrid *>(op))
+	{
+		return new Engine_Interface_FDTD(op);
+	}
 	// without an engine the basic interface throws
 	switch (op->GetEngine() ? op->GetEngine()->GetType() : Engine::UNKNOWN)
 	{
@@ -1019,9 +1024,9 @@ bool openEMS::SetupOperator()
 	// the GPU backend first: without a usable device the operator is not worth building
 	const bool gpu = (type==Engine::GPU);
 	if ((!m_CartesianSubgridBox.empty() || !m_CartesianSubgridBoxes.empty()) &&
-		(CylinderCoords || !m_CC_MultiGrid.empty() || type != Engine::BASIC))
+		(CylinderCoords || !m_CC_MultiGrid.empty() || (type != Engine::BASIC && type != Engine::GPU)))
 	{
-		throw std::invalid_argument("CartesianSubgrid: use Cartesian coordinates and explicit engine=basic");
+		throw std::invalid_argument("CartesianSubgrid: use Cartesian coordinates and explicit engine=basic or a supported GPU backend");
 	}
 	if (m_CartesianSubgridBox.empty() && m_CartesianSubgridRatio != std::vector<unsigned int>{2, 2, 2})
 	{

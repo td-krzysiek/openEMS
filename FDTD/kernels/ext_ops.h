@@ -27,6 +27,7 @@
 
 #if !defined(__METAL_VERSION__)
 #include "cell_update.h"
+#include "subgrid_update.h"
 #endif
 
 //! Soft excitation of the voltages or currents (Engine_Ext_Excitation): field += amp*signal
@@ -331,6 +332,10 @@ struct Op_Dispersive
 //! The backends expand the list to their launches (GPU_Backend::RunPoints()), so a new operation goes here and into
 //! GPU_PointOp only
 #define CM_POINT_OPS(X) \
+	X(GPU_OP_SUBGRID_CURL, Op_SubgridCurl, op_subgrid_curl) \
+	X(GPU_OP_SUBGRID_MASS, Op_SubgridMass, op_subgrid_mass) \
+	X(GPU_OP_SUBGRID_ELECTRIC, Op_SubgridElectric, op_subgrid_electric) \
+	X(GPU_OP_SUBGRID_SOURCE, Op_SubgridSource, op_subgrid_source) \
 	X(GPU_OP_EXCITATION,   Op_Excitation,  op_excitation) \
 	X(GPU_OP_SHEET,        Op_Sheet,       op_sheet) \
 	X(GPU_OP_LUMPED_RLC,   Op_LumpedRLC,   op_lumped_rlc) \

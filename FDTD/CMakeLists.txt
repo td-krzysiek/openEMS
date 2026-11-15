@@ -26,6 +26,7 @@ if(APPLE AND ENABLE_METAL)
   # is the same source for an offline compile: `cmake --build . --target metal_check` (CI).
   set(METAL_CM_PARTS
     ${CMAKE_CURRENT_SOURCE_DIR}/kernels/cell_update.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/kernels/subgrid_update.h
     ${CMAKE_CURRENT_SOURCE_DIR}/kernels/ext_ops.h
     ${CMAKE_CURRENT_SOURCE_DIR}/metal/metal_kernels.metal)
   set(METAL_CM_SOURCE "#include <metal_stdlib>\nusing namespace metal;\n#pragma STDC FP_CONTRACT OFF\n")
@@ -70,6 +71,7 @@ set(SOURCES
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_field_gather.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_gpu.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/gpu_backend.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/gpu_cartesiansubgrid.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/gpu_plugins.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/gpu_backend_reference.cpp
   PARENT_SCOPE

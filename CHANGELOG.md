@@ -36,8 +36,11 @@ to what a user notices, in a few lines; the details belong in the commit.
   adjacent Mur corners remain unsupported. Classical convolution PML supports
   all six faces through the existing `PML_n` boundary setting, with a checked
   homogeneous unrefined collar and one inner guard cell. Mixed Mur/PML,
-  distributed/LC ports and GPU subgridding remain unsupported;
-  `engine=basic` is required. A public vacuum PEC dipole now has scoped CPU
+  distributed/LC ports remain unsupported. `engine=basic` supplies this
+  scoped CPU physics. Shared GPU/reference-backend operations now support
+  compact lossless fields and soft sources with closed PEC/PMC boundaries;
+  physical Metal has small-model controls. Device resistive ports/absorbers
+  are explicitly rejected; HIP/CUDA and device antenna qualification remain open. A public vacuum PEC dipole now has scoped CPU
   port, power, near-field and NF2FF controls against regular grids, including
   mesh/time/PML sensitivity. Closed NF2FF surfaces and interpolation neighbours
   stay in homogeneous unrefined air outside refinement and PML. General

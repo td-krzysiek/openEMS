@@ -9,6 +9,7 @@
 #include "CSPropLumpedElement.h"
 #include "CSPropProbeBox.h"
 #include "engine.h"
+#include "gpu_backend.h"
 #include "extensions/operator_ext_excitation.h"
 #include "extensions/operator_ext_tfsf.h"
 #include "extensions/operator_ext_lumpedRLC.h"
@@ -74,10 +75,27 @@ unsigned int BaseLineIndex(const double *lines, unsigned int count, double value
 class Engine_CartesianSubgrid : public Engine
 {
   public:
-	explicit Engine_CartesianSubgrid(const Operator_CartesianSubgrid *op) : Engine(op), m_Operator(op)
+	explicit Engine_CartesianSubgrid(const Operator_CartesianSubgrid *op,
+									 std::unique_ptr<GPU_Backend> backend = {})
+		: Engine(op), m_Operator(op), m_Backend(std::move(backend))
 	{
 		InitExtensions();
 		SortExtensionByPriority();
+		if (m_Backend)
+		{
+			if (!m_Eng_exts.empty())
+			{
+				throw std::invalid_argument("CartesianSubgrid: device absorber/extension is not implemented");
+			}
+			m_Device = m_Backend->CreateCartesianSubgrid(op->Grid());
+			if (!m_Device)
+			{
+				throw std::invalid_argument("CartesianSubgrid: selected GPU backend does not support subgridding");
+			}
+			m_type = Engine::GPU;
+			std::cout << "CartesianSubgrid device: " << m_Backend->GetName()
+					  << "; allocated " << m_Device->StorageBytes() << " bytes; no host half-step fallback" << std::endl;
+		}
 	}
 	bool IterateTS(unsigned int steps) override
 	{
@@ -85,7 +103,11 @@ class Engine_CartesianSubgrid : public Engine
 		for (unsigned int step = 0; step < steps; ++step)
 		{
 			const double drive = numTS < signal->GetLength() ? signal->GetVoltageSignal()[numTS] : 0;
-			if (m_Eng_exts.empty())
+			if (m_Device)
+			{
+				m_Device->Step(m_Operator->GetTimestep(), drive);
+			}
+			else if (m_Eng_exts.empty())
 			{
 				m_Operator->Grid().Step(m_Operator->GetTimestep(), drive);
 			}
@@ -101,6 +123,10 @@ class Engine_CartesianSubgrid : public Engine
 				Apply2Current();
 			}
 			++numTS;
+		}
+		if (m_Device)
+		{
+			m_Device->ReadFields(m_Operator->Grid());
 		}
 		return true;
 	}
@@ -163,6 +189,9 @@ class Engine_CartesianSubgrid : public Engine
 		throw std::logic_error("CartesianSubgrid: use the core field/source API, not rectangular field writes");
 	}
 	const Operator_CartesianSubgrid *m_Operator;
+	// Device execution is destroyed before its creating backend.
+	std::unique_ptr<GPU_Backend> m_Backend;
+	std::unique_ptr<GPU_CartesianSubgrid> m_Device;
 };
 } // namespace
 
@@ -226,9 +255,9 @@ Operator_CartesianSubgrid *Operator_CartesianSubgrid::NewRegions(const std::vect
 
 void Operator_CartesianSubgrid::SetEngineType(Engine_Types::EngineType type)
 {
-	if (type != Engine::BASIC)
+	if (type != Engine::BASIC && type != Engine::GPU)
 	{
-		throw std::invalid_argument("CartesianSubgrid: the XYZ reference implementation requires engine=basic");
+		throw std::invalid_argument("CartesianSubgrid: the XYZ implementation requires engine=basic or a supported GPU backend");
 	}
 	Operator::SetEngineType(type);
 }
@@ -735,7 +764,12 @@ Engine *Operator_CartesianSubgrid::CreateEngine()
 	{
 		throw std::logic_error("CartesianSubgrid: build the operator first");
 	}
-	m_Engine = new Engine_CartesianSubgrid(this);
+	std::unique_ptr<GPU_Backend> backend(m_EngineType == Engine::GPU ? TakeGPUBackend() : nullptr);
+	if (m_EngineType == Engine::GPU && !backend)
+	{
+		throw std::invalid_argument("CartesianSubgrid: GPU execution requires an explicit usable backend");
+	}
+	m_Engine = new Engine_CartesianSubgrid(this, std::move(backend));
 	return m_Engine;
 }
 

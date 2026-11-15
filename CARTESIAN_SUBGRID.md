@@ -9,9 +9,10 @@ by its selected factor inside each selected box. Several separate boxes
 can have different axis ratios; outside them the coarse cells remain. This is a separate Cartesian numerical core, not
 angular interpolation or a slab copied from cylindrical multi-grid.
 
-It is a **serial CPU reference implementation**, suitable for numerical
-review and small validation models. It is not yet a replacement for the
-production antenna engine.
+It contains a **serial CPU numerical reference** and scoped shared device
+operations, qualified locally on the reference backend and physical Metal.
+Both are for small validation models. This is not yet a replacement for the
+production antenna engine; device ports and absorbers remain unsupported.
 
 [Implementation and qualification checklist](CARTESIAN_SUBGRID_CHECKLIST.md)
 tracks the completed controls and remaining feature/engine milestones in PR #29.
@@ -219,8 +220,9 @@ zero-delay nonperiodic soft E box sources; E/H observations.
 Internal PEC and restricted one-edge resistive lumped ports follow the contracts below.
 Unsupported requests fail at setup: distributed/LC/modal ports, conducting
 sheets, dispersion/loss, mixed Mur/PML and adjacent Mur corners, periodic sources, transformed
-primitives, other field types and GPU/SSE/new CPU engine selection. Only
-`engine=basic` selects this reference adapter; its execution is serial.
+primitives, other field types and SSE/new CPU engine selection.
+`engine=basic` selects the full scoped serial reference. `engine=gpu-reference`
+and `engine=gpu` have the narrower [device contract](#scoped-native-device-execution).
 
 ### Lossless material boxes
 
@@ -465,7 +467,8 @@ Here `d` is the actual outer interval, including graded meshes; the default
 allocated once. Ordered E/H half-sweeps expose the ordinary extension hooks;
 the existing full-step path retains its arithmetic. Invalid half-sweep ordering
 or changing dt between E and H is rejected. There is no device fallback:
-GPU/SSE/new CPU subgridding still fails explicitly at setup.
+device absorber extensions and SSE/new CPU subgridding still fail explicitly
+at setup. The separate lossless closed-boundary device path is described below.
 
 `BoundaryWorkOut()` records **signed discrete correction work**, not far-field
 radiated power and not a guarantee of positive dissipation on each step.
@@ -811,8 +814,8 @@ Memory and update time are essentially unchanged. This is a setup change in
 the small CPU reference, not a production-antenna or GPU speedup.
 
 Isolated macOS/arm64 Release qualification passes CTest13/13, Python unit
-modules13/13, long core invocations9/9, native subgrid groups8/8 and ordinary
-groups4/4. The ten-case dipole's frozen complex port/field/radiation arrays
+modules 13/13, long core invocations 9/9, native subgrid groups 8/8 and ordinary
+groups 4/4. The ten-case dipole's frozen complex port/field/radiation arrays
 remain identical (maximum normalized difference zero). Source/runtime
 inventories match across the run, including four earlier frozen prefixes.
 The loaded candidate core SHA256 is
@@ -844,9 +847,9 @@ The memory saving has a CPU cost: updates change from 0.2896 to 0.3254 s and
 0.4223 to 0.4598 s respectively. Setup is nearly unchanged. These small-core
 measurements do not establish production speedup or memory requirements.
 
-Isolated Release qualification passes CTest14/14, Python unit modules13/13,
-long core invocations9/9, native groups8/8 (including the ten dipoles), and
-ordinary groups4/4. All frozen dipole port/field/radiation arrays are unchanged.
+Isolated Release qualification passes CTest 14/14, Python unit modules 13/13,
+long core invocations 9/9, native groups 8/8 (including the ten dipoles), and
+ordinary groups 4/4. All frozen dipole port/field/radiation arrays are unchanged.
 Source and four earlier frozen runtime inventories remain unchanged during
 qualification. Loaded core SHA256:
 `9db83252b72729aabaefc64135abae80f072cd54115b05cabf23b0b90d3a82d9`;
@@ -865,17 +868,17 @@ model/point-operation architecture and the upstream fixes for excitation
 frequency initialization, rounded periodic signal length, XML timestep factor
 and explicit zero end criteria. Subgrid periodic sources remain unsupported.
 
-A separate isolated build passes CTest14/14, Python unit modules13/13, long
-core invocations9/9, native groups8/8 and ordinary groups4/4, including the
+A separate isolated build passes CTest 14/14, Python unit modules 13/13, long
+core invocations 9/9, native groups 8/8 and ordinary groups 4/4, including the
 expanded CPU/reference-GPU/Metal engine comparison. Frozen runtime prefixes
 and inventoried source remain unchanged during qualification.
 
-The previous strict2e-11 frozen-array identity check initially fails; this
+The previous strict 2e-11 frozen-array identity check initially fails; this
 failure is retained. Upstream now compiles engine extensions without fused
-multiply-add. All ten dipole results remain within6.45e-7 peak-normalized
-error (existing upstream single-precision comparison gate1e-5). Subgrid
+multiply-add. All ten dipole results remain within 6.45e-7 peak-normalized
+error (existing upstream single-precision comparison gate 1e-5). Subgrid
 port/near-point arrays remain unchanged; subgrid far-field differences are
-below1.89e-8. An isolated identity-dipole control restores only the prior PML
+below 1.89e-8. An isolated identity-dipole control restores only the prior PML
 contraction mode and recovers every frozen array exactly. Its loaded library
 path/hash is checked; the first control with an incorrect soname alias was
 not accepted as causal evidence. The counterfactual is not an adopted build.
@@ -888,6 +891,74 @@ Source/runtime inventories, the retained failed strict comparison and causal
 control are in the contributor evidence directory
 `experiments/openems-cartesian-local-subgrid-20261112/master92-integration/`.
 This is compatibility qualification, not a subgrid GPU or antenna speedup.
+
+### Scoped native device execution
+
+Compact subgrid operations use the existing backend `DeviceAlloc`, `RunPoints`
+and `DeviceDownload` contract. Shared portable point operations implement curl
+and its gather transpose, independent banded mass solves, electric updates and
+ordered additive sources. Metal, HIP and the explicit CPU reference backend
+compile the same operations. **Physical qualification here covers Metal on
+Apple M5 Pro only; HIP/CUDA hardware qualification remains open.** No additional
+backend or silent host half-step execution is introduced.
+
+The native adapter accepts `engine='gpu-reference'` and `engine='gpu'` for its
+lossless closed PEC/PMC field/source scope. It explicitly rejects resistive
+ports and Mur/PML extension combinations; those keep their scoped CPU support.
+Device state and coefficients are FP32. The CPU reference remains double.
+Electric/magnetic fields stay on device between sweeps; complete-step field
+mirrors are refreshed once per processing batch for existing reconstruction,
+probes and FD dumps. This is host DFT processing, not device DFT/gather parity.
+
+The first upload expands curl/transpose rows and uploads existing banded
+factors. It preserves local leaves without a global fine parent lattice, but
+is not structured block indexing and does not remove current allocation guards.
+Reported device allocation bytes exclude host topology/observation mirrors,
+command buffers and backend overhead. Large-antenna VRAM/speed claims remain
+unsupported.
+
+The independent test-only FP32 oracle, separately implemented from the shared
+point kernels, detects arithmetic/order/dispatch differences. Three seeded
+uniform/local/graded source fixtures run 2000 steps; a source-free local case
+runs 20000 steps. Physical Metal agrees exactly with this oracle in all retained
+fields. Maximum peak-normalized difference from the double reference is
+9.75e-5 (gate 2e-4); source-free invariant drift is 7.59e-8 (gate 5e-4).
+Repeated backend creation/destruction is exercised; this is not a general
+resource-leak or allocation-limit qualification.
+
+Four native fixtures (local, graded unequal ratios, multiple regions, and
+lossless dielectric plus resolved PEC) compare full E/H time records and
+multi-frequency FD dumps. Maximum double-CPU/device difference is 5.30e-6;
+reference-backend/Metal records are identical, within the declared 2e-4 gate.
+Invalid device field dimensions, nonfinite fields, incomplete half-steps and
+unsupported native device ports/absorbers have rejection controls. The native
+Python binding returns setup code4 for engine-construction failure; tests check
+that code, the actual native error reason and absence of propagated output.
+
+Reproduction:
+
+```sh
+ctest --test-dir build --output-on-failure
+build/tests/test_cartesian_subgrid_device --metal
+python3 python/Tests/Cartesian_Subgrid_Device.py
+OPENEMS_SUBGRID_DEVICE=metal python3 python/Tests/Cartesian_Subgrid_Device.py
+```
+
+Qualification source parent is `039b128`; the exact source inventory, loaded
+libraries, commands, failed development controls and numerical metrics are in
+`experiments/openems-cartesian-local-subgrid-20261112/native-metal/`.
+Loaded canonical candidate core SHA256:
+`e3b143d182dda9ebb8d9aa1c85740476702207e04c12a3f75b54c8374f19e6bf`;
+nf2ff: `8bf8d8e01be96032d94b71e3aef6e7c2645954354e7255763c575ed74438581c`.
+Canonical qualification passes CTest 15/15, physical full-field controls 4/4,
+Python unit modules 13/13, native device fixtures 4/4, the native CPU base and
+six increment groups, two frozen CPU dipoles and three ordinary-engine groups.
+The two frozen dipoles retain identical arrays against the explicitly merged
+master reference. Source/runtime inventories, including five earlier frozen
+prefixes, remain unchanged throughout this qualification.
+
+Device ports, absorbers, lossy media/conductors, native device antenna/NF2FF,
+structured topology scaling and multiple devices remain separate milestones.
 
 ## Tests and observed accuracy
 

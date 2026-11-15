@@ -19,6 +19,7 @@
 #define GPU_BACKEND_H
 
 #include <complex>
+#include "gpu_cartesiansubgrid.h"
 #include <cstdint>
 #include <stdexcept>
 #include <string>
@@ -77,6 +78,7 @@ enum GPU_PointOp
 	GPU_OP_CYLINDER,
 	GPU_OP_MULTIGRID,
 	GPU_OP_DISPERSIVE,
+	GPU_OP_SUBGRID_CURL, GPU_OP_SUBGRID_MASS, GPU_OP_SUBGRID_ELECTRIC, GPU_OP_SUBGRID_SOURCE,
 };
 
 //! Abstract interface to the device used by Engine_GPU
@@ -112,6 +114,10 @@ public:
 	static GPU_Backend* New(const std::string& name);
 
 	virtual ~GPU_Backend() {}
+
+	//! Compact Cartesian execution through this backend's shared point operations.
+	//! Used before regular Init(): owns separate local fields, no rectangular lattice.
+	std::unique_ptr<GPU_CartesianSubgrid> CreateCartesianSubgrid(const CartesianSubgrid &grid);
 
 	virtual std::string GetName() const = 0;
 
