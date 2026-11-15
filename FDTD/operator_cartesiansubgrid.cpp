@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include "operator_cartesiansubgrid.h"
 #include "CSPrimBox.h"
+#include "CSPrimPolygon.h"
+#include "CSPrimLinPoly.h"
 #include "CSPrimCylinder.h"
 #include "CSPrimCylindricalShell.h"
 #include "CSPropDumpBox.h"
@@ -485,10 +487,41 @@ void Operator_CartesianSubgrid::ValidateProperties() const
 			if (type == CSProperties::METAL)
 			{
 				auto *cylinder = dynamic_cast<CSPrimCylinder *>(primitive);
-				if (!dynamic_cast<CSPrimBox *>(primitive) && !cylinder)
+				auto *polygon = dynamic_cast<CSPrimPolygon *>(primitive);
+				if (!dynamic_cast<CSPrimBox *>(primitive) && !cylinder && !polygon)
 				{
 					throw std::invalid_argument(
-						"CartesianSubgrid: PEC supports boxes, sheets and axis-aligned cylinders/shells");
+						"CartesianSubgrid: PEC supports boxes, sheets, axial cylinders/shells and planar/extruded polygons");
+				}
+				if (polygon)
+				{
+					if (primitive->GetType() != CSPrimitives::POLYGON && primitive->GetType() != CSPrimitives::LINPOLY)
+					{
+						throw std::invalid_argument("CartesianSubgrid: only planar or linearly extruded PEC polygons supported");
+					}
+					const auto count = polygon->GetQtyCoords();
+					if (polygon->GetNormDir() < 0 || polygon->GetNormDir() > 2 ||
+						!std::isfinite(polygon->GetElevation()) || count < 3 ||
+						count > std::size_t(std::numeric_limits<int>::max() / 2) ||
+						polygon->GetCoordPS(int(2 * count)) != nullptr)
+					{
+						throw std::invalid_argument("CartesianSubgrid: finite planar PEC polygon with at least 3 vertices required");
+					}
+					// GetQtyCoords counts vertices; GetCoord indexes flattened XY scalars.
+					for (std::size_t coordinate = 0; coordinate < 2 * count; ++coordinate)
+					{
+						if (!std::isfinite(polygon->GetCoord(int(coordinate))))
+						{
+							throw std::invalid_argument("CartesianSubgrid: finite PEC polygon vertices required");
+						}
+					}
+					if (auto *extruded = dynamic_cast<CSPrimLinPoly *>(polygon))
+					{
+						if (!std::isfinite(extruded->GetLength()) || extruded->GetLength() == 0)
+						{
+							throw std::invalid_argument("CartesianSubgrid: extruded PEC polygon requires finite nonzero height");
+						}
+					}
 				}
 				if (cylinder)
 				{
@@ -537,7 +570,12 @@ void Operator_CartesianSubgrid::ValidateProperties() const
 				throw std::invalid_argument("CartesianSubgrid: soft E sources must use box primitives");
 			}
 			double box[6];
-			if (primitive->HasTransform() || !primitive->GetBoundBox(box) ||
+			std::fill_n(box, 6, std::numeric_limits<double>::quiet_NaN());
+			const bool boundFlag = primitive->GetBoundBox(box);
+			// CSPrimPolygon supplies a finite AABB but returns false from its
+			// accuracy flag. Its checked Cartesian planar/extruded shape still
+			// supplies the bounds needed for axial contact validation below.
+			if (primitive->HasTransform() || (!boundFlag && !dynamic_cast<CSPrimPolygon *>(primitive)) ||
 				!std::all_of(box, box + 6, [](double v) { return std::isfinite(v); }))
 			{
 				throw std::invalid_argument(
@@ -606,24 +644,36 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 	const auto geometry = CSX->GetAllPrimitives(
 		true, (CSProperties::PropertyType)(CSProperties::MATERIAL | CSProperties::METAL));
 	std::vector<std::array<double, 6>> bounds;
-	std::vector<std::pair<unsigned int, std::array<double, 6>>> cylinders;
+	struct AxialObject
+	{
+		unsigned int axis;
+		std::array<double, 6> bounds;
+		bool polygon;
+	};
+	std::vector<AxialObject> axialObjects;
 	for (CSPrimitives *primitive : geometry)
 	{
 		if (!dynamic_cast<CSPrimBox *>(primitive))
 		{
-			auto *cylinder = dynamic_cast<CSPrimCylinder *>(primitive);
-			if (!cylinder)
+			std::array<double, 6> box;
+			primitive->GetBoundBox(box.data());
+			if (auto *polygon = dynamic_cast<CSPrimPolygon *>(primitive))
+			{
+				axialObjects.push_back({unsigned(polygon->GetNormDir()), box, true});
+			}
+			else if (auto *cylinder = dynamic_cast<CSPrimCylinder *>(primitive))
+			{
+				for (unsigned int n = 0; n < 3; ++n)
+				{
+					if (cylinder->GetCoord(2 * n) != cylinder->GetCoord(2 * n + 1))
+					{
+						axialObjects.push_back({n, box, false});
+					}
+				}
+			}
+			else
 			{
 				throw std::invalid_argument("CartesianSubgrid: unsupported geometry added after validation");
-			}
-			std::array<double, 6> box;
-			cylinder->GetBoundBox(box.data());
-			for (unsigned int n = 0; n < 3; ++n)
-			{
-				if (cylinder->GetCoord(2 * n) != cylinder->GetCoord(2 * n + 1))
-				{
-					cylinders.push_back({n, box});
-				}
 			}
 			continue;
 		}
@@ -647,7 +697,9 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 			}
 			tolerance[n] = std::min((hi[n] - lo[n]) * 1e-8,
 									32 * std::numeric_limits<double>::epsilon() *
-										std::max({std::abs(lo[n]), std::abs(hi[n]), hi[n] - lo[n]}));
+										std::max({std::abs(lo[n]), std::abs(hi[n]),
+												  std::abs(discLines[n][0]), std::abs(start[n] / gridDelta),
+												  std::abs(stop[n] / gridDelta), hi[n] - lo[n]}));
 		}
 		// Centre sampling is exact only when every box is constant throughout
 		// this leaf. Do not silently replace a subcell interface by its centre.
@@ -684,10 +736,10 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 					"faces to local cell boundaries");
 			}
 		}
-		for (const auto &cylinder : cylinders)
+		for (const auto &object : axialObjects)
 		{
-			const unsigned int axis = cylinder.first;
-			const auto &box = cylinder.second;
+			const unsigned int axis = object.axis;
+			const auto &box = object.bounds;
 			bool overlaps = true;
 			for (unsigned int n = 0; n < 3; ++n)
 			{
@@ -702,8 +754,9 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 				const double end = box[2 * axis + side];
 				if (overlaps && end > lo[axis] + tolerance[axis] && end < hi[axis] - tolerance[axis])
 				{
-					throw std::invalid_argument("CartesianSubgrid: PEC cylinder end cuts a leaf; align axial "
-												"contacts to local boundaries");
+					throw std::invalid_argument(std::string("CartesianSubgrid: PEC ") +
+						(object.polygon ? "polygon" : "cylinder") +
+						" end cuts a leaf; align axial contacts to local boundaries");
 				}
 			}
 		}

@@ -28,6 +28,10 @@ to what a user notices, in a few lines; the details belong in the commit.
   Internal PEC supports aligned volume/sheet boxes and axis-aligned cylinders
   or hollow barrels with mesh-aligned ends. Unrepresentable PEC patterns at a
   coarse/fine interface are rejected instead of closing unresolved openings.
+  Native planar/linearly extruded PEC polygons preserve their supplied contours,
+  with guarded axial ends and CPU/reference/Metal Cu18 contact controls. Thin
+  aligned faces no longer fail solely from cancelling a drawing-coordinate
+  origin; actual subcell boundaries are still rejected.
   The serial reference supports positive resistors on one independent local
   edge and local voltage/current integration, with short two-port Yee controls.
   Outer PEC/PMC combinations support closed and symmetry-plane CPU controls;

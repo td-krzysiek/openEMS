@@ -101,6 +101,9 @@ universal limits of subgridding. A shared timestep is retained.
   height, sheets where supported, vias, gaps and finite-width contacts.
   Qualified on serial CPU for aligned boxes/sheets and sampled axis-aligned
   cylinders/hollow barrels with aligned ends; unresolved interface traces fail.
+  Later CPU/reference/Metal controls also qualify untransformed planar/linearly
+  extruded PEC polygons, Cu18 port contacts and strict axial-alignment guards;
+  see the [native polygon scope](CARTESIAN_SUBGRID.md#native-planar-and-extruded-pec-polygons).
   This is not general CAD, arbitrary interface/contact or antenna qualification.
 - [ ] **G04** Qualify dielectric and conductor crossings of coarse/fine
   boundaries. Any interim placement restriction must fail explicitly.
@@ -118,6 +121,11 @@ sheet and barrel occupancy, resolved/broken Cu18 contacts, supported conductor
 crossings, invariant/closed-cavity tests and four native-Yee shape controls.
 General primitives, arbitrary contact/interface patterns and broader scattering
 qualification remain open; unsupported interface patterns are rejected.
+The polygon increment extends partial G01/G04/G06 through native membership,
+axis/unit/origin controls and finite-height contacts, retaining the earlier
+material-priority regressions. It preserves
+the supplied contours and qualifies neither curved material interfaces nor
+the spatial accuracy of a production PCB/array.
 
 ## 2. Nonuniform base mesh
 
@@ -390,3 +398,4 @@ numerical change invalidates their prior qualification.
 | 2026-11-15 | Further partial C03/C05 and U05/U06: exact device curl patterns | This PR, device-pattern increment (parent `bb2edbb`) | [Bit-preserving metadata/gather controls](tests/test_cartesian_subgrid_device_patterns.cpp), [qualification and measured costs](CARTESIAN_SUBGRID.md#exact-device-curl-patterns). CTest20/20, Python14/14, full prior CPU/reference/Metal matrix; 11,255 prior numerical arrays unchanged. Small local24 batch32.6% shorter and accounted device memory77.2% lower; process RSS3.6% lower. Expanded host upload, structured kernels/guards, PCB/lossy and physical CUDA/multi-device remain open. |
 
 | 2026-11-15 | Further partial C01/C03/C05: structured edge addressing | This PR, address-index increment (parent `f5aedf2`) | [Address/oracle regression](tests/test_cartesian_subgrid_edge_index.cpp), [build/evidence/benchmarks](CARTESIAN_SUBGRID.md#structured-independent-edge-address-index). CTest 21/21, Python14/14, standalone ASan/UBSan and full prior CPU/reference/Metal matrix; 11,255 numerical arrays unchanged. Seven interleaved core cases show setup 43–51% shorter; update unchanged. Structured field kernels, larger guards, PCB/lossy, physical CUDA and multi-device remain open. |
+| 2026-11-15 | Extended partial G01/G03/G04/G06: native planar/extruded PEC CAD | This PR, polygon increment (parent `a846ebf`) | [Native fields/contacts/alignment/shape controls](python/Tests/Cartesian_Subgrid_Polygons.py), [build, results and limits](CARTESIAN_SUBGRID.md#native-planar-and-extruded-pec-polygons). All17 qualification stages pass; CTest21/21, Python14/14, full previous CPU/reference/Metal and ordinary matrix. Eleven prior core/NF2FF prefixes and11,255 numerical arrays retained. No polygonal material, transform, lossy, representative PCB or physical CUDA/multi-device qualification for this increment. |

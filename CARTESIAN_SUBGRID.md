@@ -12,8 +12,9 @@ angular interpolation or a slab copied from cylindrical multi-grid.
 It contains a **serial CPU numerical reference** and scoped shared device
 operations, qualified locally on the reference backend and physical Metal.
 Both are for small validation models. This is not yet a replacement for the
-production antenna engine. One-edge device RF port controls are now available;
-device absorbers and general accuracy/scalability remain open.
+production antenna engine. One-edge device RF ports, scoped device PML and
+public vacuum PEC dipole controls are available; general accuracy/scalability
+and representative PCB qualification remain open.
 
 [Implementation and qualification checklist](CARTESIAN_SUBGRID_CHECKLIST.md)
 tracks the completed controls and remaining feature/engine milestones in PR #29.
@@ -313,6 +314,65 @@ property-insertion invariance, sources covered by PEC and explicit rejection
 of unsupported/unresolved geometry. E/H observations remain on the base grid;
 dual-H snapping can put a nominal near-surface observation inside the metal.
 Place observation stencils clear of the surface and inspect snapped coordinates.
+
+### Native planar and extruded PEC polygons
+
+The native adapter now also accepts CSXCAD `Polygon` and `LinPoly` metal
+primitives. It preserves their supplied vertices and uses native membership;
+it does not replace a bend by rectangle unions or smooth a rasterized contour.
+The Cartesian solver still samples that contour on its selected cells. This
+is not a conformal-boundary method or fabrication-contour qualification.
+
+```python
+trace = csx.AddMetal('finite_trace')
+trace.AddLinPoly(points=[[0, 2, 2, 0], [0, 0, .4, .4]],
+                 norm_dir=2, elevation=.27178, length=.018, priority=10)
+```
+
+Coordinates use the configured drawing unit. Normals X/Y/Z, reversed vertex
+order and negative extrusion length are covered. Finite planar vertices and
+nonzero extrusion height are required. Transforms, non-Cartesian coordinates,
+rotated-body polygon subclasses and polygonal material volumes remain rejected.
+Axial ends must align with local cell boundaries; the conservative check uses
+the object's transverse bounding box. Existing coarse/fine PEC trace guards
+remain: an unresolved gap/contact is not silently closed.
+
+A thin-box control exposed an adapter alignment error independently of polygon
+support: undoing the translated physical coordinate could cancel most of an
+8mm origin when reconstructing a 0.018mm face. The bounded roundoff estimate
+now includes the cancelled origin and relative-coordinate operands. Its
+`1e-8` local-cell cap remains; real axial displacements of `±1e-9mm` are still
+rejected. Geometry is not snapped. Native CSXCAD membership retains the ordinary
+operator's drawing tolerance; the correction does not change CSXCAD itself.
+
+[Native regression](python/Tests/Cartesian_Subgrid_Polygons.py) covers 15 shape/
+axis/unit groups on basic/reference/physical Metal, resolved field exclusion,
+18µm strip/ground port contacts, complex Z/S, phase and passive power, eight
+thin alignment controls and ten strict negative controls. Generic field
+differences stay below `1.56e-5`; Cu18 port differences stay below `6.37e-6Ω`
+and `6.26e-8` complex S, with power-balance error below `1.81e-5`. Numerical
+gates remain `2e-4` fields/S, `0.01Ω` Z and `1e-3` power. These are adapter
+controls, not a calibrated 24GHz manufacturing model or mesh-convergence study.
+
+The exclusion witness keeps the **whole native probe interpolation footprint**
+inside copper. A raw vector probe near a thin edge can sample neighbouring
+staggered base positions outside metal; its nominal point alone does not prove
+that all sampled components are interior. Output coordinates remain the base
+observation grid, without an implicit global fine output lattice.
+
+Qualification used a new isolated prefix
+`output/openems-subgrid-polygons-qualified-20261115/install`, configure-time
+parent `a846ebf`, core SHA256
+`62ca999ad42efba6ac4b48387e0a9ab626f2d2344d72f650664581117d13ebe7` and
+NF2FF SHA256
+`3080a152bc7d32b2cb4d2c15b5669100f04cedfd0a0c35b597b8d18247400e4a`.
+All 17 qualification stages pass: 21 CTest controls, 14 Python unit modules,
+prior CPU/reference/Metal field/port/DC/PML/dipole and ordinary-engine controls,
+plus the new polygon regression. All 11 earlier core/NF2FF prefixes remain
+unchanged, and 11,255 prior numerical arrays exactly match the frozen address-
+index runtime. This CAD increment is not physically qualified on CUDA, with
+lossy conductors or a representative PCB antenna; separate pre-CAD CUDA tests
+do not transfer those qualifications automatically.
 
 ### Local resistors and U/I integration
 
