@@ -9,6 +9,7 @@ set(TESTS
   test_cell_model
   test_setup_profile
   test_gpu_lossy_fusion
+  test_gpu_coeff_policy
 )
 
 foreach(test ${TESTS})

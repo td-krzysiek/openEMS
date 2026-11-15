@@ -626,6 +626,12 @@ id<MTLBuffer> GPU_Backend_Metal::Impl::NewIndexBuffer(const GPU_CoeffSets& sets)
 // original values. See GPU_FindSets() for the index size and the limits.
 bool GPU_Backend_Metal::CompressCoefficients(const Operator* op, const unsigned int numLines[3])
 {
+	if (GPU_UseRawMainCoefficients(std::getenv("OPENEMS_GPU_MAIN_COEFF")))
+	{
+		if (g_settings.GetVerboseLevel() > 1)
+			std::cout << "GPU main coefficient policy: raw, " << 12*d->numCells*sizeof(float) << " bytes" << std::endl;
+		return false;
+	}
 	GPU_CoeffSets sets;
 	// the 12 coefficients of a node, in the order vv[3], vi[3], ii[3], iv[3] (see main_coeff())
 	if (!GPU_FindSets(d->numCells,
