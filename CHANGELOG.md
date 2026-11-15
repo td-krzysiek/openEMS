@@ -16,6 +16,10 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Added
 
+- Experimental opt-in GPU LossyMetal branch fusion
+  (`OPENEMS_GPU_LOSSY_FUSION=apply|all`) reduces repeated field accesses while
+  retaining all eight branches. Default off; HIP and Metal are supported.
+
 - Optional `--profile-setup` (`OPENEMS_PROFILE_SETUP=1`) records coarse host-wall
   setup phases as JSON; the existing speed benchmark preserves the hierarchy.
 
