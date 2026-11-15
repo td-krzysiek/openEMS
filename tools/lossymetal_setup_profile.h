@@ -78,6 +78,18 @@ public:
 
 	void Complete() {m_Complete = true;}
 	const Stats& GetStats(Query query) const {return m_Stats[query];}
+	std::array<Stats, QueryCount> Snapshot() const
+	{
+		return m_Stats;
+	}
+	void Absorb(const std::array<Stats, QueryCount>& stats)
+	{
+		for (size_t i = 0; i < QueryCount; ++i) {
+			m_Stats[i].calls += stats[i].calls;
+			m_Stats[i].samples += stats[i].samples;
+			m_Stats[i].seconds += stats[i].seconds;
+		}
+	}
 
 	class Sample
 	{
