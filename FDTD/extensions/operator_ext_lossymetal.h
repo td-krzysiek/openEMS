@@ -87,6 +87,11 @@ protected:
 		std::vector<CSPrimitives*> primitives;
 		LossyMetalExtentCache extents;
 	};
+	struct LossyCandidate
+	{
+		CSPrimitives* primitive;
+		const std::array<double,6>* polygonBounds;
+	};
 	struct ScanContext
 	{
 		bool cacheExtents = false;
@@ -95,12 +100,14 @@ protected:
 		std::vector<FitKey> fitKeys;
 		std::vector<SurfaceImpedance::Fit> fits;
 		std::vector<double> thicknesses;
+		std::vector<LossyCandidate> lossyCandidates;
 		std::set<CSPrimitives*> used;
 		std::vector<unsigned int> positions[3];
 		std::vector<std::array<std::vector<Contribution>,3> > contributions;
 		unsigned int pec[3] = {0, 0, 0};
 		unsigned int missingThickness = 0;
 		size_t cacheHits = 0, peakLines = 0, evictions = 0;
+		size_t skippedNodes = 0, checkedBlocks = 0;
 	};
 
 	//! Surface contributions of the E edge (n,pos) at \a coord, empty if it lies inside the metal

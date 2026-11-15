@@ -16,6 +16,9 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Added
 
+- Optional `OPENEMS_LOSSY_SKIP_EMPTY=1` skips Cartesian LossyMetal scan blocks
+  only when conservative bounds prove they cannot contain lossy metal.
+
 - Experimental CPU LossyMetal setup modes (`OPENEMS_LOSSY_SETUP=cache|parallel`)
   reuse metal-boundary searches and optionally scan on the setup threads.
   The default remains sequential; the time-stepping scheme is unchanged.

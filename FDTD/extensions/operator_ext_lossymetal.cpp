@@ -20,6 +20,7 @@
 #include "tools/constants.h"
 
 #include "CSPropLossyMetal.h"
+#include "CSPrimPolygon.h"
 
 #include <array>
 #include <cmath>
@@ -27,6 +28,8 @@
 #include <cstdlib>
 #include <sstream>
 #include <stdexcept>
+#include <limits>
+#include <cstring>
 #include "tools/lossymetal_setup_profile.h"
 
 using std::cerr;
@@ -323,6 +326,28 @@ bool Operator_Ext_LossyMetal::BuildExtension()
 	}
 	const bool parallel = mode == "parallel" || mode == "parallel-no-cache";
 	const bool cached = mode == "cache" || mode == "parallel";
+	const char* skipValue = std::getenv("OPENEMS_LOSSY_SKIP_EMPTY");
+	const bool skipEmpty = skipValue && std::strcmp(skipValue, "1") == 0 &&
+		m_Op->GetGeometryCSX()->GetCoordInputType() == CARTESIAN;
+	const double tolerance = m_Op->GetGeometryCSX()->GetDrawingTolerance();
+	const bool finiteTolerance = std::isfinite(tolerance) && tolerance >= 0;
+	// Build immutable polygon envelopes once, before launching scan workers.
+	// Legacy IsInsideBox intentionally reports unknown for polygons; its contract
+	// is preserved. Unknown/transformed primitives retain the original scan.
+	std::map<CSPrimitives*, std::array<double,6> > preparedPolygonBounds;
+#ifdef CSXCAD_HAS_CONSERVATIVE_POLYGON_BOUNDS
+	if (skipEmpty && finiteTolerance) {
+		for (auto* primitive : m_Op->GetGeometryCSX()->GetAllPrimitives(false, CSProperties::LOSSYMETAL)) {
+			auto* polygon = dynamic_cast<CSPrimPolygon*>(primitive);
+			std::array<double,6> bounds;
+			if (polygon && polygon->GetConservativeBoundBox(bounds.data())) {
+				preparedPolygonBounds.emplace(primitive, bounds);
+			}
+		}
+	}
+#endif
+	const auto& polygonBounds = preparedPolygonBounds;
+	const unsigned int blockLines = 8;
 	const unsigned int workers = parallel ? std::min(m_Op->GetBuildThreads(), numLines[0]) : 1;
 	std::vector<ScanContext> contexts(workers);
 	std::vector<std::ostringstream> profileLogs(workers);
@@ -348,8 +373,90 @@ bool Operator_Ext_LossyMetal::BuildExtension()
 					);
 				}
 
+				if (skipEmpty && finiteTolerance) {
+					context.lossyCandidates.clear();
+					double columnBounds[4];
+					for (int axis = 0; axis < 2; ++axis) {
+						columnBounds[2*axis] = std::nextafter(m_Op->GetDiscLine(axis, pos[axis]) - tolerance,
+							-std::numeric_limits<double>::infinity());
+						columnBounds[2*axis+1] = std::nextafter(m_Op->GetDiscLine(axis,
+							std::min(pos[axis]+1, numLines[axis]-1)) + tolerance,
+							std::numeric_limits<double>::infinity());
+					}
+					for (auto* primitive : vPrims) {
+						if (!(primitive->GetProperty()->GetType() & CSProperties::LOSSYMETAL)) {
+							continue;
+						}
+						const auto found = polygonBounds.find(primitive);
+						const auto* envelope = found == polygonBounds.end() ? nullptr : &found->second;
+						bool intersects = true;
+						if (envelope) {
+							for (int axis = 0; axis < 2; ++axis) {
+								if ((*envelope)[2*axis+1] < columnBounds[2*axis] ||
+									(*envelope)[2*axis] > columnBounds[2*axis+1]) {
+									intersects = false;
+									break;
+								}
+							}
+						}
+						if (intersects) {
+							context.lossyCandidates.push_back({primitive, envelope});
+						}
+					}
+				}
+
 				for (pos[2]=0; pos[2]<numLines[2]; ++pos[2])
 				{
+					if (skipEmpty && finiteTolerance && pos[2] % blockLines == 0) {
+						const unsigned int end = std::min(pos[2] + blockLines, numLines[2]);
+						double bounds[6];
+						bool finiteBounds = true;
+						for (int axis = 0; axis < 3; ++axis) {
+							// Enclose every staggered E-edge coordinate in this block,
+							// including the next Z line for Z-oriented edge centres.
+							const unsigned int last = axis == 2 ? end : pos[axis] + 1;
+							bounds[2*axis] = std::nextafter(m_Op->GetDiscLine(axis, pos[axis]) - tolerance,
+								-std::numeric_limits<double>::infinity());
+							bounds[2*axis+1] = std::nextafter(m_Op->GetDiscLine(axis,
+								std::min(last, numLines[axis]-1)) + tolerance,
+								std::numeric_limits<double>::infinity());
+							finiteBounds = finiteBounds && std::isfinite(bounds[2*axis]) &&
+								std::isfinite(bounds[2*axis+1]);
+						}
+						bool possibleMetal = !finiteBounds;
+						++context.checkedBlocks;
+						for (const auto& candidate : context.lossyCandidates) {
+							// Unknown bounds/transforms return 0: retain the full scan.
+							// Higher-priority voids cannot create lossy metal outside
+							// these candidates, so priority resolution remains unchanged.
+							bool intersects = true;
+							if (candidate.polygonBounds) {
+								for (int axis = 0; axis < 3; ++axis) {
+									if ((*candidate.polygonBounds)[2*axis+1] < bounds[2*axis] ||
+										(*candidate.polygonBounds)[2*axis] > bounds[2*axis+1]) {
+										intersects = false;
+										break;
+									}
+								}
+							} else {
+								intersects = candidate.primitive->IsInsideBox(bounds) >= 0;
+							}
+							if (intersects) {
+								possibleMetal = true;
+								break;
+							}
+						}
+						if (!possibleMetal) {
+							context.skippedNodes += end - pos[2];
+							for (unsigned int z = pos[2]; z < end; ++z) {
+								for (int n = 0; n < 3; ++n) {
+									state(n, pos[0], pos[1], z) = 0;
+								}
+							}
+							pos[2] = end - 1;
+							continue;
+						}
+					}
 					// disable the surface impedance inside a pml
 					disable_pos = false;
 					for (int m=0;m<3;++m)
@@ -437,6 +544,7 @@ bool Operator_Ext_LossyMetal::BuildExtension()
 		}
 	}
 	size_t totalPositions = 0, cacheHits = 0, peakLines = 0, evictions = 0;
+	size_t skippedNodes = 0, checkedBlocks = 0;
 	for (const auto& context : contexts) {
 		totalPositions += context.contributions.size();
 	}
@@ -483,6 +591,8 @@ bool Operator_Ext_LossyMetal::BuildExtension()
 		cacheHits += context.cacheHits;
 		peakLines = std::max(peakLines, context.peakLines);
 		evictions += context.evictions;
+		skippedNodes += context.skippedNodes;
+		checkedBlocks += context.checkedBlocks;
 		context.positions[0].clear();
 		context.positions[1].clear();
 		context.positions[2].clear();
@@ -490,7 +600,8 @@ bool Operator_Ext_LossyMetal::BuildExtension()
 	}
 	cout << "LossyMetal CPU setup: mode=" << mode << " workers=" << workers
 		<< " extent_hits=" << cacheHits << " peak_lines_per_worker=" << peakLines
-		<< " line_cache_evictions=" << evictions << endl;
+		<< " line_cache_evictions=" << evictions << " skip_empty=" << (skipEmpty && finiteTolerance)
+		<< " skipped_nodes=" << skippedNodes << " checked_blocks=" << checkedBlocks << endl;
 	profile.FinishPhase("surface_scan");
 
 	if (m_numNoThickness>0)
