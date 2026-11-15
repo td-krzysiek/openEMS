@@ -19,8 +19,12 @@
 #include "hip_internal.h"
 #include "FDTD/engine.h"
 #include "FDTD/gpu_dispersive_domain.h"
+#include "FDTD/gpu_lossy_fusion.h"
+#include "FDTD/extensions/operator_ext_lossymetal.h"
 #include "FDTD/extensions/operator_ext_lorentzmaterial.h"
 #include "FDTD/extensions/engine_ext_lorentzmaterial.h"
+#include <cstdlib>
+#include <iostream>
 
 // Drude/Lorentz materials and conducting sheets, see Engine_Ext_LorentzMaterial
 // and Engine_Ext_Dispersive. One launch per dispersion order, one thread per mesh
@@ -66,13 +70,68 @@ __global__ void dispersive_apply(float* field, const float* ade, const size_t* p
 	}
 }
 
+struct LossyBranches
+{
+	ADEParam param;
+	float* ade[8];
+	const float* c_int[8];
+	const float* c_ext[8];
+};
+
+__global__ void lossy_pre(const float* field, const size_t* pos, LossyBranches B)
+{
+	const size_t i = (size_t)blockIdx.x*blockDim.x + threadIdx.x;
+	if (i >= B.param.count)
+		return;
+	for (unsigned int n = 0; n < 3; ++n)
+	{
+		const size_t k = n*B.param.count + i;
+		const float f = field[n*B.param.sn + pos[i]];
+		for (unsigned int o = 0; o < 8; ++o)
+		{
+			B.ade[o][k] = B.ade[o][k] * B.c_int[o][k];
+			B.ade[o][k] = B.ade[o][k] + B.c_ext[o][k]*f;
+		}
+	}
+}
+
+__global__ void lossy_apply(float* field, const size_t* pos, LossyBranches B)
+{
+	const size_t i = (size_t)blockIdx.x*blockDim.x + threadIdx.x;
+	if (i >= B.param.count)
+		return;
+	for (unsigned int n = 0; n < 3; ++n)
+	{
+		const size_t g = n*B.param.sn + pos[i];
+		float f = field[g];
+		// Preserve the original eight FP32 subtractions, not one reassociated sum.
+		for (unsigned int o = 0; o < 8; ++o)
+			f = f - B.ade[o][n*B.param.count + i];
+		field[g] = f;
+	}
+}
+
 class HIP_Ext_LorentzMaterial : public GPU_Extension
 {
 public:
 	HIP_Ext_LorentzMaterial(GPU_Backend_HIP::Impl* impl, Operator_Ext_LorentzMaterial* op_ext);
 
-	virtual void DoPreVoltageUpdates() {for (size_t o=0; o<m_Volt.size(); ++o) Pre(m_Volt[o], d->volt);}
-	virtual void Apply2Voltages()      {for (size_t o=0; o<m_Volt.size(); ++o) Apply(m_Volt[o], d->volt);}
+	virtual void DoPreVoltageUpdates()
+	{
+		if (m_Fusion == GPU_LossyFusion::All)
+			HIP_Launch(d, "lossy_pre", lossy_pre, m_Branches.param.count, 1, 1,
+			           (const float*)d->volt, (const size_t*)m_Volt[0].pos, m_Branches);
+		else
+			for (auto& order : m_Volt) Pre(order, d->volt);
+	}
+	virtual void Apply2Voltages()
+	{
+		if (m_Fusion != GPU_LossyFusion::Off)
+			HIP_Launch(d, "lossy_apply", lossy_apply, m_Branches.param.count, 1, 1,
+			           d->volt, (const size_t*)m_Volt[0].pos, m_Branches);
+		else
+			for (auto& order : m_Volt) Apply(order, d->volt);
+	}
 	virtual void DoPreCurrentUpdates() {for (size_t o=0; o<m_Curr.size(); ++o) Pre(m_Curr[o], d->curr);}
 	virtual void Apply2Current()       {for (size_t o=0; o<m_Curr.size(); ++o) Apply(m_Curr[o], d->curr);}
 
@@ -101,6 +160,8 @@ protected:
 	GPU_Backend_HIP::Impl* d;
 	std::vector<Order> m_Volt;
 	std::vector<Order> m_Curr;
+	GPU_LossyFusion m_Fusion = GPU_LossyFusion::Off;
+	LossyBranches m_Branches{};
 };
 
 HIP_Ext_LorentzMaterial::HIP_Ext_LorentzMaterial(GPU_Backend_HIP::Impl* impl, Operator_Ext_LorentzMaterial* op_ext)
@@ -115,6 +176,29 @@ HIP_Ext_LorentzMaterial::HIP_Ext_LorentzMaterial(GPU_Backend_HIP::Impl* impl, Op
 		if (op_ext->m_curr_ADE_On[o])
 			Setup(m_Curr, count, op_ext->m_LM_pos[o], op_ext->m_curr_Lor_ADE_On[o],
 			      op_ext->i_int_ADE[o], op_ext->i_ext_ADE[o], op_ext->m_curr_Lor_ADE_On[o] ? op_ext->i_Lor_ADE[o] : NULL);
+	}
+	const auto requested = GPU_ParseLossyFusion(std::getenv("OPENEMS_GPU_LOSSY_FUSION"));
+	if (requested != GPU_LossyFusion::Off)
+	{
+		std::vector<GPU_LossyBranch> branches;
+		for (int o = 0; o < op_ext->m_Order; ++o)
+			branches.push_back({op_ext->m_LM_Count.at(o), op_ext->m_LM_pos[o],
+			    op_ext->m_volt_ADE_On[o], op_ext->m_curr_ADE_On[o], op_ext->m_volt_Lor_ADE_On[o]});
+		if (GPU_CanFuseLossy(dynamic_cast<Operator_Ext_LossyMetal*>(op_ext) != nullptr, branches) &&
+		    m_Volt.size() == 8 && m_Curr.empty())
+		{
+			m_Fusion = requested;
+			m_Branches.param = m_Volt[0].param;
+			for (size_t o = 0; o < 8; ++o)
+			{
+				m_Branches.ade[o] = m_Volt[o].ade;
+				m_Branches.c_int[o] = m_Volt[o].c_int;
+				m_Branches.c_ext[o] = m_Volt[o].c_ext;
+			}
+			if (g_settings.GetVerboseLevel() > 1)
+				std::cout << "GPU LossyMetal branch fusion: " << (requested == GPU_LossyFusion::All ? "all" : "apply")
+				          << ", owned positions " << m_Branches.param.count << std::endl;
+		}
 	}
 }
 

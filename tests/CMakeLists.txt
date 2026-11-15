@@ -8,6 +8,7 @@ set(TESTS
   test_engine_plan
   test_cell_model
   test_setup_profile
+  test_gpu_lossy_fusion
 )
 
 foreach(test ${TESTS})
