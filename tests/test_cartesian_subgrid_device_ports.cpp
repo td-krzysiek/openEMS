@@ -80,7 +80,7 @@ static void Control(const std::string &backendName, bool drive, bool soft, unsig
 	for (unsigned int i = 0; i < steps; ++i)
 	{
 		const double position = (double(i) - 40) / 12;
-		// Keep the unresolved DC stress as an explicit separate mode, not a pass.
+		// Preserve the original strong-DC stress as a separate unchanged control.
 		const double signal = std::exp(-position * position) * (soft && !dcStress ? position : 1);
 		cpu.Step(dt, signal);
 		execution->Step(dt, signal);

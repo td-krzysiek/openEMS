@@ -1471,7 +1471,11 @@ CartesianSubgridDeviceData CartesianSubgrid::DeviceData() const
 		m_CurlOperator.ForEach(row, [&](std::size_t edge, double value)
 		{
 			data.curlColumn.push_back(index(edge));
-			data.curlWeight.push_back(scalar(value));
+			const float high = scalar(value);
+			data.curlWeight.push_back(high);
+			quantity = "curl coefficient residual";
+			data.curlLow.push_back(scalar(value - double(high)));
+			quantity = "curl coefficient";
 			++data.transposeStart[edge + 1];
 		});
 		data.curlStart.push_back(index(data.curlColumn.size()));
@@ -1483,6 +1487,7 @@ CartesianSubgridDeviceData CartesianSubgrid::DeviceData() const
 	}
 	data.transposeColumn.resize(data.curlColumn.size());
 	data.transposeWeight.resize(data.curlColumn.size());
+	data.transposeLow.resize(data.curlColumn.size());
 	auto cursor = data.transposeStart;
 	for (std::size_t row = 0; row < m_Magnetic.size(); ++row)
 	{
@@ -1491,6 +1496,7 @@ CartesianSubgridDeviceData CartesianSubgrid::DeviceData() const
 			const auto target = cursor[data.curlColumn[k]]++;
 			data.transposeColumn[target] = index(row);
 			data.transposeWeight[target] = data.curlWeight[k];
+			data.transposeLow[target] = data.curlLow[k];
 		}
 	}
 	quantity = "interface factor";

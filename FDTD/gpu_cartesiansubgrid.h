@@ -18,7 +18,7 @@ class GPU_Backend;
  */
 struct CartesianSubgridDeviceData
 {
-	std::vector<float> electric, magnetic, curlWeight, transposeWeight, lower;
+	std::vector<float> electric, magnetic, curlWeight, transposeWeight, curlLow, transposeLow, lower;
 	std::vector<std::uint32_t> curlStart{0}, curlColumn, transposeStart, transposeColumn;
 	std::vector<std::uint32_t> blockStart{0}, blockEdge, bandwidth, lowerStart{0};
 	std::vector<std::uint32_t> sourceEdge;

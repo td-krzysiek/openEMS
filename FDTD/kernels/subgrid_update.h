@@ -4,7 +4,42 @@
 
 #if !defined(__METAL_VERSION__)
 #include "cell_update.h"
+#include <cmath>
 #endif
+
+//! Compensated sum of split-coefficient products, using only device FP32.
+/*! Explicit FMA recovers product rounding; it does not enable contraction of
+ *  unrelated physics. Neumaier accumulation also retains low residuals when
+ *  subsequent, much larger terms cancel. Keep Metal safe-math enabled.
+ */
+CM_FN void subgrid_curl_add(CM_PRIVATE float &sum, CM_PRIVATE float &correction, float term)
+{
+	const float total = sum + term;
+	const float magnitude = sum < 0 ? -sum : sum;
+	const float other = term < 0 ? -term : term;
+	correction += magnitude >= other ? (sum - total) + term : (term - total) + sum;
+	sum = total;
+}
+
+CM_FN float subgrid_curl_product_error(float coefficient, float field, float product)
+{
+#if defined(__METAL_VERSION__) || defined(__HIPCC__) || defined(__CUDACC__)
+	return fma(coefficient, field, -product);
+#else
+	return std::fma(coefficient, field, -product);
+#endif
+}
+
+//! Preserve the supplied timestep and the final state addition in FP32 arithmetic.
+CM_FN float subgrid_field_increment(float previous, float high, float low, float increment)
+{
+	const float product = high * increment;
+	float value = previous, correction = 0;
+	subgrid_curl_add(value, correction, product);
+	subgrid_curl_add(value, correction,
+		subgrid_curl_product_error(high, increment, product) + low * increment);
+	return value + correction;
+}
 
 //! Normalized curl/transpose row. The gather transpose needs no atomics.
 struct Op_SubgridCurl
@@ -12,21 +47,27 @@ struct Op_SubgridCurl
 	CM_GLOBAL const uint32_t *start;
 	CM_GLOBAL const uint32_t *column;
 	CM_GLOBAL const float *weight;
+	CM_GLOBAL const float *low;
 	CM_GLOBAL const float *input;
 	CM_GLOBAL float *output;
-	float scale;
+	float scale, scaleLow;
 	uint32_t additive;
 
 	CM_FN void operator()(uint64_t row) const
 	{
-		float value = 0;
+		float value = 0, correction = 0;
 		for (uint32_t k = start[row]; k < start[row + 1]; ++k)
 		{
-			value += weight[k] * input[column[k]];
+			const float field = input[column[k]];
+			const float product = weight[k] * field;
+			const float residual = subgrid_curl_product_error(weight[k], field, product) + low[k] * field;
+			subgrid_curl_add(value, correction, product);
+			subgrid_curl_add(value, correction, residual);
 		}
+		value += correction;
 		if (additive)
 		{
-			output[row] += scale * value;
+			output[row] = subgrid_field_increment(output[row], scale, scaleLow, value);
 		}
 		else
 		{
@@ -76,11 +117,11 @@ struct Op_SubgridElectric
 {
 	CM_GLOBAL float *electric;
 	CM_GLOBAL const float *increment;
-	float timestep;
+	float timestep, timestepLow;
 
 	CM_FN void operator()(uint64_t edge) const
 	{
-		electric[edge] += timestep * increment[edge];
+		electric[edge] = subgrid_field_increment(electric[edge], timestep, timestepLow, increment[edge]);
 	}
 };
 

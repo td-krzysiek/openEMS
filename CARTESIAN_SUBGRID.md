@@ -1006,7 +1006,7 @@ source is `4a7cf69`; contributor evidence:
 Core SHA256: `bd64fa18e484a5393340a1c0473cf3bd0b180bffd17bca1b94afc420f3df1f49`;
 nf2ff: `0ac606c88ee32284b6e8f9b9b44735c4d39155609b02b24651ea0fa858b7fad5`.
 
-**Open precision limitation:** a strong unmodulated Gaussian soft kick on a
+**Precision limitation of the preceding `0b255a8` increment:** a strong unmodulated Gaussian soft kick on a
 mass-coupled edge misses the unchanged 2e-4 full-field target at 10k steps:
 2.956e-3 with ports, identically on reference and Metal. It also fails without
 ports on the immutable preceding `4a7cf69` runtime (2.774e-3). Changing only
@@ -1019,12 +1019,77 @@ build/tests/test_cartesian_subgrid_device_ports --dc-stress
 build/tests/test_cartesian_subgrid_device_ports --metal --dc-stress
 ```
 
-These diagnostic commands currently fail their declared field target; they are
-not counted as passing controls or hidden by a higher tolerance. Default RF /
+Against the preserved preceding runtime these commands fail their field target;
+they are not counted as passing controls or hidden by a higher tolerance.
+The follow-up correction below retains these failures and adds a passing
+regression. Default RF /
 zero-DC passes do not establish arbitrary-source accuracy. Investigate curl
 nullspace preservation, metric/factor representation and accumulation before
 closing U05 or claiming full device parity. Device PML/Mur, losses/conductors,
 antenna qualification and production scaling remain open.
+
+### Device curl and timestep precision correction
+
+The preceding strong-DC failure is retained against the immutable `0b255a8`
+runtime. The follow-up correction keeps each normalized curl/transpose
+coefficient as a high/low FP32 pair, uses explicit product-error FMA and
+compensated dot sums, and preserves the supplied timestep/final field addition
+through two-part FP32 arithmetic. No FP64 device type, source filtering, global
+fast-math change or CPU half-step fallback is introduced. CPU double updates
+and existing ordinary engine kernels remain unchanged. Non-normal coefficient
+or timestep residuals reject explicitly; the separate bounded Cholesky-fill
+conversion remains unchanged.
+
+Arithmetic controls isolate coefficient/timestep rounding in this case; the
+all-double diagnostic reproduces the core exactly. A coefficient-only candidate
+improved DC but failed the unchanged 20k mixed-source test (2.59649e-4 > 2e-4).
+Its source diff/runtime and failure remain preserved. The final candidate also
+corrects timestep/final-addition precision; tolerances were not increased.
+The test-only FP32 oracle explicitly models that arithmetic independently;
+a separate double-core comparison remains mandatory.
+
+| Scoped control | Final maximum normalized field difference |
+|---|---:|
+| Four physical Metal field/source controls, including 20k source-free | 8.97473e-06 |
+| Four passive/Norton/mixed-source port controls, up to 20k | 6.48865e-06 |
+| Previously failing 10k interface DC stress | 1.7602e-05 |
+| Native field/probe/dump geometries | 2.7312397e-06 |
+
+The DC stress uses the original 2e-4 field/work/balance gate on reference and
+physical Metal, and is now a permanent CTest regression. Native complex Z error
+is at most 1.0406748e-05 ohm, complex S11/S21 error
+8.1456147e-08. CTest 18/18, Python unit modules 13/13,
+physical fields/ports 4+4 and DC on both backends, native fields/ports 4+4, CPU base plus six groups,
+two unchanged frozen CPU dipoles and three ordinary-engine groups pass.
+Seven prior frozen runtime prefixes and the source/runtime inventory stay
+unchanged. This does not establish arbitrary-source/long-time accuracy or
+close the broader U05 antenna/backend matrix.
+
+Three interleaved completed-batch Metal comparisons (24³ base / local 2×,
+10,000 steps, final readback included) against `0b255a8`:
+
+| Metric | Prior RF-port runtime | Corrected candidate |
+|---|---:|---:|
+| Median batch seconds | 0.714895 | 0.840039 |
+| Accounted device bytes | 11764896 | 16580256 |
+
+The corrected batch is about 17.5% slower and accounts for about 40.9% more
+device memory on this fixture;
+these small-core measurements do not predict antenna speed. The separately
+compiled reproduction driver is [benchmark/subgrid_device_metal.cpp](benchmark/subgrid_device_metal.cpp). Added residuals
+cost one FP32 value per curl/transpose nonzero. Expanded topology/coefficients
+and host batch mirrors remain; structured interiors and scale guards are
+independent open milestones. A smaller factorized-metric arithmetic experiment
+is retained as unqualified research, not substituted for these controls.
+
+Configure-time parent `0b255a8`; exact source/build/loaded-library inventories:
+contributor archive `experiments/openems-cartesian-local-subgrid-20261112/device-curl-precision/qualification.json`.
+Frozen prefix `output/openems-subgrid-device-curl-20261115/install`:
+core SHA256 `35aea4bce694036437ec9c0a31c623a8eddeda2d07dc06eed3b9fc64dcc1f0e4`;
+nf2ff `cc67dadd9b55c5a5d1f521d4910e8f5bc4a3cc98d60a95cbd630ec1f0b69b1c8`. Reproduction uses the existing device tests, plus
+`ctest --test-dir build -R cartesian_subgrid_device --output-on-failure`.
+Device PML/Mur, loss/conductor, PCB antenna/scalability and physical HIP/CUDA
+qualification remain open.
 
 ## Tests and observed accuracy
 

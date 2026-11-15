@@ -204,3 +204,36 @@ A pull request that claims a speed-up includes the `compare` table of master
 against the branch, run interleaved on one machine, together with the machine
 line from its header. A speed-up that only shows on a case outside this suite
 is shown with that case in the pull request, not by adding it here.
+
+
+## Experimental compact Cartesian subgrid on Metal
+
+`subgrid_device_metal.cpp` is a separate, macOS-only small-core control for the
+experimental PR29 compact solver; it is not a case added to the ordinary Yee
+benchmark suite. It requires physical Metal, prints the actual loaded core
+library, warms up400 steps, then measures10,000 queued full steps including
+completion/final field readback. It reports accounted device allocation too.
+It does not measure antenna setup/DFT, ordinary engine speed or multi-device
+scaling. The source is the same standalone driver used for the precision
+increment's interleaved measurements, separately compiled outside the library.
+
+Compile from the source root using the dependency paths of the selected build
+(`SUBGRID_PREFIX`, `CSXCAD_PREFIX`, `SUPPORT_PREFIX`), for example:
+
+```sh
+c++ -std=c++17 -O3 -ffp-contract=off -DTIXML_USE_STL -I. \
+  "-I${CSXCAD_PREFIX}/include/CSXCAD" "-I${SUPPORT_PREFIX}/include" \
+  -I/opt/homebrew/include benchmark/subgrid_device_metal.cpp \
+  "-L${SUBGRID_PREFIX}/lib" -lopenEMS "-Wl,-rpath,${SUBGRID_PREFIX}/lib" \
+  -o /tmp/subgrid-device-metal
+DYLD_LIBRARY_PATH="${SUBGRID_PREFIX}/lib:${CSXCAD_PREFIX}/lib:${SUPPORT_PREFIX}/lib" \
+  /tmp/subgrid-device-metal
+```
+
+For A/B tests, preserve both runtime prefixes and run three interleaved pairs
+on an otherwise idle GPU, alternating the order. Use the loaded-library path
+and its SHA256 to verify selection. Keep the initial shorter-batch measurements
+if changing the measurement duration; do not compare submission-only timing
+with completed batches. The benchmark program uses no `DeviceData()` return
+ABI, allowing this specific driver to load the immediately preceding PR29
+runtime; this is not a blanket ABI guarantee for other revisions.

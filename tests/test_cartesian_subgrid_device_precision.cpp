@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include "FDTD/subgrid_device_precision.h"
+#include "FDTD/kernels/subgrid_update.h"
 #include <cmath>
 #include <iostream>
 #include <limits>
@@ -26,10 +27,63 @@ template <class Action> static void Reject(Action action)
 	throw std::runtime_error("invalid/unsafe factor conversion was accepted");
 }
 
+
+static void CurlCancellation()
+{
+	const std::uint32_t start[] = {0, 3}, column[] = {0, 1, 2};
+	const double exact[] = {100000001, 3.141592653589793, -100000000};
+	const float field[] = {1, .75f, 1};
+	float high[3], low[3], output = 0, naive = 0;
+	double expected = 0;
+	for (unsigned int i = 0; i < 3; ++i)
+	{
+		high[i] = static_cast<float>(exact[i]);
+		low[i] = static_cast<float>(exact[i] - double(high[i]));
+		expected += exact[i] * field[i];
+		naive += high[i] * field[i];
+	}
+	Op_SubgridCurl operation{start, column, high, low, field, &output, 1, 0, 0};
+	operation(0);
+	Require(std::abs(double(output) - expected) < 5e-7, "split curl lost cancelled coefficient residuals");
+	Require(std::abs(double(naive) - expected) > 1, "cancellation negative control no longer discriminates");
+	operation.additive = 1;
+	operation.scale = -.25f;
+	const float before = output;
+	operation(0);
+	Require(std::abs(double(output) - (double(before) - .25 * expected)) < 5e-7,
+		"compensated additive magnetic curl differs");
+}
+
+
+static void TimestepPrecision()
+{
+	std::size_t improved = 0;
+	for (unsigned int i = 1; i < 10000; ++i)
+	{
+		const double timestep = 1e-12 * (1 + double(i % 101) / 107);
+		const float high = static_cast<float>(timestep);
+		const float low = static_cast<float>(timestep - double(high));
+		const float previous = float(std::sin(double(i))), increment = float(1e12 * std::cos(double(i)));
+		const float expected = float(double(previous) + timestep * double(increment));
+		const float actual = subgrid_field_increment(previous, high, low, increment);
+		const float naive = previous + high * increment;
+		const double bound = 2 * std::numeric_limits<float>::epsilon() *
+			std::max(std::abs(double(previous)), std::abs(timestep * increment));
+		Require(std::abs(double(actual) - expected) <= bound, "split timestep field update lost precision");
+		if (std::abs(double(actual) - expected) < std::abs(double(naive) - expected))
+		{
+			++improved;
+		}
+	}
+	Require(improved > 1000, "timestep negative control no longer discriminates");
+}
+
 int main()
 {
 	try
 	{
+		CurlCancellation();
+		TimestepPrecision();
 		using namespace CartesianSubgridFloat;
 		TailInfo info;
 		const auto normal = Factor({1, 0, .8, .1}, 2, 1, info);

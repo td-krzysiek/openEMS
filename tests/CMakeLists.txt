@@ -29,8 +29,11 @@ foreach(test ${TESTS})
   target_include_directories(${test} PRIVATE ${openEMS_SOURCE_DIR})
   target_link_libraries(${test} openEMS)
 
-  if(test STREQUAL "test_cartesian_subgrid_device" AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|IntelLLVM")
+  if(test MATCHES "^test_cartesian_subgrid_device" AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|IntelLLVM")
     target_compile_options(${test} PRIVATE -ffp-contract=off)
   endif()
   add_test(NAME ${test} COMMAND ${test})
 endforeach()
+
+# Previously failing interface DC stress; keep the original 2e-4 field gate.
+add_test(NAME test_cartesian_subgrid_device_dc COMMAND test_cartesian_subgrid_device_ports --dc-stress)

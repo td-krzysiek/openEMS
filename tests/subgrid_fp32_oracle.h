@@ -29,11 +29,8 @@ class Reference_CartesianSubgrid : public GPU_CartesianSubgrid
 		}
 		for (std::size_t i = 0; i < m_Increment.size(); ++i)
 		{
-			float value = 0;
-			for (std::size_t k = m_Data.transposeStart[i]; k < m_Data.transposeStart[i + 1]; ++k)
-			{
-				value += m_Data.transposeWeight[k] * m_Data.magnetic[m_Data.transposeColumn[k]];
-			}
+			const float value = Dot(m_Data.transposeStart[i], m_Data.transposeStart[i + 1],
+				m_Data.transposeColumn, m_Data.transposeWeight, m_Data.transposeLow, m_Data.magnetic);
 			m_Increment[i] = value;
 		}
 		for (std::size_t block = 0; block < m_Data.bandwidth.size(); ++block)
@@ -63,7 +60,7 @@ class Reference_CartesianSubgrid : public GPU_CartesianSubgrid
 		}
 		for (std::size_t i = 0; i < m_Data.electric.size(); ++i)
 		{
-			m_Data.electric[i] += dt * m_Increment[i];
+			m_Data.electric[i] = Update(m_Data.electric[i], timestep, m_Increment[i]);
 		}
 		for (std::size_t i = 0; i < m_Data.sourceEdge.size(); ++i)
 		{
@@ -71,12 +68,9 @@ class Reference_CartesianSubgrid : public GPU_CartesianSubgrid
 		}
 		for (std::size_t i = 0; i < m_Data.magnetic.size(); ++i)
 		{
-			float value = 0;
-			for (std::size_t k = m_Data.curlStart[i]; k < m_Data.curlStart[i + 1]; ++k)
-			{
-				value += m_Data.curlWeight[k] * m_Data.electric[m_Data.curlColumn[k]];
-			}
-			m_Data.magnetic[i] -= dt * value;
+			const float value = Dot(m_Data.curlStart[i], m_Data.curlStart[i + 1],
+				m_Data.curlColumn, m_Data.curlWeight, m_Data.curlLow, m_Data.electric);
+			m_Data.magnetic[i] = Update(m_Data.magnetic[i], -timestep, value);
 		}
 	}
 
@@ -90,7 +84,7 @@ class Reference_CartesianSubgrid : public GPU_CartesianSubgrid
 	{
 		std::size_t floats = m_Increment.capacity();
 		for (const auto *values : {&m_Data.electric, &m_Data.magnetic, &m_Data.curlWeight,
-			 &m_Data.transposeWeight, &m_Data.lower, &m_Data.sourceWeight})
+			 &m_Data.transposeWeight, &m_Data.curlLow, &m_Data.transposeLow, &m_Data.lower, &m_Data.sourceWeight})
 		{
 			floats += values->capacity();
 		}
@@ -105,6 +99,40 @@ class Reference_CartesianSubgrid : public GPU_CartesianSubgrid
 	}
 
   private:
+	// FP32 arithmetic oracle, not a second double-state mathematical reference.
+	// The double CPU core is compared independently by the calling test.
+	static float Update(float previous, double timestep, float increment)
+	{
+		const float high = float(timestep), low = float(timestep - double(high));
+		const float product = high * increment;
+		const float error = std::fma(high, increment, -product) + low * increment;
+		float sum = previous, correction = 0;
+		for (const float term : {product, error})
+		{
+			const float next = sum + term;
+			correction += std::abs(sum) >= std::abs(term) ? (sum - next) + term : (term - next) + sum;
+			sum = next;
+		}
+		return sum + correction;
+	}
+	// Test-only arithmetic oracle; do not call shared device operations here.
+	static float Dot(std::size_t begin, std::size_t end, const std::vector<std::uint32_t> &column,
+		const std::vector<float> &high, const std::vector<float> &low, const std::vector<float> &field)
+	{
+		float sum = 0, correction = 0;
+		for (std::size_t k = begin; k < end; ++k)
+		{
+			const float input = field[column[k]], product = high[k] * input;
+			const float residual = std::fma(high[k], input, -product) + low[k] * input;
+			for (const float term : {product, residual})
+			{
+				const float next = sum + term;
+				correction += std::abs(sum) >= std::abs(term) ? (sum - next) + term : (term - next) + sum;
+				sum = next;
+			}
+		}
+		return sum + correction;
+	}
 	CartesianSubgridDeviceData m_Data;
 	std::vector<float> m_Increment;
 };

@@ -36,7 +36,7 @@ separate tasks; a passing test on one engine does not qualify another engine.
   this does not qualify the project PCB antenna or general antenna workflows.
   A narrower native device field/source path has reference-backend and physical
   Metal controls. One-edge device RF port controls are separately qualified;
-  strong-DC field accuracy, device absorbers/losses/antenna qualification remain open.
+  the reproduced DC stress is corrected in scoped controls below. Device absorbers/losses/antenna qualification remain open.
 - The new feature concerns Cartesian coordinates. Preserve the existing
   cylindrical modes and test them for regressions; implementing a new
   cylindrical subgrid is outside this scope.
@@ -259,8 +259,9 @@ reconstruction pass on the reference backend and physical Metal (Apple M5 Pro).
 HIP compiles the same operation definitions but has no physical qualification
 here. The subsequent [device resistor scope](CARTESIAN_SUBGRID.md#scoped-device-resistor-ports)
 adds native RF ports, midpoint damping and compensated source/loss ledgers.
-A retained strong-DC interface-source stress fails the unchanged field target;
-its cause/correction remain open. Expanded curl metadata, host batch mirrors
+The retained strong-DC failure of `0b255a8` is corrected by the separately
+qualified [curl/timestep precision increment](CARTESIAN_SUBGRID.md#device-curl-and-timestep-precision-correction),
+with the original field gate unchanged and permanent DC/cancellation regressions. Expanded curl metadata, host batch mirrors
 and guards remain; this is not structured scalability, device PML/DFT or a
 qualified device antenna. [Scope, source/build and tests](CARTESIAN_SUBGRID.md#scoped-native-device-execution).
 
@@ -372,3 +373,5 @@ numerical change invalidates their prior qualification.
 | 2026-11-15 | Partial U01/U02/U03/U05/U06, shared native device field/source path | This PR, native-device increment (parent `039b128`) | [Shared operations](FDTD/kernels/subgrid_update.h), [independent FP32 oracle and fields](tests/test_cartesian_subgrid_device.cpp), [native probes/dumps and guards](python/Tests/Cartesian_Subgrid_Device.py), [scope/build evidence](CARTESIAN_SUBGRID.md#scoped-native-device-execution). CTest 15/15; physical fields 4/4; Python 13/13; native device 4/4, CPU base plus six groups, two frozen CPU dipoles unchanged, ordinary three groups. Metal on Apple M5 Pro and explicit reference backend; no physical HIP/CUDA, ports/absorbers/losses, device antenna or production scaling qualification. |
 
 | 2026-11-15 | Extended partial P01/P03/P05 and U04/U05/U06: scoped device RF resistors | This PR, device-port increment (parent `4a7cf69`) | [Core passive/work controls](tests/test_cartesian_subgrid_device_ports.cpp), [native RF ports](python/Tests/Cartesian_Subgrid_Device_Ports.py), [factor range guards](tests/test_cartesian_subgrid_device_precision.cpp), [scope/build and open DC failure](CARTESIAN_SUBGRID.md#scoped-device-resistor-ports). CTest17/17, Python13/13, physical8/8, native fields/ports4+4, CPU base+six groups, two frozen dipoles unchanged, ordinary3/3. Strong-DC field target remains failed; not full source accuracy, absorber/lossy/antenna or scaling qualification. |
+
+| 2026-11-15 | Extended partial U05/U06: device curl/timestep precision | This PR, precision increment (parent `0b255a8`) | [Correction, unchanged numerical gates, exact runtime and measured costs](CARTESIAN_SUBGRID.md#device-curl-and-timestep-precision-correction). CTest18/18, Python13/13, physical fields/ports4+4 plus DC on both backends, native4+4, CPU base+six groups, two unchanged frozen dipoles and ordinary3/3. Prior DC failures retained; no arbitrary-source, device antenna/absorber/loss or scalability qualification. |

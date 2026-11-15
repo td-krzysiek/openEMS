@@ -41,12 +41,12 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 		auto *electric = Upload(data.electric), *magnetic = Upload(data.magnetic);
 		auto *increment = Upload(std::vector<float>(data.electric.size(), 0));
 		m_Transpose = {Upload(data.transposeStart), Upload(data.transposeColumn),
-			Upload(data.transposeWeight), magnetic, increment, 1, 0};
+			Upload(data.transposeWeight), Upload(data.transposeLow), magnetic, increment, 1, 0, 0};
 		m_Curl = {Upload(data.curlStart), Upload(data.curlColumn),
-			Upload(data.curlWeight), electric, magnetic, 0, 1};
+			Upload(data.curlWeight), Upload(data.curlLow), electric, magnetic, 0, 0, 1};
 		m_Mass = {Upload(data.blockStart), Upload(data.blockEdge), Upload(data.bandwidth),
 			Upload(data.lowerStart), Upload(data.lower), increment};
-		m_Update = {electric, increment, 0};
+		m_Update = {electric, increment, 0, 0};
 		m_LedgerDevice = Upload(data.ledger);
 		auto *sourceEdge = Upload(data.sourceEdge);
 		auto *sourceCurl = Upload(std::vector<float>(data.sourceEdge.size(), 0));
@@ -71,14 +71,19 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 	void Step(double timestep, double sourceAmplitude) override
 	{
 		const float dt = static_cast<float>(timestep), amplitude = static_cast<float>(sourceAmplitude);
+		const double residual = timestep - double(dt);
+		const float dtLow = static_cast<float>(residual);
 		if (!(timestep > 0) || timestep > m_StableStep || !std::isfinite(dt) ||
 			dt < std::numeric_limits<float>::min() || !std::isfinite(amplitude) ||
+			(residual != 0 && std::abs(dtLow) < std::numeric_limits<float>::min()) ||
 			(m_PortCount && timestep != m_PortStep))
 		{
 			throw std::invalid_argument("CartesianSubgrid: invalid device step or drive");
 		}
 		m_Update.timestep = dt;
+		m_Update.timestepLow = dtLow;
 		m_Curl.scale = -dt;
+		m_Curl.scaleLow = -m_Update.timestepLow;
 		m_Source.amplitude = amplitude;
 		m_Source.timestep = dt;
 		m_PortSolve.timestep = dt;

@@ -40,9 +40,10 @@ to what a user notices, in a few lines; the details belong in the commit.
   scoped CPU physics. Shared GPU/reference-backend operations now support
   compact lossless fields and soft sources with closed PEC/PMC boundaries;
   physical Metal has small-model controls. One-edge device RF resistor ports
-  now have midpoint/source-work and native two-port controls. Strong-DC field
-  accuracy remains limited; device absorbers, physical HIP/CUDA and device
-  antenna qualification remain open. A public vacuum PEC dipole now has scoped CPU
+  now have midpoint/source-work and native two-port controls. Split FP32 curl/
+  timestep arithmetic corrects a reproduced strong-DC precision error. Broader
+  source accuracy, device absorbers, physical HIP/CUDA and device antenna
+  qualification remain open. A public vacuum PEC dipole now has scoped CPU
   port, power, near-field and NF2FF controls against regular grids, including
   mesh/time/PML sensitivity. Closed NF2FF surfaces and interpolation neighbours
   stay in homogeneous unrefined air outside refinement and PML. General
@@ -104,6 +105,11 @@ to what a user notices, in a few lines; the details belong in the commit.
   now, and openEMS prints how long it took.
 
 ### Fixed
+
+- Experimental Cartesian subgrid device fields: retain coefficient and timestep
+  residuals with compensated FP32 arithmetic, avoiding accumulated interface
+  field errors in the reproduced DC and long RF controls. Existing CPU/ordinary
+  GPU kernels are unchanged; the correction adds memory and arithmetic cost.
 
 - More than 2^31 timesteps made the setup fail; the number is now limited to
   that.
