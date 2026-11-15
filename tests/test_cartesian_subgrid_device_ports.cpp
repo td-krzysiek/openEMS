@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include "FDTD/cartesian_subgrid.h"
 #include "FDTD/gpu_backend.h"
+#include "subgrid_device_target.h"
 #include "tools/useful.h"
 
 #include <algorithm>
@@ -66,14 +67,11 @@ static double FieldError(const Grid &reference, const Grid &candidate)
 	return error;
 }
 
-static void Control(const std::string &backendName, bool drive, bool soft, unsigned int steps, bool dcStress = false)
+static void Control(const SubgridDeviceTarget &target, bool drive, bool soft, unsigned int steps, bool dcStress = false)
 {
-	std::unique_ptr<GPU_Backend> backend(GPU_Backend::New(backendName));
+	std::unique_ptr<GPU_Backend> backend(GPU_Backend::New(target.backend));
 	Require(bool(backend), "requested backend unavailable");
-	if (backendName == "auto")
-	{
-		Require(backend->GetName().find("Metal (") == 0, "physical test requires Metal; no fallback");
-	}
+	target.Verify(*backend);
 	auto cpu = Fixture(drive, soft), device = Fixture(drive, soft);
 	auto execution = backend->CreateCartesianSubgrid(device);
 	const double dt = .8 * cpu.StableTimestep(), initial = cpu.Energy(dt);
@@ -121,13 +119,14 @@ int main(int argc, char **argv)
 	try
 	{
 		SetThreadLimit(1);
-		bool metal = false, dcStress = false;
+		SubgridDeviceTarget target;
+		bool dcStress = false;
 		for (int i = 1; i < argc; ++i)
 		{
 			const std::string argument(argv[i]);
-			if (argument == "--metal")
+			if (argument == "--metal" || argument == "--cuda")
 			{
-				metal = true;
+				target = SubgridDeviceTarget::FromFlag(argument);
 			}
 			else if (argument == "--dc-stress")
 			{
@@ -135,19 +134,18 @@ int main(int argc, char **argv)
 			}
 			else
 			{
-				throw std::invalid_argument("usage: test_cartesian_subgrid_device_ports [--metal] [--dc-stress]");
+				throw std::invalid_argument("usage: test_cartesian_subgrid_device_ports [--metal|--cuda] [--dc-stress]");
 			}
 		}
-		const std::string backend = metal ? "auto" : "reference";
 		if (dcStress)
 		{
-			Control(backend, false, true, 10000, true);
+			Control(target, false, true, 10000, true);
 			return 0;
 		}
-		Control(backend, false, false, 10000);
-		Control(backend, true, false, 10000);
-		Control(backend, false, true, 10000);
-		Control(backend, true, true, 20000);
+		Control(target, false, false, 10000);
+		Control(target, true, false, 10000);
+		Control(target, false, true, 10000);
+		Control(target, true, true, 20000);
 		std::cout << "PASS: device midpoint ports, coupled soft work, passive decay and fixed-step guard" << std::endl;
 		return 0;
 	}

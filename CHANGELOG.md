@@ -42,8 +42,10 @@ to what a user notices, in a few lines; the details belong in the commit.
   physical Metal has small-model controls. One-edge device RF resistor ports
   now have midpoint/source-work and native two-port controls. Split FP32 curl/
   timestep arithmetic corrects a reproduced strong-DC precision error. Broader
-  source accuracy, device absorbers, physical HIP/CUDA and device antenna
-  qualification remain open. A public vacuum PEC dipole now has scoped CPU
+  source accuracy and physical HIP/CUDA remain open. Paired device PML now
+  has reference/Metal field and public vacuum PEC dipole controls. Host DFT/
+  NF2FF remains unchanged; no PCB antenna or scalable-device claim is made.
+  A public vacuum PEC dipole also has scoped CPU
   port, power, near-field and NF2FF controls against regular grids, including
   mesh/time/PML sensitivity. Closed NF2FF surfaces and interpolation neighbours
   stay in homogeneous unrefined air outside refinement and PML. General
@@ -69,7 +71,9 @@ to what a user notices, in a few lines; the details belong in the commit.
 - The experimental compact device path explicitly represents negligible
   subnormal Cholesky fill as zero only under a strict recorded perturbation
   bound, preserving all normal entries and positive diagonals. CPU factors
-  remain double; unsupported/unsafe conversion still fails at setup.
+  remain double; unsupported/unsafe conversion still fails at setup. Negligible
+  subnormal initial-state tails use a separate strict logged perturbation bound;
+  normal state entries and double CPU evolution are unchanged.
 
 - The experimental Cartesian subgrid reference shares identical translated
   curl patterns and releases assembly scratch before field allocation, reducing

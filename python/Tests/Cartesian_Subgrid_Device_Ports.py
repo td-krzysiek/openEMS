@@ -3,8 +3,8 @@
 
 Geometry copied explicitly from Cartesian_Subgrid_Ports.py; each candidate XML
 must exactly match its current CPU control. This is not a calibrated PCB model.
-Default tests the explicit reference backend; OPENEMS_SUBGRID_DEVICE=metal
-requires physical Metal in addition, without availability skips.
+Default tests the explicit reference backend. OPENEMS_SUBGRID_DEVICE=metal or
+cuda requires a separately checked physical build, without availability skips.
 """
 from pathlib import Path
 import hashlib
@@ -14,12 +14,13 @@ import tempfile
 import numpy as np
 from CSXCAD import ContinuousStructure
 from openEMS import openEMS
+from _subgrid_device_support import run_native_device
 
 Sim_Path = os.path.join(tempfile.gettempdir(),'Cartesian_Subgrid_Device_Ports')
 os.makedirs(Sim_Path,exist_ok=True)
 frequency = np.linspace(20e9,28e9,41)
 physical = os.environ.get('OPENEMS_SUBGRID_DEVICE','')
-assert physical in ('','metal')
+assert physical in ('','metal','cuda')
 
 
 def fixture(kind, inside=False, reverse=False):
@@ -68,7 +69,7 @@ def run(label,engine,kind,inside,reverse):
     fdtd.Write2XML(str(path/'input.xml'))
     previous = os.getcwd()
     try:
-        result = fdtd.Run(str(path),engine=engine,numThreads=1,exact_endcriteria=True,verbose=1)
+        result = run_native_device(fdtd, path, engine, physical, numThreads=1, exact_endcriteria=True)
         assert result in (None,0), (label,engine,result)
     finally:
         os.chdir(previous)

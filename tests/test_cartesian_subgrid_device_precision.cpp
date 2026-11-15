@@ -85,6 +85,14 @@ int main()
 		CurlCancellation();
 		TimestepPrecision();
 		using namespace CartesianSubgridFloat;
+		TailInfo stateInfo;
+		const auto state = State({1, -.25, 1e-100, -1e-41, 0}, stateInfo);
+		Require(state == std::vector<float>({1, -.25f, 0, 0, 0}) && stateInfo.terms == 2 &&
+			stateInfo.relativeBound < 2e-14, "initial state FTZ bound/normals mishandled");
+		Reject([&] { State({1e-40}, stateInfo); });
+		Reject([&] { State({1e-25, 1e-39, 1e-39}, stateInfo); });
+		Reject([&] { State({1e50}, stateInfo); });
+		Reject([&] { State({std::numeric_limits<double>::quiet_NaN()}, stateInfo); });
 		TailInfo info;
 		const auto normal = Factor({1, 0, .8, .1}, 2, 1, info);
 		Require(normal == std::vector<float>({1, 0, .8f, .1f}) && info.terms == 0,

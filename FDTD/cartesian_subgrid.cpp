@@ -1455,15 +1455,8 @@ CartesianSubgridDeviceData CartesianSubgrid::DeviceData() const
 	};
 	CartesianSubgridDeviceData data;
 	data.stableTimestep = m_StableStep;
-	for (double value : m_Electric)
-	{
-		data.electric.push_back(scalar(value));
-	}
-	quantity = "magnetic state";
-	for (double value : m_Magnetic)
-	{
-		data.magnetic.push_back(scalar(value));
-	}
+	data.electric = CartesianSubgridFloat::State(m_Electric, data.stateTails);
+	data.magnetic = CartesianSubgridFloat::State(m_Magnetic, data.stateTails);
 	quantity = "curl coefficient";
 	data.transposeStart.assign(m_Electric.size() + 1, 0);
 	for (std::size_t row = 0; row < m_Magnetic.size(); ++row)

@@ -17,6 +17,48 @@ struct TailInfo
 	double l1 = 0, relativeBound = 0;
 };
 
+//! Normal initial fields plus explicitly bounded negligible FTZ tails.
+/*! Do not erase an entirely subnormal state. The summed dropped magnitude,
+ *  relative to the original maximum, must be at most eps(float)^2. This makes
+ *  compact Gaussian initial conditions usable without filtering resolved fields.
+ */
+inline std::vector<float> State(const std::vector<double> &values, TailInfo &info)
+{
+	std::vector<float> result;
+	result.reserve(values.size());
+	double maximum = 0;
+	TailInfo dropped;
+	for (double value : values)
+	{
+		const float converted = static_cast<float>(value);
+		if (!std::isfinite(value) || !std::isfinite(converted))
+		{
+			throw std::invalid_argument("CartesianSubgrid: overflowing/nonfinite initial device state");
+		}
+		maximum = std::max(maximum, std::abs(value));
+		if (value != 0 && std::abs(converted) < std::numeric_limits<float>::min())
+		{
+			++dropped.terms;
+			dropped.l1 += std::abs(value);
+			result.push_back(0);
+		}
+		else
+		{
+			result.push_back(converted);
+		}
+	}
+	dropped.relativeBound = maximum == 0 ? 0 : dropped.l1 / maximum;
+	const double epsilon = std::numeric_limits<float>::epsilon();
+	if (!std::isfinite(dropped.relativeBound) || dropped.relativeBound > epsilon * epsilon)
+	{
+		throw std::invalid_argument("CartesianSubgrid: initial state FTZ perturbation exceeds bound");
+	}
+	info.terms += dropped.terms;
+	info.l1 += dropped.l1;
+	info.relativeBound = std::max(info.relativeBound, dropped.relativeBound);
+	return result;
+}
+
 //! Explicit FTZ representation for negligible fill tails; never drop a diagonal.
 /*! Metal/device arithmetic need not preserve FP32 subnormals. A factor may
  *  contain exponentially small band fill far below FP32 rounding. Preserve all

@@ -31,6 +31,14 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 					<< "; maximum relative factor bound=" << data.factorTails.relativeBound;
 			std::cout << message.str() << std::endl;
 		}
+		if (data.stateTails.terms)
+		{
+			std::ostringstream message;
+			message << std::scientific << "CartesianSubgrid FP32 initial state FTZ tails: " << data.stateTails.terms
+				<< "; dropped L1=" << data.stateTails.l1
+				<< "; maximum relative state bound=" << data.stateTails.relativeBound;
+			std::cout << message.str() << std::endl;
+		}
 		m_StableStep = data.stableTimestep;
 		m_PortStep = data.portTimestep;
 		m_PortCount = data.rootConductance.size();
@@ -70,13 +78,39 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 
 	void Step(double timestep, double sourceAmplitude) override
 	{
+		UpdateElectric(timestep, sourceAmplitude);
+		UpdateMagnetic(timestep);
+	}
+
+	void RequireFixedTimestep(double timestep) override
+	{
+		if (m_Started || !(timestep > 0) || timestep > m_StableStep ||
+			(m_PortCount && timestep != m_PortStep) || (m_FixedStep != 0 && timestep != m_FixedStep))
+		{
+			throw std::invalid_argument("CartesianSubgrid: invalid fixed device recurrence timestep");
+		}
+		m_FixedStep = timestep;
+	}
+
+	GPU_CartesianSubgridFields Fields() const override
+	{
+		return {m_Update.electric, m_Curl.output, m_Electric.size(), m_Magnetic.size(),
+			m_FixedStep != 0 ? m_FixedStep : m_PortStep};
+	}
+
+	void UpdateElectric(double timestep, double sourceAmplitude) override
+	{
+		if (m_PendingStep != 0)
+		{
+			throw std::invalid_argument("CartesianSubgrid: electric update requires a complete prior step");
+		}
 		const float dt = static_cast<float>(timestep), amplitude = static_cast<float>(sourceAmplitude);
 		const double residual = timestep - double(dt);
 		const float dtLow = static_cast<float>(residual);
 		if (!(timestep > 0) || timestep > m_StableStep || !std::isfinite(dt) ||
 			dt < std::numeric_limits<float>::min() || !std::isfinite(amplitude) ||
 			(residual != 0 && std::abs(dtLow) < std::numeric_limits<float>::min()) ||
-			(m_PortCount && timestep != m_PortStep))
+			((m_PortCount && timestep != m_PortStep) || (m_FixedStep != 0 && timestep != m_FixedStep)))
 		{
 			throw std::invalid_argument("CartesianSubgrid: invalid device step or drive");
 		}
@@ -108,11 +142,26 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 		{
 			m_Backend.RunPoints(GPU_OP_SUBGRID_SOURCE, &m_Source, 0, m_SourceCount, true);
 		}
+		m_Started = true;
+		m_PendingStep = timestep;
+	}
+
+	void UpdateMagnetic(double timestep) override
+	{
+		if (m_PendingStep == 0 || timestep != m_PendingStep)
+		{
+			throw std::invalid_argument("CartesianSubgrid: magnetic update requires its paired electric step");
+		}
 		m_Backend.RunPoints(GPU_OP_SUBGRID_CURL, &m_Curl, 0, m_Magnetic.size(), false);
+		m_PendingStep = 0;
 	}
 
 	void ReadFields(CartesianSubgrid &grid) override
 	{
+		if (m_PendingStep != 0)
+		{
+			throw std::invalid_argument("CartesianSubgrid: device observation requires a complete timestep");
+		}
 		m_Backend.DeviceDownload(m_Electric.data(), m_Update.electric, m_Electric.size() * sizeof(float));
 		m_Backend.DeviceDownload(m_Magnetic.data(), m_Curl.output, m_Magnetic.size() * sizeof(float));
 		grid.ImportDeviceFields(m_Electric.data(), m_Electric.size(), m_Magnetic.data(), m_Magnetic.size());
@@ -143,7 +192,8 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 
 	GPU_Backend &m_Backend;
 	std::size_t m_StorageBytes = 0, m_BlockCount = 0, m_SourceCount = 0, m_PortCount = 0;
-	double m_StableStep = 0, m_PortStep = 0;
+	double m_StableStep = 0, m_PortStep = 0, m_FixedStep = 0, m_PendingStep = 0;
+	bool m_Started = false;
 	std::vector<float> m_Electric, m_Magnetic;
 	Op_SubgridCurl m_Transpose{}, m_Curl{};
 	Op_SubgridMass m_Mass{};

@@ -4,6 +4,7 @@
 
 #include "engine_extension.h"
 #include "operator_ext_cartesiansubgrid_pml.h"
+#include "FDTD/gpu_cartesiansubgrid_pml.h"
 
 class Engine_Ext_CartesianSubgrid_PML : public Engine_Extension
 {
@@ -17,6 +18,10 @@ class Engine_Ext_CartesianSubgrid_PML : public Engine_Extension
 	void Apply2Current() override;
 	//! Signed field work, not a nonnegative PML energy or radiated power.
 	double BoundaryWorkOut() const { return m_WorkOut; }
+	//! Fresh paired device state from already checked normalized operator rows.
+	std::unique_ptr<GPU_CartesianSubgridPML> CreateDevice(
+		GPU_Backend &backend, const GPU_CartesianSubgridFields &fields);
+	void ReadDeviceDiagnostics(GPU_CartesianSubgridPML &device);
 
   private:
 	struct State
@@ -33,5 +38,6 @@ class Engine_Ext_CartesianSubgrid_PML : public Engine_Extension
 	Operator_Ext_CartesianSubgrid_PML *m_PML;
 	State m_Electric, m_Magnetic;
 	double m_WorkOut = 0;
+	bool m_DeviceConfigured = false;
 };
 #endif

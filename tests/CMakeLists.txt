@@ -20,6 +20,7 @@ set(TESTS
   test_cartesian_subgrid_curl
   test_cartesian_subgrid_device
   test_cartesian_subgrid_device_ports
+  test_cartesian_subgrid_device_pml
   test_cartesian_subgrid_device_precision
 )
 
@@ -31,6 +32,9 @@ foreach(test ${TESTS})
 
   if(test MATCHES "^test_cartesian_subgrid_device" AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|IntelLLVM")
     target_compile_options(${test} PRIVATE -ffp-contract=off)
+  endif()
+  if(ENABLE_HIP AND NOT OPENEMS_GPU_PLUGINS AND (OPENEMS_HIP_AS_CUDA OR CMAKE_HIP_PLATFORM STREQUAL "nvidia"))
+    target_compile_definitions(${test} PRIVATE OPENEMS_SUBGRID_TEST_CUDA=1)
   endif()
   add_test(NAME ${test} COMMAND ${test})
 endforeach()

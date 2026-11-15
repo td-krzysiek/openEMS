@@ -36,7 +36,8 @@ separate tasks; a passing test on one engine does not qualify another engine.
   this does not qualify the project PCB antenna or general antenna workflows.
   A narrower native device field/source path has reference-backend and physical
   Metal controls. One-edge device RF port controls are separately qualified;
-  the reproduced DC stress is corrected in scoped controls below. Device absorbers/losses/antenna qualification remain open.
+  the reproduced DC stress is corrected in scoped controls below. Scoped device PML and the public vacuum PEC dipole now have separate
+  reference/physical Metal evidence; losses, PCB antenna and scalability remain open.
 - The new feature concerns Cartesian coordinates. Preserve the existing
   cylindrical modes and test them for regressions; implementing a new
   cylindrical subgrid is outside this scope.
@@ -204,7 +205,8 @@ an antenna solver. Correct E/H file creation alone does not qualify NF2FF.
 The [PEC dipole controls](CARTESIAN_SUBGRID.md#scoped-pec-dipole-radiation)
 now supply this evidence within the stated scope. B04/B05 do not cover
 refinement-crossing or nonhomogeneous NF2FF surfaces, arbitrary CAD/ports,
-the project array or any device backend. A failed coarser-Z candidate is
+the project array. The separately qualified device PML/dipole increment below
+adds reference/physical Metal coverage within the same restricted surface scope. A failed coarser-Z candidate is
 preserved and remains an expected-negative mesh control.
 
 ## 5. Scalable representation and CPU execution
@@ -262,8 +264,9 @@ adds native RF ports, midpoint damping and compensated source/loss ledgers.
 The retained strong-DC failure of `0b255a8` is corrected by the separately
 qualified [curl/timestep precision increment](CARTESIAN_SUBGRID.md#device-curl-and-timestep-precision-correction),
 with the original field gate unchanged and permanent DC/cancellation regressions. Expanded curl metadata, host batch mirrors
-and guards remain; this is not structured scalability, device PML/DFT or a
-qualified device antenna. [Scope, source/build and tests](CARTESIAN_SUBGRID.md#scoped-native-device-execution).
+and guards remain; this is not structured scalability or device DFT.
+The subsequent [PML/dipole increment](CARTESIAN_SUBGRID.md#scoped-device-pml-and-dipole-radiation)
+adds device absorber and small-antenna evidence only within its explicit scope. [Scope, source/build and tests](CARTESIAN_SUBGRID.md#scoped-native-device-execution).
 
 Acceptance: one supported antenna case runs on one GPU without hidden CPU
 execution. The ordinary master GPU path still working does not complete this
@@ -375,3 +378,5 @@ numerical change invalidates their prior qualification.
 | 2026-11-15 | Extended partial P01/P03/P05 and U04/U05/U06: scoped device RF resistors | This PR, device-port increment (parent `4a7cf69`) | [Core passive/work controls](tests/test_cartesian_subgrid_device_ports.cpp), [native RF ports](python/Tests/Cartesian_Subgrid_Device_Ports.py), [factor range guards](tests/test_cartesian_subgrid_device_precision.cpp), [scope/build and open DC failure](CARTESIAN_SUBGRID.md#scoped-device-resistor-ports). CTest17/17, Python13/13, physical8/8, native fields/ports4+4, CPU base+six groups, two frozen dipoles unchanged, ordinary3/3. Strong-DC field target remains failed; not full source accuracy, absorber/lossy/antenna or scaling qualification. |
 
 | 2026-11-15 | Extended partial U05/U06: device curl/timestep precision | This PR, precision increment (parent `0b255a8`) | [Correction, unchanged numerical gates, exact runtime and measured costs](CARTESIAN_SUBGRID.md#device-curl-and-timestep-precision-correction). CTest18/18, Python13/13, physical fields/ports4+4 plus DC on both backends, native4+4, CPU base+six groups, two unchanged frozen dipoles and ordinary3/3. Prior DC failures retained; no arbitrary-source, device antenna/absorber/loss or scalability qualification. |
+
+| 2026-11-15 | Extended partial B02/B03/B04/B05 and U04/U05/U06: device PML and public dipole | This PR, paired device PML increment (parent `ca6f755`) | [Core PML controls](tests/test_cartesian_subgrid_device_pml.cpp), [native PML](python/Tests/Cartesian_Subgrid_Device_PML.py), [native dipole](python/Tests/Cartesian_Subgrid_Device_Radiation.py), [exact build/scope](CARTESIAN_SUBGRID.md#scoped-device-pml-and-dipole-radiation). CTest19/19, Python14/14, long reference/Metal packet/corners, native18 PML/four dipole comparisons, two frozen CPU dipoles unchanged, ordinary3/3. CUDA harness/guards are prepared, not compiled or physically qualified on NVIDIA. No representative PCB, losses/conductor, structured or multi-device qualification. |

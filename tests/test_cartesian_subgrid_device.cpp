@@ -3,6 +3,7 @@
 #include "FDTD/gpu_backend.h"
 #include "FDTD/gpu_cartesiansubgrid.h"
 #include "subgrid_fp32_oracle.h"
+#include "subgrid_device_target.h"
 #include "tools/useful.h"
 
 #include <algorithm>
@@ -62,14 +63,11 @@ static double Error(const std::vector<float> &reference, const std::vector<float
 	return delta / std::max(scale, 1e-300);
 }
 
-static void Control(const std::string &backendName, const std::string &kind, unsigned int steps, bool source)
+static void Control(const SubgridDeviceTarget &target, const std::string &kind, unsigned int steps, bool source)
 {
-	std::unique_ptr<GPU_Backend> backend(GPU_Backend::New(backendName));
+	std::unique_ptr<GPU_Backend> backend(GPU_Backend::New(target.backend));
 	Require(bool(backend), "selected backend unavailable during repeated allocation");
-	if (backendName == "auto")
-	{
-		Require(backend->GetName().find("Metal (") == 0, "physical control selected another backend");
-	}
+	target.Verify(*backend);
 	auto cpu = Fixture(kind), device = Fixture(kind), oracle = Fixture(kind);
 	if (source)
 	{
@@ -132,21 +130,18 @@ int main(int argc, char **argv)
 	try
 	{
 		SetThreadLimit(1);
-		const bool metal = argc == 2 && std::string(argv[1]) == "--metal";
-		Require(argc == 1 || metal, "usage: test_cartesian_subgrid_device [--metal]");
-		std::unique_ptr<GPU_Backend> backend(GPU_Backend::New(metal ? "auto" : "reference"));
+		Require(argc <= 2, "usage: test_cartesian_subgrid_device [--metal|--cuda]");
+		const SubgridDeviceTarget target = argc == 2 ? SubgridDeviceTarget::FromFlag(argv[1]) : SubgridDeviceTarget{};
+		std::unique_ptr<GPU_Backend> backend(GPU_Backend::New(target.backend));
 		Require(bool(backend), "no selected physical backend; no fallback allowed");
-		if (metal)
-		{
-			Require(backend->GetName().find("Metal (") == 0, "requested Metal but selected another backend");
-		}
+		target.Verify(*backend);
 		std::cout << "Selected backend: " << backend->GetName() << std::endl;
 		backend.reset();
 		for (const std::string kind : {"uniform", "local", "graded"})
 		{
-			Control(metal ? "auto" : "reference", kind, 2000, true);
+			Control(target, kind, 2000, true);
 		}
-		Control(metal ? "auto" : "reference", "local", 20000, false);
+		Control(target, "local", 20000, false);
 		auto grid = Fixture("local");
 		auto data = grid.DeviceData();
 		Reject([&] { grid.ImportDeviceFields(data.electric.data(), data.electric.size() - 1,

@@ -521,8 +521,9 @@ fdtd.SetBoundaryCond(['PML_8'] * 6)
 
 This is a separate paired `Operator_Ext_CartesianSubgrid_PML` /
 `Engine_Ext_CartesianSubgrid_PML`, not the ordinary Yee UPML implementation.
-The ordinary solver and its PML are unchanged. Only serial `engine=basic`
-subgridding is supported. Any subset of PML faces, including edges/corners
+The ordinary solver and its PML are unchanged. The initial scope was serial
+`engine=basic`; the later [device PML qualification](#scoped-device-pml-and-dipole-radiation)
+adds existing reference/Metal backend execution. Any subset of PML faces, including edges/corners
 where layers overlap, may be used with the remaining PEC/PMC faces. Mur/PML
 mixing is rejected.
 
@@ -905,8 +906,8 @@ backend or silent host half-step execution is introduced.
 
 The native adapter accepts `engine='gpu-reference'` and `engine='gpu'` for its
 lossless closed PEC/PMC field/source scope and the separately qualified
-one-edge RF resistor scope below. It explicitly rejects Mur/PML extension
-combinations; those retain their scoped CPU support.
+one-edge RF resistor scope below. It rejects Mur and any extension without a paired device implementation.
+Classical convolution PML has the separately qualified device path below.
 Device state and coefficients are FP32. The CPU reference remains double.
 Electric/magnetic fields stay on device between sweeps; complete-step field
 mirrors are refreshed once per processing batch for existing reconstruction,
@@ -933,7 +934,8 @@ lossless dielectric plus resolved PEC) compare full E/H time records and
 multi-frequency FD dumps. Maximum double-CPU/device difference is 5.30e-6;
 reference-backend/Metal records are identical, within the declared 2e-4 gate.
 Invalid device field dimensions, nonfinite fields, incomplete half-steps and
-unsupported native device absorbers have rejection controls. The first increment
+unsupported native device absorbers have rejection controls. The later PML
+increment adds positive PML coverage and retains Mur as a rejection control. The first increment
 also rejected ports; the subsequent scoped RF increment below replaces that
 restriction with positive port tests. The native
 Python binding returns setup code4 for engine-construction failure; tests check
@@ -1088,8 +1090,73 @@ Frozen prefix `output/openems-subgrid-device-curl-20261115/install`:
 core SHA256 `35aea4bce694036437ec9c0a31c623a8eddeda2d07dc06eed3b9fc64dcc1f0e4`;
 nf2ff `cc67dadd9b55c5a5d1f521d4910e8f5bc4a3cc98d60a95cbd630ec1f0b69b1c8`. Reproduction uses the existing device tests, plus
 `ctest --test-dir build -R cartesian_subgrid_device --output-on-failure`.
-Device PML/Mur, loss/conductor, PCB antenna/scalability and physical HIP/CUDA
-qualification remain open.
+Device Mur, loss/conductor, PCB antenna/scalability and physical HIP/CUDA
+qualification remain open. The following increment adds scoped device PML/dipole evidence.
+
+### Scoped device PML and dipole radiation
+
+The existing shared backend now executes the paired classical convolution PML
+on normalized compact fields. This is the same scoped PML described above,
+not ordinary Yee UPML/CFS parity. Derivative histories, half-step corrections
+and signed-work compensation stay on device. Pre/Post/Apply hooks preserve the
+extension order; Post stages the correction and Apply publishes it. Complete
+field mirrors/work diagnostics are read once per processing batch. No CPU
+half-step fallback or per-half-step field download is introduced. Native Mur
+still fails explicitly rather than silently using the CPU.
+
+The implementation checks fixed timesteps, derivative bounds and coefficients,
+unique grouped target ownership, complete-step observation and hook ordering.
+Initial subnormal state tails may be zeroed only when their summed magnitude
+relative to the original maximum state is below `epsilon(float)^2`; all normal
+state values remain unchanged, an entirely unrepresentable state is rejected,
+and counts/bounds are logged. This is separate from bounded Cholesky fill.
+The double CPU reference and previously qualified runtimes are unchanged.
+
+Qualification on Apple M5 Pro and the explicit reference backend:
+
+- Eleven same-input PML controls cover six normals, graded/local packets,
+  near-unit PEC reflection negatives and multi-region six-face corners.
+  E/H samples include the PML and interior. The 100k-step packet and 10k-step
+  corner controls pass on both backends. Largest sampled field/signed-work
+  error across these core controls is 5.91e-7 (unchanged 2e-4 device gate).
+- Six native normal/TE30/TE45/TM30/graded/local geometries yield 18 CPU/reference/
+  Metal comparisons of E/H time records and FD planes. Largest normalized
+  difference is 1.508e-6, below the 2e-4 gate.
+- The public solid PEC vacuum dipole runs with identity and local-Z refinement
+  on CPU/reference/Metal. Exact native contact, six-face surface completion,
+  near fields, complex Etheta/Ephi on two surfaces, accepted/radiated power,
+  gain/directivity and time/FD consistency are checked. Missing-face and broken
+  contact controls discriminate failures. Device errors are at most 4.927e-6 ohm
+  in Z and 4.914e-7 for the sampled complex near/far-field vectors. All retained
+  double CPU arrays are exactly unchanged from the frozen merged-master fixture.
+- CTest19/19, Python unit modules14/14, physical field/port/DC controls,
+  native fields/ports, CPU base plus six increment groups, two frozen dipoles
+  and three ordinary-engine groups pass. Source/runtime identities and eight
+  prior frozen prefixes remain unchanged throughout qualification.
+
+Reproduction (after building/installing the isolated candidate):
+
+```sh
+ctest --test-dir build --output-on-failure
+build/tests/test_cartesian_subgrid_device_pml --metal --long --long-corners
+OPENEMS_SUBGRID_DEVICE=metal python3 python/Tests/Cartesian_Subgrid_Device_PML.py
+OPENEMS_SUBGRID_DEVICE=metal python3 python/Tests/Cartesian_Subgrid_Device_Radiation.py
+```
+
+Configure-time parent `ca6f755`; contributor evidence is under
+`experiments/openems-cartesian-local-subgrid-20261112/device-pml/qualification.json`.
+Frozen prefix `output/openems-subgrid-device-pml-qualified-20261115/install`:
+core SHA256 `3bfa5d5a9311e44e1572577dbb4b3cf70c08a8fa05148f2cc35eea42ab9f23fd`;
+nf2ff `552d8d5bb139cc69c1b3428072c2f956d1d10e708d07b792d9d61bb12ec04b78`.
+
+This is a small vacuum PEC antenna/device milestone, not representative PCB,
+lossy conductor, general CAD/source/interface, structured scalability or
+multi-device qualification. DFT/NF2FF remains host processing. Current guards,
+expanded upload metadata and host topology mirrors remain. CUDA preparation
+uses the **existing HIP backend**, shared operations and NVIDIA `nvcc`, as
+[documented separately](CARTESIAN_SUBGRID_CUDA.md). Host harness/selection guards
+pass, including rejection of a non-CUDA build; no NVIDIA compilation or
+physical HIP/CUDA evidence is claimed here.
 
 ## Tests and observed accuracy
 

@@ -15,6 +15,7 @@
 #include "extensions/operator_ext_lumpedRLC.h"
 #include "extensions/operator_ext_cartesiansubgrid_mur.h"
 #include "extensions/operator_ext_cartesiansubgrid_pml.h"
+#include "extensions/engine_ext_cartesiansubgrid_pml.h"
 #include "tools/constants.h"
 
 #include <algorithm>
@@ -83,18 +84,27 @@ class Engine_CartesianSubgrid : public Engine
 		SortExtensionByPriority();
 		if (m_Backend)
 		{
-			if (!m_Eng_exts.empty())
-			{
-				throw std::invalid_argument("CartesianSubgrid: device absorber/extension is not implemented");
-			}
 			m_Device = m_Backend->CreateCartesianSubgrid(op->Grid());
 			if (!m_Device)
 			{
 				throw std::invalid_argument("CartesianSubgrid: selected GPU backend does not support subgridding");
 			}
+			m_Device->RequireFixedTimestep(op->GetTimestep());
+			std::size_t extensionBytes = 0;
+			for (auto *extension : m_Eng_exts)
+			{
+				auto *paired = dynamic_cast<Engine_Ext_CartesianSubgrid_PML *>(extension);
+				if (!paired)
+				{
+					throw std::invalid_argument("CartesianSubgrid: unmapped device absorber/extension");
+				}
+				auto device = paired->CreateDevice(*m_Backend, m_Device->Fields());
+				extensionBytes += device->StorageBytes();
+				m_DeviceExtensions.push_back({paired, std::move(device)});
+			}
 			m_type = Engine::GPU;
 			std::cout << "CartesianSubgrid device: " << m_Backend->GetName()
-					  << "; allocated " << m_Device->StorageBytes() << " bytes; no host half-step fallback" << std::endl;
+					  << "; allocated " << (m_Device->StorageBytes() + extensionBytes) << " bytes; no host half-step fallback" << std::endl;
 		}
 	}
 	bool IterateTS(unsigned int steps) override
@@ -105,7 +115,21 @@ class Engine_CartesianSubgrid : public Engine
 			const double drive = numTS < signal->GetLength() ? signal->GetVoltageSignal()[numTS] : 0;
 			if (m_Device)
 			{
-				m_Device->Step(m_Operator->GetTimestep(), drive);
+				if (m_DeviceExtensions.empty())
+				{
+					m_Device->Step(m_Operator->GetTimestep(), drive);
+				}
+				else
+				{
+					DeviceHooks(false, GPU_PRE);
+					m_Device->UpdateElectric(m_Operator->GetTimestep(), drive);
+					DeviceHooks(false, GPU_POST);
+					DeviceHooks(false, GPU_APPLY);
+					DeviceHooks(true, GPU_PRE);
+					m_Device->UpdateMagnetic(m_Operator->GetTimestep());
+					DeviceHooks(true, GPU_POST);
+					DeviceHooks(true, GPU_APPLY);
+				}
 			}
 			else if (m_Eng_exts.empty())
 			{
@@ -127,6 +151,10 @@ class Engine_CartesianSubgrid : public Engine
 		if (m_Device)
 		{
 			m_Device->ReadFields(m_Operator->Grid());
+			for (auto &pair : m_DeviceExtensions)
+			{
+				pair.host->ReadDeviceDiagnostics(*pair.device);
+			}
 		}
 		return true;
 	}
@@ -184,6 +212,31 @@ class Engine_CartesianSubgrid : public Engine
 	}
 
   private:
+	void DeviceHooks(bool currents, GPU_Hook hook)
+	{
+		// The compact scheme advances a whole timestep, with the same extension
+		// priority convention as Engine. No rectangular temporal tiles here.
+		Engine_Box whole{};
+		for (unsigned int n = 0; n < 3; ++n)
+		{
+			whole.stop[n] = m_Operator->GetNumberOfLines(n);
+		}
+		if (hook == GPU_PRE)
+		{
+			for (auto pair = m_DeviceExtensions.rbegin(); pair != m_DeviceExtensions.rend(); ++pair)
+			{
+				pair->device->Hook(currents, hook, whole, numTS);
+			}
+		}
+		else
+		{
+			for (auto &pair : m_DeviceExtensions)
+			{
+				pair.device->Hook(currents, hook, whole, numTS);
+			}
+		}
+	}
+
 	void RejectWrite() const
 	{
 		throw std::logic_error("CartesianSubgrid: use the core field/source API, not rectangular field writes");
@@ -192,6 +245,13 @@ class Engine_CartesianSubgrid : public Engine
 	// Device execution is destroyed before its creating backend.
 	std::unique_ptr<GPU_Backend> m_Backend;
 	std::unique_ptr<GPU_CartesianSubgrid> m_Device;
+	struct DevicePair
+	{
+		Engine_Ext_CartesianSubgrid_PML *host;
+		std::unique_ptr<GPU_CartesianSubgridPML> device;
+	};
+	// Paired extensions are destroyed before core execution and its backend.
+	std::vector<DevicePair> m_DeviceExtensions;
 };
 } // namespace
 

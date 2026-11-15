@@ -3,6 +3,8 @@
 #include "FDTD/operator_cartesiansubgrid.h"
 
 #include <cmath>
+#include <limits>
+#include <algorithm>
 #include <stdexcept>
 
 Engine_Ext_CartesianSubgrid_PML::State::State(std::size_t size)
@@ -90,4 +92,75 @@ void Engine_Ext_CartesianSubgrid_PML::DoPostCurrentUpdates()
 void Engine_Ext_CartesianSubgrid_PML::Apply2Current()
 {
 	Apply(m_PML->m_Magnetic, m_Magnetic, m_PML->m_Compact->Grid().m_Magnetic);
+}
+
+std::unique_ptr<GPU_CartesianSubgridPML> Engine_Ext_CartesianSubgrid_PML::CreateDevice(
+	GPU_Backend &backend, const GPU_CartesianSubgridFields &fields)
+{
+	if (m_DeviceConfigured || m_WorkOut != 0 ||
+		std::any_of(m_Electric.history.begin(), m_Electric.history.end(), [](double value) { return value != 0; }) ||
+		std::any_of(m_Magnetic.history.begin(), m_Magnetic.history.end(), [](double value) { return value != 0; }))
+	{
+		throw std::invalid_argument("CartesianSubgrid: device PML creation requires fresh paired state");
+	}
+	const auto index = [](std::size_t value)
+	{
+		if (value > std::numeric_limits<std::uint32_t>::max())
+		{
+			throw std::invalid_argument("CartesianSubgrid: device PML table exceeds 32-bit indices");
+		}
+		return static_cast<std::uint32_t>(value);
+	};
+	const auto scalar = [](double value)
+	{
+		const float converted = float(value);
+		if (!std::isfinite(value) || !std::isfinite(converted) ||
+			(value != 0 && std::abs(converted) < std::numeric_limits<float>::min()))
+		{
+			throw std::invalid_argument("CartesianSubgrid: PML coefficient is not normal FP32");
+		}
+		return converted;
+	};
+	CartesianSubgridPMLData data;
+	data.timestep = m_PML->m_Compact->GetTimestep();
+	const auto rows = [&](const auto &nodes, CartesianSubgridPMLData::Rows &output)
+	{
+		for (std::size_t row = 0; row < nodes.size(); ++row)
+		{
+			const auto &node = nodes[row];
+			if (row && node.target != nodes[row - 1].target)
+			{
+				output.group.push_back(index(row));
+			}
+			output.target.push_back(index(node.target));
+			output.decay.push_back(scalar(node.decay));
+			output.change.push_back(scalar(node.change));
+			for (const auto &term : node.terms)
+			{
+				const float high = scalar(term.value);
+				output.source.push_back(index(term.source));
+				output.weight.push_back(high);
+				output.low.push_back(scalar(term.value - double(high)));
+			}
+			output.start.push_back(index(output.source.size()));
+		}
+		if (!nodes.empty())
+		{
+			output.group.push_back(index(nodes.size()));
+		}
+	};
+	rows(m_PML->m_Electric, data.electric);
+	rows(m_PML->m_Magnetic, data.magnetic);
+	auto device = GPU_CreateCartesianSubgridPML(backend, fields, data);
+	m_DeviceConfigured = true;
+	return device;
+}
+
+void Engine_Ext_CartesianSubgrid_PML::ReadDeviceDiagnostics(GPU_CartesianSubgridPML &device)
+{
+	if (!m_DeviceConfigured)
+	{
+		throw std::invalid_argument("CartesianSubgrid: no paired device PML state");
+	}
+	m_WorkOut = device.ReadBoundaryWorkOut();
 }

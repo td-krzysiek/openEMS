@@ -6,10 +6,19 @@
 #include "subgrid_device_precision.h"
 #include <cstdint>
 #include <memory>
+#include <stdexcept>
 #include <vector>
 
 class CartesianSubgrid;
 class GPU_Backend;
+
+//! Borrowed normalized compact buffers; not rectangular voltage/current arrays.
+struct GPU_CartesianSubgridFields
+{
+	float *electric = nullptr, *magnetic = nullptr;
+	std::size_t electricCount = 0, magneticCount = 0;
+	double fixedTimestep = 0;
+};
 
 //! Backend-neutral upload contract for the first scoped device implementation.
 /*! Expanded curls are a bounded intermediate representation. They do not
@@ -27,7 +36,7 @@ struct CartesianSubgridDeviceData
 	std::vector<float> portWeight, responseWeight, rootConductance, portCurrent, portLower;
 	std::vector<std::uint32_t> sourceOffStart{0}, sourceOffEdge;
 	std::vector<float> sourceOffWeight, ledger{0, 0, 0, 0};
-	CartesianSubgridFloat::TailInfo factorTails;
+	CartesianSubgridFloat::TailInfo factorTails, stateTails;
 	double portTimestep = 0;
 	double stableTimestep = 0;
 };
@@ -45,5 +54,22 @@ class GPU_CartesianSubgrid
 	virtual void Step(double timestep, double sourceAmplitude) = 0;
 	virtual void ReadFields(CartesianSubgrid &grid) = 0;
 	virtual std::size_t StorageBytes() const = 0;
+	//! Paired device extensions require ordered half steps and a fixed recurrence step.
+	virtual void UpdateElectric(double, double)
+	{
+		throw std::logic_error("CartesianSubgrid: no device electric half-step");
+	}
+	virtual void UpdateMagnetic(double)
+	{
+		throw std::logic_error("CartesianSubgrid: no device magnetic half-step");
+	}
+	virtual void RequireFixedTimestep(double)
+	{
+		throw std::logic_error("CartesianSubgrid: no fixed device timestep");
+	}
+	virtual GPU_CartesianSubgridFields Fields() const
+	{
+		return {};
+	}
 };
 #endif

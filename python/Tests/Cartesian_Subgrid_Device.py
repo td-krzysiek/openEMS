@@ -1,7 +1,7 @@
 """Native compact device reconstruction/probes/FD dumps against the double CPU reference.
 
 Default: explicitly selected gpu-reference, usable on CPU CI. Set
-OPENEMS_SUBGRID_DEVICE=metal for a separate physical Metal qualification.
+OPENEMS_SUBGRID_DEVICE=metal or cuda for a separately checked physical build.
 No backend/device availability failure is skipped in the requested device run.
 """
 import json
@@ -14,11 +14,12 @@ import h5py
 import numpy as np
 from CSXCAD import ContinuousStructure
 from openEMS import openEMS
+from _subgrid_device_support import run_native_device
 
 Sim_Path = os.path.join(tempfile.gettempdir(), 'Cartesian_Subgrid_Device')
 os.makedirs(Sim_Path, exist_ok=True)
 PHYSICAL = os.environ.get('OPENEMS_SUBGRID_DEVICE', '')
-assert PHYSICAL in ('', 'metal'), 'unsupported qualification selector'
+assert PHYSICAL in ('', 'metal', 'cuda'), 'unsupported qualification selector'
 GATE = 2e-4
 
 
@@ -61,7 +62,7 @@ def run(kind, engine, **options):
     previous = os.getcwd()
     path = os.path.join(Sim_Path, kind+'-'+engine)
     try:
-        fdtd.Run(path, engine=engine, numThreads=1, exact_endcriteria=True, **options)
+        run_native_device(fdtd, path, engine, PHYSICAL, numThreads=1, exact_endcriteria=True, **options)
     finally:
         os.chdir(previous)
     return Path(path)
@@ -98,17 +99,17 @@ for kind in ('local','graded','multiple','material-pec'):
     results[kind+'-reference'] = compare(baseline,reference)
     if PHYSICAL:
         device = run(kind,'gpu',verbose=1)
-        results[kind+'-metal'] = compare(baseline,device)
-        results[kind+'-metal-v-reference'] = compare(reference,device)
+        results[kind+'-'+PHYSICAL] = compare(baseline,device)
+        results[kind+'-'+PHYSICAL+'-v-reference'] = compare(reference,device)
 
 # Native engine construction errors return setup code4 through the current Python API.
 # Capture native stderr so an unrelated setup failure cannot satisfy this control.
-for kind in ('pml',):
-    fdtd, csx = fixture(steps=8, source_x=0 if kind == 'pml' else -10)
+for kind in ('mur',):
+    fdtd, csx = fixture(steps=8, source_x=0)
     if kind == 'resistor':
         fdtd.AddLumpedPort(1,50,[-10,0,0],[-10,0,2],'z',1)
     else:
-        fdtd.SetBoundaryCond(['PML_4']*6)
+        fdtd.SetBoundaryCond(['MUR','MUR','PEC','PEC','PEC','PEC'])
     previous = os.getcwd()
     saved = os.dup(2)
     guard_log = Path(Sim_Path,'reject-'+kind+'.stderr')
@@ -117,7 +118,8 @@ for kind in ('pml',):
             sys.stderr.flush()
             os.dup2(log.fileno(),2)
             result = fdtd.Run(os.path.join(Sim_Path,'reject-'+kind),
-                              engine='gpu' if PHYSICAL else 'gpu-reference',numThreads=1)
+                              engine='gpu' if PHYSICAL else 'gpu-reference',numThreads=1,
+                              gpu_device=0 if PHYSICAL == 'cuda' else -1)
             assert result == 4, (kind,result)
     finally:
         os.dup2(saved,2)
