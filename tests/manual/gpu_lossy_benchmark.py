@@ -89,7 +89,7 @@ def main():
                 run = subprocess.run(command, env=env, cwd=folder, stdout=log, stderr=subprocess.STDOUT, timeout=900)
             text = (folder/'solver.log').read_text()
             assert run.returncode == 0, text[-3000:]
-            match = re.search(r'Time for (\d+) iterations with (\d+) cells : ([\d.eE+-]+) sec', text)
+            match = re.search(r'Time for (\d+) iterations with ([\d.eE+-]+) cells : ([\d.eE+-]+) sec', text)
             assert match and int(match[1]) == args.steps, text[-2000:]
             assert 'all extensions run on the device' in text
             assert ('GPU LossyMetal branch fusion: '+fusion in text) == (fusion != 'off')
