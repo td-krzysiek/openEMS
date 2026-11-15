@@ -66,5 +66,15 @@ int main()
 	}
 	Check(incomplete.str().find("\"status\":\"incomplete\"") != std::string::npos, "unfinished setup explicit");
 	Check(incomplete.str().find("\"sample_interval\":1024") != std::string::npos, "zero interval guarded");
+	{
+		Profile combined(false, disabled);
+		std::array<Profile::Stats, Profile::QueryCount> worker{};
+		worker[Profile::Extent] = {9, 3, 2.5};
+		combined.Absorb(worker);
+		combined.Absorb(worker);
+		const auto snapshot = combined.Snapshot();
+		Check(snapshot[Profile::Extent].calls == 18 && snapshot[Profile::Extent].samples == 6 &&
+			snapshot[Profile::Extent].seconds == 5, "worker counters merge without clocks or output");
+	}
 	return failures ? 1 : 0;
 }

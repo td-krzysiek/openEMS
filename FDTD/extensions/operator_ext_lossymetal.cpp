@@ -23,6 +23,10 @@
 
 #include <array>
 #include <cmath>
+#include <algorithm>
+#include <cstdlib>
+#include <sstream>
+#include <stdexcept>
 #include "tools/lossymetal_setup_profile.h"
 
 using std::cerr;
@@ -85,15 +89,20 @@ double Operator_Ext_LossyMetal::InsideLength(const double* coord, int dir, int s
 	return lo;
 }
 
-const std::vector<CSPrimitives*>& Operator_Ext_LossyMetal::LinePrimitives(int n, const unsigned int* pos, const double* coord, int dir)
+Operator_Ext_LossyMetal::LineData& Operator_Ext_LossyMetal::LinePrimitives(int n, const unsigned int* pos, const double* coord, int dir, ScanContext& context)
 {
 	LossyMetalSetupProfile::Sample sample(LossyMetalSetupProfile::LineCandidates);
 	// the line is fixed by the edge direction, the edge position along it and the position along the third direction
 	int f = 3 - n - dir;
 	std::array<unsigned int,4> key = {(unsigned int)n, (unsigned int)dir, pos[n], pos[f]};
-	std::map<std::array<unsigned int,4>, std::vector<CSPrimitives*> >::iterator it = m_LinePrims.find(key);
-	if (it!=m_LinePrims.end())
+	auto it = context.lines.find(key);
+	if (it != context.lines.end()) {
 		return it->second;
+	}
+	if (context.cacheExtents && context.lines.size() >= 4096) {
+		context.lines.clear();
+		++context.evictions;
+	}
 	double tol = m_Op->GetGeometryCSX()->GetDrawingTolerance();
 	double box[6];
 	for (int m=0; m<3; ++m)
@@ -103,34 +112,49 @@ const std::vector<CSPrimitives*>& Operator_Ext_LossyMetal::LinePrimitives(int n,
 	}
 	box[2*dir] = m_Op->GetDiscLine(dir,0);
 	box[2*dir+1] = m_Op->GetDiscLine(dir,m_Op->GetNumberOfLines(dir,true)-1);
-	return m_LinePrims[key] = m_Op->GetGeometryCSX()->GetPrimitivesByBoundBox(box, true, (CSProperties::PropertyType)(CSProperties::MATERIAL | CSProperties::METAL));
+	LineData& line = context.lines[key];
+	line.primitives = m_Op->GetGeometryCSX()->GetPrimitivesByBoundBox(box, true, (CSProperties::PropertyType)(CSProperties::MATERIAL | CSProperties::METAL));
+	context.peakLines = std::max(context.peakLines, context.lines.size());
+	return line;
 }
 
-double Operator_Ext_LossyMetal::Extent(int n, const unsigned int* pos, const double* coord, int dir, int s)
+double Operator_Ext_LossyMetal::Extent(int n, const unsigned int* pos, const double* coord, int dir, int s, ScanContext& context)
 {
 	LossyMetalSetupProfile::Sample sample(LossyMetalSetupProfile::Extent);
-	const std::vector<CSPrimitives*>& prims = LinePrimitives(n, pos, coord, dir);
-	int numLines = m_Op->GetNumberOfLines(dir,true);
-	int idx = pos[dir];
+	LineData& line = LinePrimitives(n, pos, coord, dir, context);
+	const std::vector<CSPrimitives*>& prims = line.primitives;
+	const int numLines = m_Op->GetNumberOfLines(dir, true);
+	const int first = pos[dir];
+	int idx = first;
+	auto finish = [&](int boundary, double tail) {
+		if (context.cacheExtents) {
+			line.extents.Remember({std::min(first, boundary), std::max(first, boundary), boundary, tail}, s);
+		}
+		return std::fabs(m_Op->GetDiscLine(dir, boundary) - coord[dir]) + tail;
+	};
 	double p[3] = {coord[0], coord[1], coord[2]};
-	while (true)
-	{
-		int next = idx + s;
-		if ((next<0) || (next>=numLines))
-			return std::fabs(m_Op->GetDiscLine(dir,idx) - coord[dir]);
-		p[dir] = m_Op->GetDiscLine(dir,next);
-		if (!IsLossy(p, prims))
-		{
+	while (true) {
+		LossyMetalExtentCache::Run cached;
+		if (context.cacheExtents && line.extents.Find(idx, s, cached)) {
+			++context.cacheHits;
+			return finish(cached.boundary, cached.tail);
+		}
+		const int next = idx + s;
+		if (next < 0 || next >= numLines) {
+			return finish(idx, 0);
+		}
+		p[dir] = m_Op->GetDiscLine(dir, next);
+		if (!IsLossy(p, prims)) {
 			double start[3] = {coord[0], coord[1], coord[2]};
-			start[dir] = m_Op->GetDiscLine(dir,idx);
-			double len = std::fabs(m_Op->GetDiscLine(dir,next) - start[dir]);
-			return std::fabs(start[dir] - coord[dir]) + InsideLength(start, dir, s, len, prims);
+			start[dir] = m_Op->GetDiscLine(dir, idx);
+			const double len = std::fabs(m_Op->GetDiscLine(dir, next) - start[dir]);
+			return finish(idx, InsideLength(start, dir, s, len, prims));
 		}
 		idx = next;
 	}
 }
 
-int Operator_Ext_LossyMetal::GetFit(CSPropLossyMetal* prop, double thickness)
+int Operator_Ext_LossyMetal::GetFit(CSPropLossyMetal* prop, double thickness, ScanContext& context)
 {
 	LossyMetalSetupProfile::Sample sample(LossyMetalSetupProfile::FitLookup);
 	double sigma = prop->GetConductivity();
@@ -148,23 +172,25 @@ int Operator_Ext_LossyMetal::GetFit(CSPropLossyMetal* prop, double thickness)
 		key.t_index = lround(log(thickness/1e-9)/log(1.005)); // 0.5% steps
 		t = 1e-9*pow(1.005, key.t_index);
 	}
-	std::map<FitKey,int>::iterator it = m_FitIndex.find(key);
-	if (it!=m_FitIndex.end())
+	std::map<FitKey,int>::iterator it = context.fitIndex.find(key);
+	if (it!=context.fitIndex.end()) {
 		return it->second;
+	}
 
 	SurfaceImpedance::Fit fit;
 	{
 		LossyMetalSetupProfile::Sample sample(LossyMetalSetupProfile::FitSolve);
 		fit = SurfaceImpedance::FitFace(sigma, t, rq, m_f_max, m_w_k);
 	}
-	int idx = m_Fits.size();
-	m_Fits.push_back(fit);
-	m_FitThickness.push_back(t);
-	m_FitIndex[key] = idx;
+	int idx = context.fits.size();
+	context.fits.push_back(fit);
+	context.thicknesses.push_back(t);
+	context.fitIndex[key] = idx;
+	context.fitKeys.push_back(key);
 	return idx;
 }
 
-bool Operator_Ext_LossyMetal::AddContributions(int n, const unsigned int* pos, const double* coord, CSPropLossyMetal* prop, const std::vector<CSPrimitives*>& prims, std::vector<Contribution>& contrib)
+bool Operator_Ext_LossyMetal::AddContributions(int n, const unsigned int* pos, const double* coord, CSPropLossyMetal* prop, const std::vector<CSPrimitives*>& prims, std::vector<Contribution>& contrib, ScanContext& context)
 {
 	LossyMetalSetupProfile::Sample sample(LossyMetalSetupProfile::Contributions);
 	int dirs[2] = {(n+1)%3, (n+2)%3};
@@ -240,7 +266,7 @@ bool Operator_Ext_LossyMetal::AddContributions(int n, const unsigned int* pos, c
 					continue;
 				}
 				Contribution c;
-				c.fit = GetFit(prop, t);
+				c.fit = GetFit(prop, t, context);
 				c.weight = 2*Lin/len;
 				contrib.push_back(c);
 				continue;
@@ -251,15 +277,16 @@ bool Operator_Ext_LossyMetal::AddContributions(int n, const unsigned int* pos, c
 			if (q0==q1)
 				continue; // inside the metal or in the open, no face here
 			// a face with normal e, the metal is on the side of the metal quarter cell
-			double t = std::max(Extent(n, pos, coord, e, q0 ? -1 : +1) - tol, tol)*delta;
+			double t = std::max(Extent(n, pos, coord, e, q0 ? -1 : +1, context) - tol, tol)*delta;
 			Contribution c;
-			c.fit = GetFit(prop, t);
+			c.fit = GetFit(prop, t, context);
 			c.weight = Lin/len;
 			contrib.push_back(c);
 		}
 	}
-	if (missingThickness && contrib.empty())
-		++m_numNoThickness;
+	if (missingThickness && contrib.empty()) {
+		++context.missingThickness;
+	}
 	return !contrib.empty();
 }
 
@@ -281,7 +308,6 @@ bool Operator_Ext_LossyMetal::BuildExtension()
 	m_Fits.clear();
 	m_FitThickness.clear();
 	m_FitIndex.clear();
-	m_LinePrims.clear();
 	m_numSurface = m_numFinite = m_numPEC = m_numH = m_numNoThickness = 0;
 
 	m_Order = 0;
@@ -290,83 +316,181 @@ bool Operator_Ext_LossyMetal::BuildExtension()
 	// 0: no lossy metal, 1: inside a lossy metal body (PEC), 2: surface edge
 	ArrayLib::ArrayNIJK<int8_t> state("state", numLines);
 
-	CSPrimitives* prim = NULL;
-	bool disable_pos;
-	for (pos[0]=0; pos[0]<numLines[0]; ++pos[0])
-	{
-		for (pos[1]=0; pos[1]<numLines[1]; ++pos[1])
+	const char* modeValue = std::getenv("OPENEMS_LOSSY_SETUP");
+	const std::string mode = modeValue ? modeValue : "serial";
+	if (mode != "serial" && mode != "cache" && mode != "parallel" && mode != "parallel-no-cache") {
+		throw std::runtime_error("OPENEMS_LOSSY_SETUP must be serial, cache, parallel or parallel-no-cache");
+	}
+	const bool parallel = mode == "parallel" || mode == "parallel-no-cache";
+	const bool cached = mode == "cache" || mode == "parallel";
+	const unsigned int workers = parallel ? std::min(m_Op->GetBuildThreads(), numLines[0]) : 1;
+	std::vector<ScanContext> contexts(workers);
+	std::vector<std::ostringstream> profileLogs(workers);
+	std::vector<std::array<LossyMetalSetupProfile::Stats, LossyMetalSetupProfile::QueryCount> > queryStats(workers);
+	auto scan = [&](unsigned int worker, size_t begin, size_t end) {
+		ScanContext& context = contexts[worker];
+		context.cacheExtents = cached;
+		LossyMetalSetupProfile workerProfile(LossyMetalSetupProfile::FromEnvironment(), profileLogs[worker]);
+		unsigned int pos[3];
+		double coord[3];
+		CSPrimitives* prim = NULL;
+		bool disable_pos;
+		for (pos[0]=begin; pos[0]<end; ++pos[0])
 		{
-			std::vector<CSPrimitives*> vPrims;
+			for (pos[1]=0; pos[1]<numLines[1]; ++pos[1])
 			{
-				LossyMetalSetupProfile::Sample sample(LossyMetalSetupProfile::ColumnCandidates);
-				vPrims = m_Op->GetPrimitivesBoundBox(
-					pos[0], pos[1], -1,
-					(CSProperties::PropertyType)(CSProperties::MATERIAL | CSProperties::METAL)
-				);
-			}
-
-			for (pos[2]=0; pos[2]<numLines[2]; ++pos[2])
-			{
-				// disable the surface impedance inside a pml
-				disable_pos = false;
-				for (int m=0;m<3;++m)
+				std::vector<CSPrimitives*> vPrims;
 				{
-					int lo = m_Op->GetBCSize(2*m), hi = m_Op->GetBCSize(2*m+1);
-					if (((lo>0) && (pos[m]<=(unsigned int)lo)) || ((hi>0) && (pos[m]>=numLines[m]-hi-1)))
-						disable_pos = true;
+					LossyMetalSetupProfile::Sample sample(LossyMetalSetupProfile::ColumnCandidates);
+					vPrims = m_Op->GetPrimitivesBoundBox(
+						pos[0], pos[1], -1,
+						(CSProperties::PropertyType)(CSProperties::MATERIAL | CSProperties::METAL)
+					);
 				}
 
-				std::array<std::vector<Contribution>,3> contrib;
-				bool b_pos_on = false;
-				for (int n=0; n<3; ++n)
+				for (pos[2]=0; pos[2]<numLines[2]; ++pos[2])
 				{
-					// and on the boundary planes, unless it is a PMC
-					bool disable_edge = disable_pos;
+					// disable the surface impedance inside a pml
+					disable_pos = false;
 					for (int m=0;m<3;++m)
 					{
-						if (m==n)
-							continue;
-						if (((pos[m]==0) && (m_Op->m_BC[2*m]!=1)) || ((pos[m]==numLines[m]-1) && (m_Op->m_BC[2*m+1]!=1)))
-							disable_edge = true;
+						int lo = m_Op->GetBCSize(2*m), hi = m_Op->GetBCSize(2*m+1);
+						if (((lo>0) && (pos[m]<=(unsigned int)lo)) || ((hi>0) && (pos[m]>=numLines[m]-hi-1))) {
+							disable_pos = true;
+						}
 					}
-					state(n, pos[0], pos[1], pos[2]) = 0;
-					if (m_Op->GetYeeCoords(n,pos,coord,false)==false)
-						continue;
 
-					CSProperties* prop;
-					{
-						LossyMetalSetupProfile::Sample sample(LossyMetalSetupProfile::EdgeProperty);
-						prop = m_Op->GetGeometryCSX()->GetPropertyByCoordPriority(coord, vPrims, false, &prim);
-					}
-					CSPropLossyMetal* lm_prop = dynamic_cast<CSPropLossyMetal*>(prop);
-					if (lm_prop==NULL)
-						continue;
-					if (prim)
-						prim->SetPrimitiveUsed(true);
-
-					state(n, pos[0], pos[1], pos[2]) = 1;
-					if (!disable_edge && (lm_prop->GetConductivity()>0) && AddContributions(n, pos, coord, lm_prop, vPrims, contrib[n]))
-					{
-						state(n, pos[0], pos[1], pos[2]) = 2;
-						b_pos_on = true;
-						continue;
-					}
-					// inside the body, in a boundary condition or no conductivity: PEC
-					m_Op->SetVV(n,pos[0],pos[1],pos[2], 0 );
-					m_Op->SetVI(n,pos[0],pos[1],pos[2], 0 );
-					++m_Op->m_Nr_PEC[n];
-					++m_numPEC;
-				}
-				if (b_pos_on)
-				{
+					std::array<std::vector<Contribution>,3> contrib;
+					bool b_pos_on = false;
 					for (int n=0; n<3; ++n)
-						v_pos[n].push_back(pos[n]);
-					v_contrib.push_back(contrib);
+					{
+						// and on the boundary planes, unless it is a PMC
+						bool disable_edge = disable_pos;
+						for (int m=0;m<3;++m)
+						{
+							if (m==n) {
+								continue;
+							}
+							if (((pos[m]==0) && (m_Op->m_BC[2*m]!=1)) || ((pos[m]==numLines[m]-1) && (m_Op->m_BC[2*m+1]!=1))) {
+								disable_edge = true;
+							}
+						}
+						state(n, pos[0], pos[1], pos[2]) = 0;
+						if (m_Op->GetYeeCoords(n,pos,coord,false)==false) {
+							continue;
+						}
+
+						CSProperties* prop;
+						{
+							LossyMetalSetupProfile::Sample sample(LossyMetalSetupProfile::EdgeProperty);
+							prop = m_Op->GetGeometryCSX()->GetPropertyByCoordPriority(coord, vPrims, false, &prim);
+						}
+						CSPropLossyMetal* lm_prop = dynamic_cast<CSPropLossyMetal*>(prop);
+						if (lm_prop==NULL) {
+							continue;
+						}
+						if (prim) {
+							context.used.insert(prim);
+						}
+
+						state(n, pos[0], pos[1], pos[2]) = 1;
+						if (!disable_edge && (lm_prop->GetConductivity()>0) && AddContributions(n, pos, coord, lm_prop, vPrims, contrib[n], context))
+						{
+							state(n, pos[0], pos[1], pos[2]) = 2;
+							b_pos_on = true;
+							continue;
+						}
+						// inside the body, in a boundary condition or no conductivity: PEC
+						++context.pec[n];
+					}
+					if (b_pos_on)
+					{
+						for (int n=0; n<3; ++n) {
+							context.positions[n].push_back(pos[n]);
+						}
+						context.contributions.push_back(contrib);
+					}
+				}
+			}
+		}
+		context.lines.clear();
+		queryStats[worker] = workerProfile.Snapshot();
+		workerProfile.Complete();
+	};
+	if (parallel) {
+		m_Op->ParallelFor(numLines[0], scan);
+	} else {
+		scan(0, 0, numLines[0]);
+	}
+	// Apply shared operator mutations only after workers have joined. In
+	// particular Coeffs_EC's override map is not a concurrent container.
+	for (pos[0] = 0; pos[0] < numLines[0]; ++pos[0]) {
+		for (pos[1] = 0; pos[1] < numLines[1]; ++pos[1]) {
+			for (pos[2] = 0; pos[2] < numLines[2]; ++pos[2]) {
+				for (int n = 0; n < 3; ++n) {
+					if (state(n, pos[0], pos[1], pos[2]) == 1) {
+						m_Op->SetVV(n, pos[0], pos[1], pos[2], 0);
+						m_Op->SetVI(n, pos[0], pos[1], pos[2], 0);
+					}
 				}
 			}
 		}
 	}
-	m_LinePrims.clear();
+	size_t totalPositions = 0, cacheHits = 0, peakLines = 0, evictions = 0;
+	for (const auto& context : contexts) {
+		totalPositions += context.contributions.size();
+	}
+	for (int n = 0; n < 3; ++n) {
+		v_pos[n].reserve(totalPositions);
+	}
+	v_contrib.reserve(totalPositions);
+	// Consecutive X ranges, in worker order, retain serial node and first-fit
+	// encounter ordering. Fits and coefficients are not recomputed or summed.
+	for (unsigned int worker = 0; worker < workers; ++worker) {
+		ScanContext& context = contexts[worker];
+		profile.Absorb(queryStats[worker]);
+		std::vector<int> remap(context.fits.size());
+		for (size_t i = 0; i < context.fits.size(); ++i) {
+			const FitKey& key = context.fitKeys[i];
+			auto found = m_FitIndex.find(key);
+			if (found == m_FitIndex.end()) {
+				const int index = m_Fits.size();
+				m_FitIndex[key] = index;
+				m_Fits.push_back(std::move(context.fits[i]));
+				m_FitThickness.push_back(context.thicknesses[i]);
+				remap[i] = index;
+			} else {
+				remap[i] = found->second;
+			}
+		}
+		for (int n = 0; n < 3; ++n) {
+			v_pos[n].insert(v_pos[n].end(), context.positions[n].begin(), context.positions[n].end());
+			m_Op->m_Nr_PEC[n] += context.pec[n];
+			m_numPEC += context.pec[n];
+		}
+		for (auto& node : context.contributions) {
+			for (auto& direction : node) {
+				for (auto& contribution : direction) {
+					contribution.fit = remap[contribution.fit];
+				}
+			}
+			v_contrib.push_back(std::move(node));
+		}
+		for (auto* primitive : context.used) {
+			primitive->SetPrimitiveUsed(true);
+		}
+		m_numNoThickness += context.missingThickness;
+		cacheHits += context.cacheHits;
+		peakLines = std::max(peakLines, context.peakLines);
+		evictions += context.evictions;
+		context.positions[0].clear();
+		context.positions[1].clear();
+		context.positions[2].clear();
+		context.contributions.clear();
+	}
+	cout << "LossyMetal CPU setup: mode=" << mode << " workers=" << workers
+		<< " extent_hits=" << cacheHits << " peak_lines_per_worker=" << peakLines
+		<< " line_cache_evictions=" << evictions << endl;
 	profile.FinishPhase("surface_scan");
 
 	if (m_numNoThickness>0)

@@ -24,6 +24,8 @@
 
 #include <array>
 #include <map>
+#include <set>
+#include "tools/lossymetal_extent_cache.h"
 
 class CSPropLossyMetal;
 
@@ -71,9 +73,39 @@ protected:
 		double weight; //!< (surface length inside the dual face) / (edge length), times 2 for a sheet
 	};
 
+	struct FitKey
+	{
+		CSPropLossyMetal* prop;
+		long t_index;
+		bool operator<(const FitKey& o) const
+		{
+			return (prop<o.prop) || ((prop==o.prop) && (t_index<o.t_index));
+		}
+	};
+	struct LineData
+	{
+		std::vector<CSPrimitives*> primitives;
+		LossyMetalExtentCache extents;
+	};
+	struct ScanContext
+	{
+		bool cacheExtents = false;
+		std::map<std::array<unsigned int,4>, LineData> lines;
+		std::map<FitKey,int> fitIndex;
+		std::vector<FitKey> fitKeys;
+		std::vector<SurfaceImpedance::Fit> fits;
+		std::vector<double> thicknesses;
+		std::set<CSPrimitives*> used;
+		std::vector<unsigned int> positions[3];
+		std::vector<std::array<std::vector<Contribution>,3> > contributions;
+		unsigned int pec[3] = {0, 0, 0};
+		unsigned int missingThickness = 0;
+		size_t cacheHits = 0, peakLines = 0, evictions = 0;
+	};
+
 	//! Surface contributions of the E edge (n,pos) at \a coord, empty if it lies inside the metal
 	//! \a prims: the priority sorted primitives of the column of pos, see Operator::GetPrimitivesBoundBox
-	bool AddContributions(int n, const unsigned int* pos, const double* coord, CSPropLossyMetal* prop, const std::vector<CSPrimitives*>& prims, std::vector<Contribution>& contrib);
+	bool AddContributions(int n, const unsigned int* pos, const double* coord, CSPropLossyMetal* prop, const std::vector<CSPrimitives*>& prims, std::vector<Contribution>& contrib, ScanContext& context);
 
 	//! Lossy metal body at this point, among \a prims?
 	bool IsLossy(const double* coord, const std::vector<CSPrimitives*>& prims) const;
@@ -82,24 +114,18 @@ protected:
 	//! Length (drawing units) of the lossy metal from \a coord along direction \a dir, sign \a s, at most \a max
 	double InsideLength(const double* coord, int dir, int s, double max, const std::vector<CSPrimitives*>& prims) const;
 	//! Extent (drawing units) of the lossy metal from the edge (n,pos) at \a coord along \a dir, sign \a s, following the mesh up to the end of the body
-	double Extent(int n, const unsigned int* pos, const double* coord, int dir, int s);
+	double Extent(int n, const unsigned int* pos, const double* coord, int dir, int s, ScanContext& context);
 	//! The priority sorted primitives along the line through \a coord in direction \a dir, cached per line
-	const std::vector<CSPrimitives*>& LinePrimitives(int n, const unsigned int* pos, const double* coord, int dir);
-	std::map<std::array<unsigned int,4>, std::vector<CSPrimitives*> > m_LinePrims;
+	LineData& LinePrimitives(int n, const unsigned int* pos, const double* coord, int dir, ScanContext& context);
 
 	//! Index of the fit for this property and face thickness (m)
-	int GetFit(CSPropLossyMetal* prop, double thickness);
+	int GetFit(CSPropLossyMetal* prop, double thickness, ScanContext& context);
 
 	double m_f_max;
 	int m_NumBranches;
 	std::vector<double> m_w_k;
 
-	struct FitKey
-	{
-		CSPropLossyMetal* prop;
-		long t_index;
-		bool operator<(const FitKey& o) const {return (prop<o.prop) || ((prop==o.prop) && (t_index<o.t_index));}
-	};
+
 	std::map<FitKey,int> m_FitIndex;
 	std::vector<SurfaceImpedance::Fit> m_Fits;
 	std::vector<double> m_FitThickness;
