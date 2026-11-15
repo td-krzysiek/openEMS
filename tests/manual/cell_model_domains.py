@@ -53,6 +53,7 @@ def main():
     p.add_argument('--halo', default='serial', choices=['serial', 'async', 'overlap'])
     p.add_argument('--two-only', action='store_true')
     p.add_argument('--default-tiling', action='store_true')
+    p.add_argument('--library')
     a = p.parse_args()
     root = Path(a.output).resolve()
     root.mkdir(parents=True, exist_ok=False)
@@ -64,6 +65,8 @@ def main():
     if a.plugin:
         env['OPENEMS_PLUGIN_PATH'] = str(Path(a.plugin).resolve())
     result = {'binary_sha256': hashlib.sha256(Path(a.binary).read_bytes()).hexdigest(), 'cases': {}}
+    if a.library:
+        result['library_sha256'] = hashlib.sha256(Path(a.library).read_bytes()).hexdigest()
     for physics in a.physics.split(','):
         cases = [('one', None), ('two', '0,12,25'), ('unequal', '0,7,25'), ('thin-three', '0,1,13,25')]
         if a.two_only:

@@ -763,11 +763,17 @@ protected:
 		    (mode == 3 || (mode == 0 && m_Fusion == GPU_LossyFusion::All)))
 		{
 			Op_LossyBranches op;
+			const auto& first = m_Orders[0].front().op;
+			op.field = m_B->DeviceField(false);
+			op.node = first.node;
+			op.sN = first.sN;
+			op.count = first.count;
+			op.mode = mode;
 			for (unsigned int k = 0; k < 8; ++k)
 			{
-				op.branch[k] = m_Orders[0][k].op;
-				op.branch[k].field = m_B->DeviceField(false);
-				op.branch[k].mode = mode;
+				op.ade[k] = m_Orders[0][k].op.ade;
+				op.k_int[k] = m_Orders[0][k].op.k_int;
+				op.k_ext[k] = m_Orders[0][k].op.k_ext;
 			}
 			uint64_t begin, end;
 			m_Orders[0].front().list.Range(box, begin, end);

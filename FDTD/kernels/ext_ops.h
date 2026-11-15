@@ -331,12 +331,37 @@ struct Op_Dispersive
 //! the two separate rounding operations of Op_Dispersive. No pole reduction.
 struct Op_LossyBranches
 {
-	Op_Dispersive branch[8];
+	CM_GLOBAL float* field;
+	CM_GLOBAL const uint64_t* node;
+	CM_GLOBAL float* ade[8];
+	CM_GLOBAL const float* k_int[8];
+	CM_GLOBAL const float* k_ext[8];
+	uint64_t sN, count;
+	int32_t mode;
+
 	CM_FN void operator()(uint64_t p) const
 	{
-		for (unsigned int k = 0; k < 8; ++k)
+		for (uint64_t n = 0; n < 3; ++n)
 		{
-			branch[k](p);
+			const uint64_t j = n * count + p;
+			const uint64_t i = n * sN + node[p];
+			float value = field[i];
+			if (mode == 0)
+			{
+				for (unsigned int k = 0; k < 8; ++k)
+				{
+					ade[k][j] = ade[k][j] * k_int[k][j];
+					ade[k][j] = ade[k][j] + k_ext[k][j] * value;
+				}
+			}
+			else
+			{
+				for (unsigned int k = 0; k < 8; ++k)
+				{
+					value = value - ade[k][j];
+				}
+				field[i] = value;
+			}
 		}
 	}
 };

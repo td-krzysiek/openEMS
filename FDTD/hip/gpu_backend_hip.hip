@@ -16,6 +16,7 @@
 */
 
 #include "hip/hip_runtime.h"
+#include "FDTD/gpu_cell_model.h"
 #include <algorithm>
 #include <climits>
 #include <cstdio>

@@ -177,24 +177,58 @@ public:
 
 	//! Fixed X ownership. The cell model and field buffers contain only this slab and two halos.
 	bool InitDomain(const Operator* op, const GPU_CellModel& model, unsigned int begin, unsigned int end);
-	bool IsDomain() const { return m_Domain; }
-	bool OwnsX(unsigned int x) const { return !m_Domain || (x >= m_Begin && x < m_End); }
-	unsigned int DomainBegin() const { return m_Begin; }
-	unsigned int DomainEnd() const { return m_End; }
-	uint64_t DomainNodes() const { return m_LocalNodes; }
+	bool IsDomain() const
+	{
+		return m_Domain;
+	}
+	bool OwnsX(unsigned int x) const
+	{
+		return !m_Domain || (x >= m_Begin && x < m_End);
+	}
+	unsigned int DomainBegin() const
+	{
+		return m_Begin;
+	}
+	unsigned int DomainEnd() const
+	{
+		return m_End;
+	}
+	uint64_t DomainNodes() const
+	{
+		return m_LocalNodes;
+	}
 	uint64_t LocalFlat(uint64_t global) const;
-	virtual bool HasDomainPhases() const { return false; }
-	virtual void FinishVoltagePhase() {}
-	virtual void FinishCurrentPhase() {}
-	virtual GPU_Extension* DomainExtension(Engine_Extension*, const unsigned int[3]) { return nullptr; }
-	virtual void Activate() {}
-	virtual GPU_DeviceTimer* NewDeviceTimer() { return nullptr; }
-	virtual GPU_HaloBuffer* NewHaloBuffer(size_t) { return nullptr; }
-	virtual bool CanOverlapCurrentInterior() const { return false; }
-	virtual void UpdateCurrentRegion(bool) { throw std::logic_error("domain overlap is not qualified for CellModel"); }
+	virtual bool HasDomainPhases() const {
+		return false;
+	}
+	virtual void FinishVoltagePhase() {
+	}
+	virtual void FinishCurrentPhase() {
+	}
+	virtual GPU_Extension* DomainExtension(Engine_Extension*, const unsigned int[3]) {
+		return nullptr;
+	}
+	virtual void Activate() {
+	}
+	virtual GPU_DeviceTimer* NewDeviceTimer() {
+		return nullptr;
+	}
+	virtual GPU_HaloBuffer* NewHaloBuffer(size_t) {
+		return nullptr;
+	}
+	virtual bool CanOverlapCurrentInterior() const {
+		return false;
+	}
+	virtual void UpdateCurrentRegion(bool) {
+		throw std::logic_error("domain overlap is not qualified for CellModel");
+	}
 	virtual bool DownloadRange(bool currents, size_t offset, size_t count, float* dst);
-	virtual bool UploadRange(bool currents, size_t offset, size_t count, const float* src) { return false; }
-	virtual bool CopyRange(bool currents, size_t source, size_t destination, size_t count) { return false; }
+	virtual bool UploadRange(bool currents, size_t offset, size_t count, const float* src) {
+		return false;
+	}
+	virtual bool CopyRange(bool currents, size_t source, size_t destination, size_t count) {
+		return false;
+	}
 
 	//! Device memory of \a bytes, initialized with \a host or zero, freed with the backend
 	virtual void* DeviceAlloc(size_t bytes, const void* host=NULL) = 0;
