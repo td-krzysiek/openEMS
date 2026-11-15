@@ -31,7 +31,7 @@ for source in sorted(fixtures.glob('*.xml')):
         env = dict(os.environ, OPENEMS_LOSSY_SETUP=mode,
                    OPENEMS_PROFILE_LOSSY_SETUP='0')
         with (folder / 'setup.log').open('w') as log:
-            result = subprocess.run([str(binary), 'model.xml', str(threads)],
+            result = subprocess.run([str(binary), 'model.xml', str(threads)] + ([] if source.stem in ('unchanged-pec', 'zero-height-no-thickness') else ['--expect-surface']),
                                     cwd=folder, env=env, stdout=log,
                                     stderr=subprocess.STDOUT, timeout=180)
         if result.returncode:
@@ -46,3 +46,16 @@ for source in sorted(fixtures.glob('*.xml')):
         if actual != expected:
             raise RuntimeError(f'ADE/base/PEC mismatch: {folder}')
     print('PASS', source.stem, flush=True)
+
+# A deliberately disabled surface must be rejected, without reading an extension
+# after CalcECOperator has deleted it. This reproduces the old empty-state/UAF.
+folder = out / 'negative-excluded-surface'
+folder.mkdir()
+source = fixtures / 'separate-boundary-bodies.xml'
+shutil.copy2(source, folder / 'model.xml')
+with (folder / 'setup.log').open('w') as log:
+    result = subprocess.run([str(helper), 'model.xml', '4', '--expect-surface', '--exclude-all'],
+                            cwd=folder, stdout=log, stderr=subprocess.STDOUT, timeout=60)
+if result.returncode != 8:
+    raise RuntimeError('Excluded surface was not rejected safely')
+print('PASS excluded-surface negative control', flush=True)
