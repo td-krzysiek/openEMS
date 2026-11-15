@@ -857,6 +857,38 @@ including final benchmark `core-comparison-r05-final.json`. Earlier timing
 attempts are retained but are not the final benchmark. This increment does
 not qualify GPU, lossy conductor, PCB antenna or multi-device execution.
 
+### Upstream 92cd92a integration
+
+The reference is explicitly rebased by merge onto upstream
+`92cd92a8d924c78a93453c25fa541384c2ac1d0e`. This adopts the common GPU cell
+model/point-operation architecture and the upstream fixes for excitation
+frequency initialization, rounded periodic signal length, XML timestep factor
+and explicit zero end criteria. Subgrid periodic sources remain unsupported.
+
+A separate isolated build passes CTest14/14, Python unit modules13/13, long
+core invocations9/9, native groups8/8 and ordinary groups4/4, including the
+expanded CPU/reference-GPU/Metal engine comparison. Frozen runtime prefixes
+and inventoried source remain unchanged during qualification.
+
+The previous strict2e-11 frozen-array identity check initially fails; this
+failure is retained. Upstream now compiles engine extensions without fused
+multiply-add. All ten dipole results remain within6.45e-7 peak-normalized
+error (existing upstream single-precision comparison gate1e-5). Subgrid
+port/near-point arrays remain unchanged; subgrid far-field differences are
+below1.89e-8. An isolated identity-dipole control restores only the prior PML
+contraction mode and recovers every frozen array exactly. Its loaded library
+path/hash is checked; the first control with an incorrect soname alias was
+not accepted as causal evidence. The counterfactual is not an adopted build.
+No frozen reference or numerical gate in the solver tests was overwritten.
+
+Loaded merged core SHA256:
+`8648669ef485b93f4502490cea44906b72a8b73f19c751adbf0c36f03845ad85`;
+nf2ff: `3cee7e023b9d7387e273e7cd259ffcee56a47082e529613ce4420f9d3f6098f7`.
+Source/runtime inventories, the retained failed strict comparison and causal
+control are in the contributor evidence directory
+`experiments/openems-cartesian-local-subgrid-20261112/master92-integration/`.
+This is compatibility qualification, not a subgrid GPU or antenna speedup.
+
 ## Tests and observed accuracy
 
 ```sh

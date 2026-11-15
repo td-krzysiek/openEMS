@@ -179,10 +179,11 @@ def _decode(d):
 
 
 def read_probes(rundir):
-    """ the probe files of a run: the files without an extension """
+    """ the probe files of a run: the files without an extension, except et and ht,
+        which hold the excitation signal """
     probes = {}
     for f in sorted(os.listdir(rundir)):
-        if '.' not in f and os.path.isfile(os.path.join(rundir, f)):
+        if '.' not in f and f not in ('et', 'ht') and os.path.isfile(os.path.join(rundir, f)):
             probes[f] = _encode(np.loadtxt(os.path.join(rundir, f), comments='%', ndmin=2))
     return probes
 
@@ -303,7 +304,6 @@ def run_once(path, xml, rundir, engine, threads, gpu_device, duration, log, env=
     if engine == 'gpu':
         backend = re.search(r'^Create FDTD engine \(GPU, backend: (.*)\)$', text, re.M)
         r['gpu_backend'] = backend.group(1) if backend else None
-        r['gpu_on_device'] = '(host fallback)' not in text
     return r
 
 
@@ -342,7 +342,11 @@ def _variants(specs):
 
 def cmd_run(args):
     names = _list(args.cases, list(cases.CASES), 'case') if args.cases else list(cases.CASES)
-    sizes = _list(args.size, cases.SIZES, 'size') if args.size else list(cases.DEFAULT_SIZES)
+    sizes = [x.strip() for x in args.size.split(',') if x.strip()] if args.size else list(cases.DEFAULT_SIZES)
+    for size in sizes:
+        why = cases.check_size(size)
+        if why:
+            sys.exit('bench.py: size "{}": {}'.format(size, why))
     engines = _list(args.engine, ENGINES, 'engine') if args.engine else None
 
     paths = args.openems or [shutil.which('openEMS') or 'openEMS']
@@ -470,7 +474,6 @@ def cmd_run(args):
                     pt['engine_info'] = pt['runs'][0].get('engine_info', {})
                     if engine == 'gpu':
                         pt['gpu_backend'] = pt['runs'][0]['gpu_backend']
-                        pt['gpu_on_device'] = all(r['gpu_on_device'] for r in pt['runs'])
                 result['points'].append(pt)
     except KeyboardInterrupt:
         print('\ninterrupted, writing the results so far')
@@ -515,7 +518,7 @@ def print_table(result, label):
         if not pt['runs']:
             print(head + '  FAILED')
             continue
-        note = '  (extensions on the host)' if pt.get('gpu_on_device') is False else ''
+        note = ''
         if engine_note(pt.get('engine_info')):
             note += '  ' + engine_note(pt.get('engine_info'))
         print(head + ' {:7.2f} {:9d} {:9.1f} {:>6s} {:8.2f} {:>8s}{}'.format(
@@ -644,7 +647,7 @@ def main(argv=None):
                    help='run every point once more with these environment variables, e.g. '
                         'flat:OPENEMS_CPU_TBLOCK=0; several, interleaved like binaries; "NAME:" runs as is')
     p.add_argument('--cases', help='comma separated, default: all of ' + ', '.join(cases.CASES))
-    p.add_argument('--size', help='comma separated of {}, default: {}'.format(
+    p.add_argument('--size', help='comma separated of {} or million cells, e.g. 200, default: {}'.format(
         ', '.join(cases.SIZES), ','.join(cases.DEFAULT_SIZES)))
     p.add_argument('--engine', help='comma separated of {}, default: multithreaded, and gpu with a device'.format(
         ', '.join(ENGINES)))

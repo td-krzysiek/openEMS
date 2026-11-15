@@ -14,7 +14,7 @@ separate tasks; a passing test on one engine does not qualify another engine.
   in this PR rather than opening one PR per checklist item.
 - Initial multi-region prototype commit: `907391792b55bee2a557c498eb6774812306e28d`.
   Subsequent qualified increments are recorded in the completion log below.
-- Pinned master baseline: `1d710c210920908a143b573f2babca05455f5479`.
+- Pinned master baseline: `92cd92a8d924c78a93453c25fa541384c2ac1d0e` (explicitly merged and requalified after the original `1d710c2` reference).
   Reconcile this inventory explicitly when adopting newer upstream commits.
 - Public numerical summary and reproduction commands: [CARTESIAN_SUBGRID.md](CARTESIAN_SUBGRID.md).
 - Executable controls: [C++ tests](tests/test_cartesian_subgrid.cpp),
@@ -351,3 +351,5 @@ numerical change invalidates their prior qualification.
 | 2026-11-15 | Further partial C02/C05, signed inverse-norm setup | This PR, signed-bound increment (parent `571766f`) | [Independent dense-inverse controls](tests/test_cartesian_subgrid_bound.cpp), frozen factor oracle, [derivation/build and regression results](CARTESIAN_SUBGRID.md#signed-inverse-norm-setup). One solve for positive bipartite graphs; old general fallback and guards retained. CTest13/13, Python13/13, long9/9, native8/8 and ordinary4/4; ten frozen dipole arrays unchanged. Ordinary Metal is a regression only, not subgrid GPU qualification. |
 
 | 2026-11-15 | Further partial C01/C03/C05, exact translated curl patterns | This PR, stencil increment (parent `cb36dde`) | [Independent CSR oracle](tests/test_cartesian_subgrid_curl.cpp), [memory/performance and loaded build evidence](CARTESIAN_SUBGRID.md#exact-translated-curl-stencils). CTest14/14, Python13/13, long9/9, native8/8, ordinary4/4; ten frozen dipoles unchanged. Memory reduced about40–50%, CPU updates about9–12% slower. Structured interiors, topology scaling and GPU remain open. |
+
+| 2026-11-15 | Reconcile pinned master; preserve scoped CPU/ordinary GPU coverage | Merge upstream `92cd92a` into parent `f5d1b16` | [Integration and rounding evidence](CARTESIAN_SUBGRID.md#upstream-92cd92a-integration). CTest14/14, Python13/13, long9/9, native8/8, ordinary4/4. Ten frozen dipoles within6.45e-7, not bit-identical after upstream disables extension FMA. Isolated old-contraction identity control recovers exact frozen arrays. This does not qualify subgrid GPU/lossy/PCB operation. |

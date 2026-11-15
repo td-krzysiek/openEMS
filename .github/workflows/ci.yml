@@ -343,7 +343,8 @@ jobs:
           cd $GITHUB_WORKSPACE/fparser
           mkdir build && cd build
           cmake ../ -DCMAKE_INSTALL_PREFIX=$HOME/opt
-          make -j`nproc` && make install
+          make -j`nproc`
+          make install
 
       - name: Build and install CSXCAD
         run: |
@@ -357,7 +358,8 @@ jobs:
           cd $GITHUB_WORKSPACE/CSXCAD
           mkdir build && cd build
           cmake ../ -DCMAKE_INSTALL_PREFIX=$HOME/opt
-          make -j`nproc` && make install
+          make -j`nproc`
+          make install
 
       - name: Build and install CSXCAD Python module with --no-build-isolation
         run: |
@@ -393,7 +395,8 @@ jobs:
                        "-DCMAKE_HIP_FLAGS=--gcc-install-dir=$(dirname $(g++ -print-libgcc-file-name))" )
           fi
           cmake ../ -DCMAKE_INSTALL_PREFIX=$HOME/opt -DFPARSER_ROOT_DIR=$HOME/opt -DOPENEMS_BUILD_TESTS=ON "${hip_opts[@]}"
-          make -j`nproc` && make install
+          make -j`nproc`
+          make install
 
           echo "addpath('~/opt/share/openEMS/matlab')" >> ~/.octaverc
           echo "addpath('~/opt/share/CSXCAD/matlab')" >> ~/.octaverc
@@ -663,7 +666,8 @@ jobs:
 
           mkdir build && cd build
           cmake ../ -DCMAKE_INSTALL_PREFIX=$HOME/opt
-          make -j$NCPUS && make install
+          make -j$NCPUS
+          make install
 
       - name: Build and install fparser
         run: |
@@ -671,7 +675,8 @@ jobs:
           cd $GITHUB_WORKSPACE/fparser
           mkdir build && cd build
           cmake ../ -DCMAKE_INSTALL_PREFIX=$HOME/opt
-          make -j$NCPUS && make install
+          make -j$NCPUS
+          make install
 
       - name: Build and install CSXCAD
         run: |
@@ -686,7 +691,8 @@ jobs:
           cd $GITHUB_WORKSPACE/CSXCAD
           mkdir build && cd build
           cmake ../ -DCMAKE_INSTALL_PREFIX=$HOME/opt
-          make -j$NCPUS && make install
+          make -j$NCPUS
+          make install
 
       - name: Build and install CSXCAD Python module with --no-build-isolation
         run: |
@@ -701,7 +707,8 @@ jobs:
           cd $GITHUB_WORKSPACE/openEMS
           mkdir build && cd build
           cmake ../ -DCMAKE_INSTALL_PREFIX=$HOME/opt -DFPARSER_ROOT_DIR=$HOME/opt -DOPENEMS_BUILD_TESTS=ON
-          make -j$NCPUS && make install
+          make -j$NCPUS
+          make install
 
           echo "addpath('~/opt/share/openEMS/matlab')" >> ~/.octaverc
           echo "addpath('~/opt/share/CSXCAD/matlab')" >> ~/.octaverc
@@ -711,6 +718,15 @@ jobs:
         run: |
           cd $GITHUB_WORKSPACE/openEMS/build
           ctest --output-on-failure --timeout 300
+
+      - name: Compile the Metal kernels offline
+        run: |
+          # The Metal backend compiles its kernels at run time; this compiles
+          # the same source (build/metal_cm_kernels.metal, see FDTD/CMakeLists.txt) without a GPU.
+          # Newer Xcode versions ship the Metal toolchain as a component of its own.
+          xcrun -sdk macosx metal --version || xcodebuild -downloadComponent MetalToolchain
+          cd $GITHUB_WORKSPACE/openEMS/build
+          cmake --build . --target metal_check
 
       - name: Smoketest the CPU engine
         run: |
@@ -752,6 +768,15 @@ jobs:
       - name: Run Python unit tests
         run: |
           python3 -m unittest discover -s $GITHUB_WORKSPACE/openEMS/python/Tests -p "test_*.py" -v
+
+      - name: Metal backend against the reference backend
+        timeout-minutes: 20
+        run: |
+          set -o pipefail   # the default shell of a step is bash -e without it: a failing test through tee
+          cd $GITHUB_WORKSPACE/openEMS/python/Tests
+          OPENEMS_ENGINE=gpu python3 run_testsuite.py -v Engine_Compare 2>&1 | tee $RUNNER_TEMP/metal.log
+          # the hosted macOS ARM runners have a Metal device: without it this would test nothing
+          grep -q "Metal backend: max. deviation" $RUNNER_TEMP/metal.log || { echo "Metal did not run"; exit 1; }
 
       - name: Create Python venv and install dependencies
         run: |
@@ -887,7 +912,8 @@ jobs:
             cd $GITHUB_WORKSPACE/fparser
             mkdir build && cd build
             cmake ../ -DCMAKE_INSTALL_PREFIX=$HOME/opt
-            make -j$NCPUS && make install
+            make -j$NCPUS
+            make install
 
             echo "Build and install CSXCAD..."
             # cmake may fail with "fatal: No names found, cannot describe anything."
@@ -900,7 +926,8 @@ jobs:
             cd $GITHUB_WORKSPACE/CSXCAD
             mkdir build && cd build
             cmake ../ -DCMAKE_INSTALL_PREFIX=$HOME/opt
-            make -j$NCPUS && make install
+            make -j$NCPUS
+            make install
 
             echo "Build and install CSXCAD Python module with --no-build-isolation..."
             cd $GITHUB_WORKSPACE/CSXCAD/python
@@ -911,7 +938,8 @@ jobs:
             cd $GITHUB_WORKSPACE/openEMS
             mkdir build && cd build
             cmake ../ -DCMAKE_INSTALL_PREFIX=$HOME/opt -DFPARSER_ROOT_DIR=$HOME/opt
-            make -j$NCPUS && make install
+            make -j$NCPUS
+            make install
 
             echo "addpath('~/opt/share/openEMS/matlab')" >> ~/.octaverc
             echo "addpath('~/opt/share/CSXCAD/matlab')" >> ~/.octaverc
