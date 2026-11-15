@@ -46,6 +46,8 @@ struct Op_SubgridCurl
 {
 	CM_GLOBAL const uint32_t *start;
 	CM_GLOBAL const uint32_t *column;
+	CM_GLOBAL const uint32_t *base;
+	CM_GLOBAL const uint32_t *pattern;
 	CM_GLOBAL const float *weight;
 	CM_GLOBAL const float *low;
 	CM_GLOBAL const float *input;
@@ -55,10 +57,11 @@ struct Op_SubgridCurl
 
 	CM_FN void operator()(uint64_t row) const
 	{
+		const uint32_t p = pattern[row], origin = base[row];
 		float value = 0, correction = 0;
-		for (uint32_t k = start[row]; k < start[row + 1]; ++k)
+		for (uint32_t k = start[p]; k < start[p + 1]; ++k)
 		{
-			const float field = input[column[k]];
+			const float field = input[origin + column[k]];
 			const float product = weight[k] * field;
 			const float residual = subgrid_curl_product_error(weight[k], field, product) + low[k] * field;
 			subgrid_curl_add(value, correction, product);

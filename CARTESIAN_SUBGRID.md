@@ -1158,6 +1158,62 @@ uses the **existing HIP backend**, shared operations and NVIDIA `nvcc`, as
 pass, including rejection of a non-CUDA build; no NVIDIA compilation or
 physical HIP/CUDA evidence is claimed here.
 
+### Exact device curl patterns
+
+The device execution now shares exactly equal translated row patterns for curl
+and its gather transpose. Each output retains a pattern number and input-base
+index; coefficients remain the same FP32 high/low values, in the same term
+order. No coefficient quantization, magnetic-history merging, interface-solve
+change, field precision change or global fast-math setting is introduced.
+The shared operation definition still serves the existing reference/Metal/HIP
+backends. Physical qualification here is Metal only.
+
+The independent oracle retains its expanded CSR export. Reconstruction and
+input guards check every index/coefficient bit, empty/translated/irregular rows,
+signed-zero residuals and malformed input. The new shared gather is compared
+with the same expanded gather for overwrite and additive updates. All prior
+FP32, double field, port, PML and dipole gates are unchanged. CTest20/20, Python
+unit modules14/14 and the full previous qualification matrix pass. In addition,
+11,255 NPZ arrays, HDF5 datasets and time-probe arrays are numerically identical
+to the frozen `bb2edbb` expanded device runtime, including CPU/reference/Metal
+fields, ports, PML and dipole radiation. Nine prior prefixes remain unchanged.
+
+Three interleaved physical Metal completed-batch pairs on the same local24
+fixture (400 warm-up +10,000 measured steps, final readback included):
+
+| Metric | Expanded upload/runtime | Exact patterns |
+|---|---:|---:|
+| Median batch seconds | 0.846029 | 0.570051 |
+| Accounted device bytes | 16,580,256 | 3,781,236 |
+| Process peak RSS bytes | 330,563,584 | 318,619,648 |
+| Device/backend setup seconds | 0.040093 | 0.042943 |
+
+This fixture takes 32.6% less batch time and 77.2% less accounted device memory.
+Process peak RSS falls only 3.6%; it includes macOS/Metal overhead. Device setup
+includes backend/cache initialization and is not a cold compiler or production
+startup benchmark. All three paired final energies are exactly equal. These
+measurements do not predict large-antenna or NVIDIA speed. The reproduction
+driver is [benchmark/subgrid_device_metal.cpp](benchmark/subgrid_device_metal.cpp).
+The public local-Z dipole separately accounts for 167,703,460 ->90,212,052
+allocated device bytes, including unchanged PML histories; no native timing
+speedup is claimed from the qualification runs.
+
+Both expanded CSR tables still exist temporarily in the **host upload** before
+compression, alongside the pattern dictionary. This is not a general reduction
+in peak setup RAM, a structured field kernel or a reason to raise guards. Host
+topology/observation mirrors, large-interface scaling and device DFT remain open.
+
+Configure-time parent `bb2edbb`; actual source/runtime inventories, interleaved
+logs and exact prior-array comparison are in contributor archive
+`experiments/openems-cartesian-local-subgrid-20261112/device-patterns/`.
+Frozen candidate prefix `output/openems-subgrid-device-patterns-20261115/install`:
+core SHA256 `45d0681845f90409d0eb6bba13b2a81e1bbb6fdd4cd49a7173835ff7f2766f33`;
+nf2ff `b4216540dc74cf21186c8042f662ebcff8445ef0c21f31b87b963971bb8d4f83`.
+Reproduce the existing physical device suite plus
+`ctest --test-dir build -R cartesian_subgrid_device_patterns --output-on-failure`.
+No project PCB/lossy-conductor, physical CUDA or multi-device qualification is
+added by this metadata representation.
+
 ## Tests and observed accuracy
 
 ```sh

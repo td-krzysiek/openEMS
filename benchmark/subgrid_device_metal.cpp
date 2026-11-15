@@ -10,6 +10,8 @@
 #include <memory>
 #include <stdexcept>
 #include <string>
+#include <iomanip>
+#include <sys/resource.h>
 
 int main()
 {
@@ -24,18 +26,22 @@ int main()
 				std::cout << "loaded=" << name << std::endl;
 			}
 		}
+		const auto coreStart = std::chrono::steady_clock::now();
 		CartesianSubgrid grid({24, 24, 24}, {.001, .001, .001}, {{6, 6, 6}, {18, 18, 18}},
 			8.85418781762e-12, 1.2566370614359173e-6);
 		grid.SetElectric([](unsigned int n, const CartesianSubgrid::Point &p)
 		{
 			return .1 * std::sin(1731 * p[0] + 933 * p[1] - 2671 * p[2] + n);
 		});
+		const auto backendStart = std::chrono::steady_clock::now();
+		const double coreSetup = std::chrono::duration<double>(backendStart - coreStart).count();
 		std::unique_ptr<GPU_Backend> backend(GPU_Backend::New("auto"));
 		if (!backend || backend->GetName().find("Metal (") != 0)
 		{
 			throw std::runtime_error("physical Metal required");
 		}
 		auto execution = backend->CreateCartesianSubgrid(grid);
+		const double deviceSetup = std::chrono::duration<double>(std::chrono::steady_clock::now() - backendStart).count();
 		const double dt = .8 * grid.StableTimestep();
 		for (unsigned int i = 0; i < 400; ++i)
 		{
@@ -49,8 +55,16 @@ int main()
 		}
 		execution->ReadFields(grid);
 		const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - start).count();
-		std::cout << "steps=10000 seconds=" << seconds << " bytes=" << execution->StorageBytes()
+		std::cout << std::setprecision(17) << "steps=10000 seconds=" << seconds << " bytes=" << execution->StorageBytes()
 			<< " energy=" << grid.Energy(dt) << std::endl;
+		struct rusage usage{};
+		if (getrusage(RUSAGE_SELF, &usage) != 0)
+		{
+			throw std::runtime_error("cannot record process peak RSS");
+		}
+		// macOS ru_maxrss is bytes; this existing Mach/Metal driver is macOS-only.
+		std::cout << "core_setup_seconds=" << coreSetup << " device_setup_seconds=" << deviceSetup
+			<< " peak_rss_bytes=" << usage.ru_maxrss << std::endl;
 		return 0;
 	}
 	catch (const std::exception &error)

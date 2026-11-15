@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include "gpu_cartesiansubgrid.h"
+#include "subgrid_device_curl.h"
 #include "gpu_backend.h"
 #include "cartesian_subgrid.h"
 #include "kernels/subgrid_update.h"
@@ -48,10 +49,15 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 		m_SourceCount = data.sourceEdge.size();
 		auto *electric = Upload(data.electric), *magnetic = Upload(data.magnetic);
 		auto *increment = Upload(std::vector<float>(data.electric.size(), 0));
-		m_Transpose = {Upload(data.transposeStart), Upload(data.transposeColumn),
-			Upload(data.transposeWeight), Upload(data.transposeLow), magnetic, increment, 1, 0, 0};
-		m_Curl = {Upload(data.curlStart), Upload(data.curlColumn),
-			Upload(data.curlWeight), Upload(data.curlLow), electric, magnetic, 0, 0, 1};
+		const CartesianSubgridDeviceCurl transpose(data.transposeStart, data.transposeColumn,
+			data.transposeWeight, data.transposeLow, data.magnetic.size());
+		const CartesianSubgridDeviceCurl curl(data.curlStart, data.curlColumn,
+			data.curlWeight, data.curlLow, data.electric.size());
+		m_Transpose = {Upload(transpose.start), Upload(transpose.offset), Upload(transpose.base),
+			Upload(transpose.pattern), Upload(transpose.weight), Upload(transpose.residual),
+			magnetic, increment, 1, 0, 0};
+		m_Curl = {Upload(curl.start), Upload(curl.offset), Upload(curl.base), Upload(curl.pattern),
+			Upload(curl.weight), Upload(curl.residual), electric, magnetic, 0, 0, 1};
 		m_Mass = {Upload(data.blockStart), Upload(data.blockEdge), Upload(data.bandwidth),
 			Upload(data.lowerStart), Upload(data.lower), increment};
 		m_Update = {electric, increment, 0, 0};

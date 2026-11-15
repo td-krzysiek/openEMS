@@ -263,7 +263,10 @@ here. The subsequent [device resistor scope](CARTESIAN_SUBGRID.md#scoped-device-
 adds native RF ports, midpoint damping and compensated source/loss ledgers.
 The retained strong-DC failure of `0b255a8` is corrected by the separately
 qualified [curl/timestep precision increment](CARTESIAN_SUBGRID.md#device-curl-and-timestep-precision-correction),
-with the original field gate unchanged and permanent DC/cancellation regressions. Expanded curl metadata, host batch mirrors
+with the original field gate unchanged and permanent DC/cancellation regressions.
+The later [exact device patterns](CARTESIAN_SUBGRID.md#exact-device-curl-patterns)
+reduce device metadata with unchanged fields and scoped cost measurements.
+Expanded host upload, host batch mirrors
 and guards remain; this is not structured scalability or device DFT.
 The subsequent [PML/dipole increment](CARTESIAN_SUBGRID.md#scoped-device-pml-and-dipole-radiation)
 adds device absorber and small-antenna evidence only within its explicit scope. [Scope, source/build and tests](CARTESIAN_SUBGRID.md#scoped-native-device-execution).
@@ -380,3 +383,5 @@ numerical change invalidates their prior qualification.
 | 2026-11-15 | Extended partial U05/U06: device curl/timestep precision | This PR, precision increment (parent `0b255a8`) | [Correction, unchanged numerical gates, exact runtime and measured costs](CARTESIAN_SUBGRID.md#device-curl-and-timestep-precision-correction). CTest18/18, Python13/13, physical fields/ports4+4 plus DC on both backends, native4+4, CPU base+six groups, two unchanged frozen dipoles and ordinary3/3. Prior DC failures retained; no arbitrary-source, device antenna/absorber/loss or scalability qualification. |
 
 | 2026-11-15 | Extended partial B02/B03/B04/B05 and U04/U05/U06: device PML and public dipole | This PR, paired device PML increment (parent `ca6f755`) | [Core PML controls](tests/test_cartesian_subgrid_device_pml.cpp), [native PML](python/Tests/Cartesian_Subgrid_Device_PML.py), [native dipole](python/Tests/Cartesian_Subgrid_Device_Radiation.py), [exact build/scope](CARTESIAN_SUBGRID.md#scoped-device-pml-and-dipole-radiation). CTest19/19, Python14/14, long reference/Metal packet/corners, native18 PML/four dipole comparisons, two frozen CPU dipoles unchanged, ordinary3/3. CUDA harness/guards are prepared, not compiled or physically qualified on NVIDIA. No representative PCB, losses/conductor, structured or multi-device qualification. |
+
+| 2026-11-15 | Further partial C03/C05 and U05/U06: exact device curl patterns | This PR, device-pattern increment (parent `bb2edbb`) | [Bit-preserving metadata/gather controls](tests/test_cartesian_subgrid_device_patterns.cpp), [qualification and measured costs](CARTESIAN_SUBGRID.md#exact-device-curl-patterns). CTest20/20, Python14/14, full prior CPU/reference/Metal matrix;11,255 prior numerical arrays unchanged. Small local24 batch32.6% shorter and accounted device memory77.2% lower; process RSS3.6% lower. Expanded host upload, structured kernels/guards, PCB/lossy and physical CUDA/multi-device remain open. |

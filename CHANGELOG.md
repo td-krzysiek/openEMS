@@ -68,6 +68,11 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Changed
 
+- Experimental compact subgrid GPU execution shares exact translated curl
+  patterns, reducing device metadata without changing coefficient arithmetic
+  or field histories. Scoped Metal memory/time controls retain unchanged
+  field/port/PML/radiation results; host upload and scale limits remain.
+
 - The experimental compact device path explicitly represents negligible
   subnormal Cholesky fill as zero only under a strict recorded perturbation
   bound, preserving all normal entries and positive diagonals. CPU factors

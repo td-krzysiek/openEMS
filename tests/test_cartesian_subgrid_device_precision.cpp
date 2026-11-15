@@ -30,7 +30,7 @@ template <class Action> static void Reject(Action action)
 
 static void CurlCancellation()
 {
-	const std::uint32_t start[] = {0, 3}, column[] = {0, 1, 2};
+	const std::uint32_t start[] = {0, 3}, column[] = {0, 1, 2}, base[] = {0}, pattern[] = {0};
 	const double exact[] = {100000001, 3.141592653589793, -100000000};
 	const float field[] = {1, .75f, 1};
 	float high[3], low[3], output = 0, naive = 0;
@@ -42,7 +42,7 @@ static void CurlCancellation()
 		expected += exact[i] * field[i];
 		naive += high[i] * field[i];
 	}
-	Op_SubgridCurl operation{start, column, high, low, field, &output, 1, 0, 0};
+	Op_SubgridCurl operation{start, column, base, pattern, high, low, field, &output, 1, 0, 0};
 	operation(0);
 	Require(std::abs(double(output) - expected) < 5e-7, "split curl lost cancelled coefficient residuals");
 	Require(std::abs(double(naive) - expected) > 1, "cancellation negative control no longer discriminates");
