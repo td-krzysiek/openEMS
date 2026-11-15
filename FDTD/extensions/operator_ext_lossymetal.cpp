@@ -23,6 +23,7 @@
 
 #include <array>
 #include <cmath>
+#include "tools/lossymetal_setup_profile.h"
 
 using std::cerr;
 using std::cout;
@@ -52,18 +53,21 @@ Operator_Extension* Operator_Ext_LossyMetal::Clone(Operator* op)
 
 bool Operator_Ext_LossyMetal::IsLossy(const double* coord, const std::vector<CSPrimitives*>& prims) const
 {
+	LossyMetalSetupProfile::Sample sample(LossyMetalSetupProfile::IsLossy);
 	CSProperties* prop = m_Op->GetGeometryCSX()->GetPropertyByCoordPriority(coord, prims, false);
 	return (prop!=NULL) && (prop->GetType() & CSProperties::LOSSYMETAL);
 }
 
 bool Operator_Ext_LossyMetal::IsMetal(const double* coord, const std::vector<CSPrimitives*>& prims) const
 {
+	LossyMetalSetupProfile::Sample sample(LossyMetalSetupProfile::IsMetal);
 	CSProperties* prop = m_Op->GetGeometryCSX()->GetPropertyByCoordPriority(coord, prims, false);
 	return (prop!=NULL) && (prop->GetType() & CSProperties::METAL);
 }
 
 double Operator_Ext_LossyMetal::InsideLength(const double* coord, int dir, int s, double max, const std::vector<CSPrimitives*>& prims) const
 {
+	LossyMetalSetupProfile::Sample sample(LossyMetalSetupProfile::InsideLength);
 	double p[3] = {coord[0], coord[1], coord[2]};
 	p[dir] = coord[dir] + s*max;
 	if (IsLossy(p, prims))
@@ -83,6 +87,7 @@ double Operator_Ext_LossyMetal::InsideLength(const double* coord, int dir, int s
 
 const std::vector<CSPrimitives*>& Operator_Ext_LossyMetal::LinePrimitives(int n, const unsigned int* pos, const double* coord, int dir)
 {
+	LossyMetalSetupProfile::Sample sample(LossyMetalSetupProfile::LineCandidates);
 	// the line is fixed by the edge direction, the edge position along it and the position along the third direction
 	int f = 3 - n - dir;
 	std::array<unsigned int,4> key = {(unsigned int)n, (unsigned int)dir, pos[n], pos[f]};
@@ -103,6 +108,7 @@ const std::vector<CSPrimitives*>& Operator_Ext_LossyMetal::LinePrimitives(int n,
 
 double Operator_Ext_LossyMetal::Extent(int n, const unsigned int* pos, const double* coord, int dir, int s)
 {
+	LossyMetalSetupProfile::Sample sample(LossyMetalSetupProfile::Extent);
 	const std::vector<CSPrimitives*>& prims = LinePrimitives(n, pos, coord, dir);
 	int numLines = m_Op->GetNumberOfLines(dir,true);
 	int idx = pos[dir];
@@ -126,6 +132,7 @@ double Operator_Ext_LossyMetal::Extent(int n, const unsigned int* pos, const dou
 
 int Operator_Ext_LossyMetal::GetFit(CSPropLossyMetal* prop, double thickness)
 {
+	LossyMetalSetupProfile::Sample sample(LossyMetalSetupProfile::FitLookup);
 	double sigma = prop->GetConductivity();
 	double rq = (prop->GetRoughnessModel()==CSPropLossyMetal::ROUGHNESS_GRADIENT) ? prop->GetRq() : 0;
 	if (rq<0)
@@ -145,7 +152,11 @@ int Operator_Ext_LossyMetal::GetFit(CSPropLossyMetal* prop, double thickness)
 	if (it!=m_FitIndex.end())
 		return it->second;
 
-	SurfaceImpedance::Fit fit = SurfaceImpedance::FitFace(sigma, t, rq, m_f_max, m_w_k);
+	SurfaceImpedance::Fit fit;
+	{
+		LossyMetalSetupProfile::Sample sample(LossyMetalSetupProfile::FitSolve);
+		fit = SurfaceImpedance::FitFace(sigma, t, rq, m_f_max, m_w_k);
+	}
 	int idx = m_Fits.size();
 	m_Fits.push_back(fit);
 	m_FitThickness.push_back(t);
@@ -155,6 +166,7 @@ int Operator_Ext_LossyMetal::GetFit(CSPropLossyMetal* prop, double thickness)
 
 bool Operator_Ext_LossyMetal::AddContributions(int n, const unsigned int* pos, const double* coord, CSPropLossyMetal* prop, const std::vector<CSPrimitives*>& prims, std::vector<Contribution>& contrib)
 {
+	LossyMetalSetupProfile::Sample sample(LossyMetalSetupProfile::Contributions);
 	int dirs[2] = {(n+1)%3, (n+2)%3};
 	double len = m_Op->GetEdgeLength(n,pos)/m_Op->GetGridDelta(); // drawing units, as all lengths here
 	if (len<=0)
@@ -253,6 +265,7 @@ bool Operator_Ext_LossyMetal::AddContributions(int n, const unsigned int* pos, c
 
 bool Operator_Ext_LossyMetal::BuildExtension()
 {
+	LossyMetalSetupProfile profile(LossyMetalSetupProfile::FromEnvironment());
 	double dT = m_Op->GetTimestep();
 	unsigned int pos[] = {0,0,0};
 	double coord[3];
@@ -283,10 +296,14 @@ bool Operator_Ext_LossyMetal::BuildExtension()
 	{
 		for (pos[1]=0; pos[1]<numLines[1]; ++pos[1])
 		{
-			std::vector<CSPrimitives*> vPrims = m_Op->GetPrimitivesBoundBox(
-				pos[0], pos[1], -1,
-				(CSProperties::PropertyType)(CSProperties::MATERIAL | CSProperties::METAL)
-			);
+			std::vector<CSPrimitives*> vPrims;
+			{
+				LossyMetalSetupProfile::Sample sample(LossyMetalSetupProfile::ColumnCandidates);
+				vPrims = m_Op->GetPrimitivesBoundBox(
+					pos[0], pos[1], -1,
+					(CSProperties::PropertyType)(CSProperties::MATERIAL | CSProperties::METAL)
+				);
+			}
 
 			for (pos[2]=0; pos[2]<numLines[2]; ++pos[2])
 			{
@@ -316,7 +333,11 @@ bool Operator_Ext_LossyMetal::BuildExtension()
 					if (m_Op->GetYeeCoords(n,pos,coord,false)==false)
 						continue;
 
-					CSProperties* prop = m_Op->GetGeometryCSX()->GetPropertyByCoordPriority(coord, vPrims, false, &prim);
+					CSProperties* prop;
+					{
+						LossyMetalSetupProfile::Sample sample(LossyMetalSetupProfile::EdgeProperty);
+						prop = m_Op->GetGeometryCSX()->GetPropertyByCoordPriority(coord, vPrims, false, &prim);
+					}
 					CSPropLossyMetal* lm_prop = dynamic_cast<CSPropLossyMetal*>(prop);
 					if (lm_prop==NULL)
 						continue;
@@ -346,13 +367,17 @@ bool Operator_Ext_LossyMetal::BuildExtension()
 		}
 	}
 	m_LinePrims.clear();
+	profile.FinishPhase("surface_scan");
 
 	if (m_numNoThickness>0)
 		cerr << "Operator_Ext_LossyMetal::BuildExtension: Warning: " << m_numNoThickness << " edges of zero-thickness LossyMetal primitives without a Thickness, fallback to PEC!" << endl;
 
 	size_t numLM = v_pos[0].size();
 	if (numLM==0)
+	{
+		profile.Complete();
 		return false;
+	}
 
 	m_Order = m_NumBranches;
 	m_volt_ADE_On = new bool[m_Order];
@@ -382,6 +407,7 @@ bool Operator_Ext_LossyMetal::BuildExtension()
 		}
 	}
 
+	profile.FinishPhase("ade_allocation");
 	std::vector<double> a(m_Order);
 	for (size_t i=0; i<numLM; ++i)
 	{
@@ -435,6 +461,7 @@ bool Operator_Ext_LossyMetal::BuildExtension()
 		}
 	}
 
+	profile.FinishPhase("ade_coefficients");
 	// the tangential H inside the body, between surface and PEC edges, would add the inductance of
 	// a half cell in parallel to the surface admittance: switch it off
 	for (pos[0]=0; pos[0]<numLines[0]-1; ++pos[0])
@@ -459,6 +486,7 @@ bool Operator_Ext_LossyMetal::BuildExtension()
 					++m_numH;
 				}
 
+	profile.FinishPhase("interior_h_mask");
 	cout << "Operator_Ext_LossyMetal: " << m_Fits.size() << " surface impedance fit(s), " << m_Order << " branches, f_max " << m_f_max/1e9 << " GHz:" << endl;
 	for (size_t f=0; f<m_Fits.size(); ++f)
 	{
@@ -473,6 +501,8 @@ bool Operator_Ext_LossyMetal::BuildExtension()
 			cout << ", referenced " << fit.d_ref*1e6 << " um outside the mean surface";
 		cout << endl;
 	}
+	profile.FinishPhase("fit_report");
+	profile.Complete();
 	return true;
 }
 

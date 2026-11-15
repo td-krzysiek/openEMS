@@ -16,6 +16,9 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Added
 
+- Optional `OPENEMS_PROFILE_LOSSY_SETUP=1` reports LossyMetal setup phases,
+  query counts and sampled inclusive query timings without per-cell logging.
+
 - Optional `--profile-setup` (`OPENEMS_PROFILE_SETUP=1`) records coarse host-wall
   setup phases as JSON; the existing speed benchmark preserves the hierarchy.
 
