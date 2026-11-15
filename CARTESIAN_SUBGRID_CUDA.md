@@ -2,9 +2,9 @@
 
 This is a build/reproduction note. The canonical status is
 [CARTESIAN_SUBGRID_CHECKLIST.md](CARTESIAN_SUBGRID_CHECKLIST.md), not this file.
-The current physical qualification is local Metal. Preparing CUDA code and
-host-only harness tests does **not** qualify NVIDIA hardware or multi-device
-subgridding.
+Physical Metal controls and the separately pinned single-RTX3080 lane below
+have scoped evidence. Merely preparing CUDA code/host harness tests does not
+qualify another source revision, NVIDIA device or multi-device subgridding.
 
 ## Same HIP backend, NVIDIA compiler/runtime
 
@@ -79,3 +79,70 @@ Record device memory and completed-batch times separately from setup/DFT.
 Only after those numerical gates pass should a representative antenna or
 multi-GPU experiment be planned. Existing upstream CUDA/HIP support alone
 does not complete these subgrid gates.
+
+
+## Qualified single RTX3080 lane
+
+Numerical source: `02b94efcd1f5b2546569f45e60a246285ea3041b`, with only the
+explicit `<cstdint>` test-header correction later committed as `a846ebf`.
+The collected source inventory independently matches those public git blobs;
+no numerical engine difference is allowed. Matching CSXCAD headers/library and
+fresh Python bindings use `cc37cb4ee0ef20c6794acc3361b5f56953eb5189`.
+
+Existing HIP is built into the core using NVIDIA nvcc 12.6.85, HIP NVIDIA headers,
+Metal/plugins OFF, SM86/89 compiled and `--fmad=false`. Physical execution uses
+one RTX3080 (SM86), UUID `GPU-d9f1434a-b4b4-c89e-658f-83f93d632df0`.
+Compiling SM89 does not qualify an RTX4090. The tests verify the actual HIP
+backend and loaded libraries rather than accepting CPU/reference fallback.
+
+All eleven original `--include-pml` harness gates pass across four immutable
+attempts: CTest 21/21, physical fields/ports/DC, Python 14/14, native fields/ports,
+core/native PML, public vacuum PEC dipole/host NF2FF and three ordinary-engine
+groups. The radiation gate includes identity/local meshes, complex near/far
+fields, two closed surfaces, accepted/radiated/sphere power, source contacts,
+TD/FD and wrong-half-step/missing-face negatives. Fields, port signs and native
+input checks retain their original tolerances.
+
+| Quantity | Maximum measured error | Gate |
+| --- | ---: | ---: |
+| Physical full fields vs double CPU | 8.975e-6 | 2e-4 |
+| Physical fields vs independent FP32 oracle | 0 | 2e-6 |
+| Strong-DC fields | 1.761e-5 | 2e-4 |
+| Native port complex impedance | 1.004e-5 ohm | 0.01 ohm |
+| Dipole complex impedance | 4.927e-6 ohm | 0.01 ohm |
+| Dipole normalized field/power comparisons | 4.914e-7 | 2e-4 |
+
+Attempts r01/r02 hit external 20-minute deadlines, without OOM. Attempt r03
+passed ordinary engines but the radiation child exceeded our 1100-second
+concurrent orchestration limit. These remain incomplete/timeout records, not
+relabeled completed runs. The final attempt verified their terminal proofs and
+reran only the unchanged missing radiation gate, alone with 4 CPU / 3 GiB host RAM
+and the original harness 3600-second per-gate limit (3700s outer bound). It
+completed in 1208.93 seconds. All eleven gate labels and final source, cache,
+test-binary, orchestrator and actual loaded-library identities pass. No numerical
+failure was retried as though it were a timeout.
+
+The shared-card test was explicitly authorized alongside an active antenna;
+its resource sampler could stop only its own container. No active model,
+production runtime, lease or unrelated process was changed. These concurrent
+timings are not an uncontended CUDA throughput benchmark.
+
+Loaded hashes:
+
+- Core: `6f711fd7afd10ea6c758cfee09ae4f5f3fefaa2aaa6e8690e4bd1ba87fdcac9a`.
+- NF2FF: `22cf200dde5d2ca350d3d045c424bcd256e3be74df25146806989cd0adebaad9`.
+- CSXCAD: `7482cb5a7a86e447ee4b960224902e8e0ec819e4747a205af48e225f6266275b`.
+
+Contributor evidence is under
+`experiments/openems-cartesian-local-subgrid-20261112/cuda/`: final
+`qualification.json`, four manifests/logs, source/runtime inventories and a
+4.38 MB compact archive; raw TD faces remain in the isolated remote test root.
+Earlier build failures are retained: mismatched old CSXCAD headers, then the
+GCC test include. Neither is presented as an upstream numerical defect.
+
+This qualifies only the stated pinned single-device lossless/PEC field, source,
+one-edge port, PML and dipole scope. The later native polygon and larger-interface
+increments need fresh physical CUDA acceptance. Plugin mode, RTX4090 hardware,
+lossy/surface/ADE conductors, representative PCB accuracy and multiple devices
+remain open. Existing production multi-GPU execution does not qualify this
+compact subgrid path.

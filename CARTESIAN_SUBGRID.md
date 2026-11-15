@@ -11,6 +11,8 @@ angular interpolation or a slab copied from cylindrical multi-grid.
 
 It contains a **serial CPU numerical reference** and scoped shared device
 operations, qualified locally on the reference backend and physical Metal.
+A separately pinned [single RTX3080 lane](CARTESIAN_SUBGRID_CUDA.md#qualified-single-rtx3080-lane)
+also has scoped evidence; it predates the later CAD/larger-interface changes.
 Both are for small validation models. This is not yet a replacement for the
 production antenna engine. One-edge device RF ports, scoped device PML and
 public vacuum PEC dipole controls are available; general accuracy/scalability

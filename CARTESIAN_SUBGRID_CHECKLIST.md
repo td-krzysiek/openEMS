@@ -37,7 +37,8 @@ separate tasks; a passing test on one engine does not qualify another engine.
   A narrower native device field/source path has reference-backend and physical
   Metal controls. One-edge device RF port controls are separately qualified;
   the reproduced DC stress is corrected in scoped controls below. Scoped device PML and the public vacuum PEC dipole now have separate
-  reference/physical Metal evidence; losses, PCB antenna and scalability remain open.
+  reference/physical Metal evidence; a separately pinned RTX3080 lane is recorded
+  below. Losses, PCB antenna and scalability remain open.
 - The new feature concerns Cartesian coordinates. Preserve the existing
   cylindrical modes and test them for regressions; implementing a new
   cylindrical subgrid is outside this scope.
@@ -273,8 +274,9 @@ Partial U01/U02/U03/U05/U06: shared portable point operations now run compact
 lossless E/H, banded interface solves and ordered sources through the existing
 backend. Independent FP32 full-field and 20k-step controls plus native E/H/FD
 reconstruction pass on the reference backend and physical Metal (Apple M5 Pro).
-HIP compiles the same operation definitions but has no physical qualification
-here. The subsequent [device resistor scope](CARTESIAN_SUBGRID.md#scoped-device-resistor-ports)
+A separately pinned [single RTX3080 CUDA lane](CARTESIAN_SUBGRID_CUDA.md#qualified-single-rtx3080-lane)
+now passes all eleven original gates. It predates the later CAD/larger-interface
+increments and does not qualify those source changes, other devices or multiple GPUs. The subsequent [device resistor scope](CARTESIAN_SUBGRID.md#scoped-device-resistor-ports)
 adds native RF ports, midpoint damping and compensated source/loss ledgers.
 The retained strong-DC failure of `0b255a8` is corrected by the separately
 qualified [curl/timestep precision increment](CARTESIAN_SUBGRID.md#device-curl-and-timestep-precision-correction),
@@ -404,3 +406,4 @@ numerical change invalidates their prior qualification.
 | 2026-11-15 | Further partial C01/C03/C05: structured edge addressing | This PR, address-index increment (parent `f5aedf2`) | [Address/oracle regression](tests/test_cartesian_subgrid_edge_index.cpp), [build/evidence/benchmarks](CARTESIAN_SUBGRID.md#structured-independent-edge-address-index). CTest 21/21, Python14/14, standalone ASan/UBSan and full prior CPU/reference/Metal matrix; 11,255 numerical arrays unchanged. Seven interleaved core cases show setup 43–51% shorter; update unchanged. Structured field kernels, larger guards, PCB/lossy, physical CUDA and multi-device remain open. |
 | 2026-11-15 | Extended partial G01/G03/G04/G06: native planar/extruded PEC CAD | This PR, polygon increment (parent `a846ebf`) | [Native fields/contacts/alignment/shape controls](python/Tests/Cartesian_Subgrid_Polygons.py), [build, results and limits](CARTESIAN_SUBGRID.md#native-planar-and-extruded-pec-polygons). All17 qualification stages pass; CTest21/21, Python14/14, full previous CPU/reference/Metal and ordinary matrix. Eleven prior core/NF2FF prefixes and11,255 numerical arrays retained. No polygonal material, transform, lossy, representative PCB or physical CUDA/multi-device qualification for this increment. |
 | 2026-11-15 | Further partial C02/U02/U05/U06: bounded larger interfaces | This PR, larger-interface increment (parent `3a502cc`) | [Resource-policy and CPU controls](tests/test_cartesian_subgrid_factor.cpp), [three-orientation/device source controls](tests/test_cartesian_subgrid_device_large.cpp), [runtime and exact limits](CARTESIAN_SUBGRID.md#bounded-larger-interface-factors). All 18 stages pass, CTest 22/22 and Python 14/14; twelve prior prefixes and 11,255 arrays unchanged. Actual 16,384-edge CPU/Metal controls pass, 16,386-edge construction rejects. No new arithmetic, CUDA, lossy, structured-field or representative antenna qualification. |
+| 2026-11-15 | Extended partial U02/U04/U05/U06: single physical CUDA | Numerical source `02b94ef` + test-only `a846ebf` include | [Pinned source/build, errors and limits](CARTESIAN_SUBGRID_CUDA.md#qualified-single-rtx3080-lane). All eleven original gates pass across four immutable bounded attempts: CTest 21/21, Python 14/14, fields/ports/DC, native ports/PML, public dipole/NF2FF and ordinary controls. Earlier timeouts preserved; final identities pass. RTX3080 SM86 only, built-in HIP/nvcc, no hidden fallback. Later CAD/larger-interface CUDA, RTX4090 hardware, plugin mode, losses/PCB and multi-device remain open. |
