@@ -2,6 +2,7 @@
 #include "FDTD/subgrid_device_precision.h"
 #include "FDTD/kernels/subgrid_update.h"
 #include <cmath>
+#include <cstdint>
 #include <iostream>
 #include <limits>
 #include <stdexcept>
