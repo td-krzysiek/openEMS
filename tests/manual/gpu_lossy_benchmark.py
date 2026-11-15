@@ -29,6 +29,7 @@ def main():
     p.add_argument('--steps', type=int, default=1536)
     p.add_argument('--repeats', type=int, default=4)
     p.add_argument('--devices', default='0')
+    p.add_argument('--cuts', help='optional fixed X cuts, applied identically to both builds')
     p.add_argument('--fusion-only', action='store_true')
     p.add_argument('--baseline-fusion', choices=['off', 'apply', 'all'], default='off')
     p.add_argument('--one-step', action='store_true', help='disable temporal blocking, whole-step fusion and automatic trials on both builds')
@@ -68,7 +69,7 @@ def main():
         variants += [('raw', args.binary, 'off', 'raw'), ('raw-all', args.binary, 'all', 'raw')]
     result = dict(status='RUNNING', synthetic=True, input_sha256=hashlib.sha256(raw).hexdigest(),
                   shape=shape, steps=args.steps, devices=args.devices, runs=[],
-                  baseline_fusion=args.baseline_fusion, one_step=args.one_step)
+                  baseline_fusion=args.baseline_fusion, one_step=args.one_step, cuts=args.cuts)
     reference = None
     for repeat in range(args.repeats):
         # Alternate forward/reverse order to reduce systematic thermal/order bias.
@@ -89,6 +90,9 @@ def main():
                 command += ['--gpu-devices='+args.devices]
             else:
                 command += ['--gpu-device='+args.devices]
+            if args.cuts:
+                assert ',' in args.devices, 'cuts require multiple devices'
+                command += ['--gpu-domain-cuts='+args.cuts]
             started = time.monotonic()
             with (folder/'solver.log').open('x') as log:
                 run = subprocess.run(command, env=env, cwd=folder, stdout=log, stderr=subprocess.STDOUT, timeout=900)
