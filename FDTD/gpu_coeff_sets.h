@@ -49,4 +49,7 @@ struct GPU_CoeffSets
   */
 OPENEMS_EXPORT bool GPU_FindSets(size_t count, unsigned int width, const std::function<void(size_t, float*)>& get, GPU_CoeffSets& sets);
 
+//! Experimental main-update storage policy only; PML/other tables are unaffected.
+OPENEMS_EXPORT bool GPU_UseRawMainCoefficients(const char* value);
+
 #endif // GPU_COEFF_SETS_H

@@ -16,6 +16,10 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Added
 
+- Experimental `OPENEMS_GPU_MAIN_COEFF=raw` bypasses main-update coefficient
+  compression on HIP/Metal for measured storage-policy comparisons. The default
+  remains `auto`; PML and material coefficient packing are unchanged.
+
 - Experimental opt-in GPU LossyMetal branch fusion
   (`OPENEMS_GPU_LOSSY_FUSION=apply|all`) reduces repeated field accesses while
   retaining all eight branches. Default off; HIP and Metal are supported.
