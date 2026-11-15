@@ -15,6 +15,7 @@
 *	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include "tools/setup_profile.h"
 #include "openems.h"
 #include <iomanip>
 #include <iostream>
@@ -88,6 +89,7 @@ openEMS::openEMS()
 	DebugOp = false;
 	m_debugCSX = false;
 	m_debugBox = m_debugPEC = m_no_simulation = false;
+	m_profileSetup = false;
 	m_DumpStats = false;
 	m_exactEndCriteria = false;
 
@@ -311,6 +313,11 @@ void openEMS::collectCommandLineArguments()
 			),
 			"Force use n threads for multithreaded engine "
 			"(needs: --engine=multithreaded)"
+		)
+		(
+			"profile-setup",
+			po::bool_switch(&m_profileSetup),
+			"Report coarse setup phase host-wall timings as one JSON log record"
 		)
 		(
 			"no-simulation",
@@ -1281,6 +1288,7 @@ ContinuousStructure* openEMS::GetCSX() const
 
 int openEMS::SetupFDTD()
 {
+	SetupProfile profile(m_profileSetup || SetupProfile::FromEnvironment(), cout);
 	// of a previous setup that was not run
 	FreeSimulation();
 
@@ -1300,7 +1308,11 @@ int openEMS::SetupFDTD()
 		cerr << "openEMS::SetupFDTD: Error: CSXCAD is not set!" << endl;
 		return 3;
 	}
-	std::string ec = m_CSX->Update();
+	std::string ec;
+	{
+		SetupProfile::Phase phase("geometry.update");
+		ec = m_CSX->Update();
+	}
 	if (!ec.empty())
 		cerr << ec << endl;
 	if (g_settings.GetVerboseLevel()>2)
@@ -1343,9 +1355,12 @@ int openEMS::SetupFDTD()
 	if (!CylinderCoords)
 		FDTD_Op->AddExtension(new Operator_Ext_TFSF(FDTD_Op));
 
-	if (FDTD_Op->SetGeometryCSX(m_CSX)==false)
 	{
-		return(2);
+		SetupProfile::Phase phase("operator.geometry");
+		if (FDTD_Op->SetGeometryCSX(m_CSX)==false)
+		{
+			return(2);
+		}
 	}
 
 	SetupBoundaryConditions();
@@ -1412,7 +1427,10 @@ int openEMS::SetupFDTD()
 	if (m_debugPEC)
 		debugFlags |= Operator::debugPEC;
 
-	FDTD_Op->CalcECOperator( debugFlags );
+	{
+		SetupProfile::Phase phase("operator");
+		FDTD_Op->CalcECOperator( debugFlags );
+	}
 	/*******************************************************************************/
 
 	//reset flags for material storage, if no dump-box resets it to true, it will be cleaned up...
@@ -1465,12 +1483,14 @@ int openEMS::SetupFDTD()
 	if (m_no_simulation)
 	{
 		// simulation was disabled (to generate debug output only)
+		profile.Complete(true);
 		return 1;
 	}
 
 	//create FDTD engine
 	try
 	{
+		SetupProfile::Phase phase("engine");
 		FDTD_Eng = FDTD_Op->CreateEngine();
 	}
 	catch (const std::exception& e)
@@ -1487,9 +1507,12 @@ int openEMS::SetupFDTD()
 	}
 
 	//setup all processing classes
-	if (SetupProcessing()==false)
 	{
-		return 2;
+		SetupProfile::Phase phase("processing");
+		if (SetupProcessing()==false)
+		{
+			return 2;
+		}
 	}
 
 	// Cleanup all unused material storages...
@@ -1507,6 +1530,7 @@ int openEMS::SetupFDTD()
 	timeval setupDoneTime;
 	gettimeofday(&setupDoneTime,NULL);
 	cout << "Setup time: " << CalcDiffTime(setupDoneTime,startTime) << " s" << endl;
+	profile.Complete();
 
 	return 0;
 }

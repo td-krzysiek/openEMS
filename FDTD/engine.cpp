@@ -15,6 +15,7 @@
 *	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include "tools/setup_profile.h"
 #include <stdexcept>
 
 #include "engine.h"
@@ -97,6 +98,7 @@ void Engine::InterpolateFromSubGrid()
 
 void Engine::Init()
 {
+	SetupProfile::Phase setupPhase("engine.fields_and_extensions");
 	numTS = 0;
 	volt_ptr = new ArrayLib::ArrayNIJK<FDTD_FLOAT>("volt", {numLines[0], numLines[1], numLines[2]}, GetFieldLayout());
 	curr_ptr = new ArrayLib::ArrayNIJK<FDTD_FLOAT>("curr", {numLines[0], numLines[1], numLines[2]}, GetFieldLayout());

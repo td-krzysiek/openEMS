@@ -15,6 +15,7 @@
 *	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include "tools/setup_profile.h"
 #include "gpu_cell_model.h"
 #include "cell_model.h"
 
@@ -85,6 +86,7 @@ struct ComboHash
 
 GPU_CellModel::GPU_CellModel(const CellModel& model, const unsigned int lines[3])
 {
+	SetupProfile::Phase setupPhase("gpu.pack_cell_model");
 	for (int a=0; a<3; ++a)
 		numLines[a] = lines[a];
 	const size_t nodes = (size_t)numLines[0]*numLines[1]*numLines[2];

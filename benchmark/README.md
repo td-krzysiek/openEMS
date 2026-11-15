@@ -172,3 +172,51 @@ A pull request that claims a speed-up includes the `compare` table of master
 against the branch, run interleaved on one machine, together with the machine
 line from its header. A speed-up that only shows on a case outside this suite
 is shown with that case in the pull request, not by adding it here.
+
+## Attribute setup time
+
+The solver already prints aggregate setup time. Enable an additional coarse
+phase profile with `openEMS model.xml --profile-setup`, or set
+`OPENEMS_PROFILE_SETUP=1`. This also works through Python
+`FDTD.Run(path, profile_setup=True)` and Matlab
+`RunOpenEMS(path, file, '--profile-setup')`; no model/XML change is needed.
+The command-line flag enables profiling even when the environment is `0`.
+
+The benchmark retains the optional record in each run's `setup_profile` field:
+
+```bash
+python3 benchmark/bench.py run --engine multithreaded,gpu --cases pml,inhomogeneous \
+    --size S --threads 4 --repeat 7 \
+    --variant off:OPENEMS_PROFILE_SETUP=0 --variant on:OPENEMS_PROFILE_SETUP=1
+```
+
+One `Setup profile: {...}` JSON log line is written when `SetupFDTD()` exits.
+Schema `openems.setup-profile.v1` contains `status` (`complete` or `incomplete`),
+`scope` (`setup` or `operator-only` for `--no-simulation`), total `seconds`, and
+an ordered `phases` array. Each phase has `name`, `detail`, `parent` (index of
+its enclosing phase, or -1) and `seconds`. Repeated names are separate calls,
+including cylindrical multigrid/retries. Extension names appear in `detail`.
+`complete` denotes the existing successful setup return path; this diagnostic
+does not introduce new numerical validation or alter existing error handling.
+
+Timings use a monotonic host clock and are **inclusive**: do not sum a parent
+with its children. Stages cover geometry update/import, operator storage,
+materials, timestep, coefficients, PEC, lumped elements, each operator extension,
+engine construction, cell-model analysis/build, GPU packing/backend initialization,
+and processing. Uninstrumented work remains in the enclosing total; the phases
+are not a partition of every setup instruction. XML parsing before `SetupFDTD()`
+and FDTD stepping are outside the profile. The existing benchmark `setup_s`
+(process wall time minus FDTD time) therefore has a different scope.
+
+There are no per-cell/per-step timer calls and no new device synchronization.
+GPU backend initialization is a host call interval, including any blocking the
+backend already performs, **not** a GPU-event measurement or proof that all
+asynchronous work finished. The disabled path performs no clock reads or log
+writes. Compare interleaved repeats and their spread before attributing a
+small timing difference to profiling; shared machine load and caching matter.
+
+Parser regression tests (standard library only):
+
+```bash
+python3 -m unittest discover -s benchmark -p 'test_setup_profile.py' -v
+```
