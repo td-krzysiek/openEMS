@@ -18,6 +18,7 @@ set(TESTS
   test_cartesian_subgrid_factor
   test_cartesian_subgrid_bound
   test_cartesian_subgrid_curl
+  test_cartesian_subgrid_edge_index
   test_cartesian_subgrid_device
   test_cartesian_subgrid_device_ports
   test_cartesian_subgrid_device_pml

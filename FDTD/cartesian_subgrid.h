@@ -3,11 +3,13 @@
 #define CARTESIAN_SUBGRID_H
 
 #include "subgrid_curl.h"
+#include "subgrid_edge_index.h"
 #include "gpu_cartesiansubgrid.h"
 #include <array>
 #include <cstddef>
 #include <functional>
 #include <map>
+#include <optional>
 #include <set>
 #include <utility>
 #include <vector>
@@ -250,7 +252,7 @@ class CartesianSubgrid
 	std::vector<Medium> m_Media;
 	std::vector<std::size_t> m_RootLeaves;
 	std::vector<Index> m_RootRatios;
-	std::map<Edge, std::size_t> m_EdgeMap;
+	std::optional<CartesianSubgridEdgeIndex> m_EdgeIndex;
 	std::set<Edge> m_PECEdges;
 	std::vector<unsigned char> m_PECFaces;
 	std::vector<Edge> m_Edges;

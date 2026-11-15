@@ -58,7 +58,8 @@ fdtd.AddCartesianSubgrid(box=[7, 2, 2, 10, 6, 6], ratio=[4, 1, 2])
 
 `AddCartesianSubgrid` appends; `SetCartesianSubgrids([...])` replaces the list.
 Prototype guards currently allow 64 regions, factors 1/2/4/8/16 per axis,
-one million base cells, one million total leaves, and 1024 coupled degrees of
+1024 base intervals per axis, one million base cells, one million total leaves,
+and 1024 coupled degrees of
 freedom per interface factor. These are implementation guards, not
 universal limits of subgridding. A shared timestep is retained.
 
@@ -224,8 +225,10 @@ preserved and remains an expected-negative mesh control.
 - [ ] **C03** Reduce reference-only storage overhead, with regression coverage
   for any change to magnetic-face histories or numerical quadrature.
   Partial: banded interface factors/workspace and exact translated curl
-  patterns now reduce setup/steady storage. Topology maps, duplicated magnetic
-  quadrature histories and field precision remain unchanged. The pattern
+  patterns now reduce setup/steady storage. Independent-edge addressing now has the separately qualified
+  [structured slot index](CARTESIAN_SUBGRID.md#structured-independent-edge-address-index);
+  other per-leaf topology, duplicated magnetic quadrature histories and field
+  precision remain unchanged. The pattern
   representation is not a structured-interior kernel; CPU updates are slower
   in the scoped memory benchmark. See [exact stencil evidence](CARTESIAN_SUBGRID.md#exact-translated-curl-stencils).
 - [ ] **C04** Integrate the regular CPU execution options, threading and SIMD
@@ -337,8 +340,8 @@ their own integration checks; master parity does not automatically qualify them.
 | Pinned-master Cartesian parity | Full applicable feature/engine matrix and regression suites | Open |
 | Production multi-GPU subgridding | Relevant single-device physics qualified, then D01–D05 | Open |
 
-Next implementation milestone: structured interiors and further interface
-scaling, with measured CPU cost before one GPU. Exact banded interface factors
+Next implementation milestones: further interface scaling and required PCB
+CAD/material mapping, while structured interior field kernels remain open. Exact banded interface factors
 and the one-solve inverse bound have scoped CPU evidence. Exact translated
 curl patterns reduce memory but increase measured CPU update time; current
 allocation guards remain. The public PEC dipole
@@ -384,4 +387,6 @@ numerical change invalidates their prior qualification.
 
 | 2026-11-15 | Extended partial B02/B03/B04/B05 and U04/U05/U06: device PML and public dipole | This PR, paired device PML increment (parent `ca6f755`) | [Core PML controls](tests/test_cartesian_subgrid_device_pml.cpp), [native PML](python/Tests/Cartesian_Subgrid_Device_PML.py), [native dipole](python/Tests/Cartesian_Subgrid_Device_Radiation.py), [exact build/scope](CARTESIAN_SUBGRID.md#scoped-device-pml-and-dipole-radiation). CTest19/19, Python14/14, long reference/Metal packet/corners, native18 PML/four dipole comparisons, two frozen CPU dipoles unchanged, ordinary3/3. CUDA harness/guards are prepared, not compiled or physically qualified on NVIDIA. No representative PCB, losses/conductor, structured or multi-device qualification. |
 
-| 2026-11-15 | Further partial C03/C05 and U05/U06: exact device curl patterns | This PR, device-pattern increment (parent `bb2edbb`) | [Bit-preserving metadata/gather controls](tests/test_cartesian_subgrid_device_patterns.cpp), [qualification and measured costs](CARTESIAN_SUBGRID.md#exact-device-curl-patterns). CTest20/20, Python14/14, full prior CPU/reference/Metal matrix;11,255 prior numerical arrays unchanged. Small local24 batch32.6% shorter and accounted device memory77.2% lower; process RSS3.6% lower. Expanded host upload, structured kernels/guards, PCB/lossy and physical CUDA/multi-device remain open. |
+| 2026-11-15 | Further partial C03/C05 and U05/U06: exact device curl patterns | This PR, device-pattern increment (parent `bb2edbb`) | [Bit-preserving metadata/gather controls](tests/test_cartesian_subgrid_device_patterns.cpp), [qualification and measured costs](CARTESIAN_SUBGRID.md#exact-device-curl-patterns). CTest20/20, Python14/14, full prior CPU/reference/Metal matrix; 11,255 prior numerical arrays unchanged. Small local24 batch32.6% shorter and accounted device memory77.2% lower; process RSS3.6% lower. Expanded host upload, structured kernels/guards, PCB/lossy and physical CUDA/multi-device remain open. |
+
+| 2026-11-15 | Further partial C01/C03/C05: structured edge addressing | This PR, address-index increment (parent `f5aedf2`) | [Address/oracle regression](tests/test_cartesian_subgrid_edge_index.cpp), [build/evidence/benchmarks](CARTESIAN_SUBGRID.md#structured-independent-edge-address-index). CTest 21/21, Python14/14, standalone ASan/UBSan and full prior CPU/reference/Metal matrix; 11,255 numerical arrays unchanged. Seven interleaved core cases show setup 43–51% shorter; update unchanged. Structured field kernels, larger guards, PCB/lossy, physical CUDA and multi-device remain open. |

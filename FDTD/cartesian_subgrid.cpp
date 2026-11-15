@@ -241,7 +241,7 @@ CartesianSubgrid::Trace CartesianSubgrid::Restrict(const Edge &edge, bool ignore
 	const Box *box = InterfaceBox(edge);
 	if (!box)
 	{
-		trace.weights.emplace_back(m_EdgeMap.at(edge), 1.);
+		trace.weights.emplace_back(m_EdgeIndex->At(edge), 1.);
 		return trace;
 	}
 	// The coarse hexahedron's tangential edge shape is constant along the
@@ -283,7 +283,7 @@ CartesianSubgrid::Trace CartesianSubgrid::Restrict(const Edge &edge, bool ignore
 				const Edge master = LocalEdge(coarse, edge.axis, i, j);
 				if (!Boundary(master) && !m_PECEdges.count(master))
 				{
-					trace.weights.emplace_back(m_EdgeMap.at(master), weight);
+					trace.weights.emplace_back(m_EdgeIndex->At(master), weight);
 				}
 			}
 		}
@@ -293,6 +293,19 @@ CartesianSubgrid::Trace CartesianSubgrid::Restrict(const Edge &edge, bool ignore
 
 void CartesianSubgrid::Build(const MediumSampler &medium, const PECSelector &pec)
 {
+	std::vector<CartesianSubgridEdgeIndex::Region> addressRegions;
+	if (m_UniformFine)
+	{
+		addressRegions.push_back({{0, 0, 0}, m_Cells, m_Ratio});
+	}
+	else
+	{
+		for (const auto &region : m_Regions)
+		{
+			addressRegions.push_back({region.box.start, region.box.stop, region.ratio});
+		}
+	}
+	m_EdgeIndex.emplace(m_Cells, m_Ratio, addressRegions);
 	const std::size_t roots = std::size_t(m_Cells[0]) * m_Cells[1] * m_Cells[2];
 	m_RootLeaves.resize(roots);
 	m_RootRatios.resize(roots, Index{1, 1, 1});
@@ -390,7 +403,7 @@ void CartesianSubgrid::Build(const MediumSampler &medium, const PECSelector &pec
 				{
 					const Edge edge = LocalEdge(cell, n, i, j);
 					if (!Boundary(edge) && !m_PECEdges.count(edge) && !Hanging(edge) &&
-						m_EdgeMap.emplace(edge, m_Edges.size()).second)
+						m_EdgeIndex->Insert(edge, m_Edges.size()))
 					{
 						m_Edges.push_back(edge);
 					}
@@ -1057,9 +1070,8 @@ std::size_t CartesianSubgrid::StorageBytes() const
 	}
 	bytes += m_Edges.capacity() * sizeof(Edge) + m_RootRatios.capacity() * sizeof(Index) +
 			 m_Regions.capacity() * sizeof(Region) + m_Media.capacity() * sizeof(Medium);
-	// std::map node overhead is implementation-specific; this is an approximate
-	// accounting estimate, not a measurement of allocator or process RSS.
-	bytes += m_EdgeMap.size() * (sizeof(Edge) + sizeof(std::size_t) + 4 * sizeof(void *));
+	// Structured address buffers are counted by allocated capacity, not a tree-node estimate.
+	bytes += m_EdgeIndex->StorageBytes();
 	bytes += m_PECEdges.size() * (sizeof(Edge) + 4 * sizeof(void *)) + m_PECFaces.capacity();
 	for (const auto *values :
 		 {&m_SqrtMass, &m_SqrtReluctance, &m_Electric, &m_Magnetic, &m_Increment, &m_Curl,

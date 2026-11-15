@@ -1129,7 +1129,7 @@ Qualification on Apple M5 Pro and the explicit reference backend:
   contact controls discriminate failures. Device errors are at most 4.927e-6 ohm
   in Z and 4.914e-7 for the sampled complex near/far-field vectors. All retained
   double CPU arrays are exactly unchanged from the frozen merged-master fixture.
-- CTest19/19, Python unit modules14/14, physical field/port/DC controls,
+- CTest19/19, Python unit modules 14/14, physical field/port/DC controls,
   native fields/ports, CPU base plus six increment groups, two frozen dipoles
   and three ordinary-engine groups pass. Source/runtime identities and eight
   prior frozen prefixes remain unchanged throughout qualification.
@@ -1173,7 +1173,7 @@ input guards check every index/coefficient bit, empty/translated/irregular rows,
 signed-zero residuals and malformed input. The new shared gather is compared
 with the same expanded gather for overwrite and additive updates. All prior
 FP32, double field, port, PML and dipole gates are unchanged. CTest20/20, Python
-unit modules14/14 and the full previous qualification matrix pass. In addition,
+unit modules 14/14 and the full previous qualification matrix pass. In addition,
 11,255 NPZ arrays, HDF5 datasets and time-probe arrays are numerically identical
 to the frozen `bb2edbb` expanded device runtime, including CPU/reference/Metal
 fields, ports, PML and dipole radiation. Nine prior prefixes remain unchanged.
@@ -1213,6 +1213,57 @@ Reproduce the existing physical device suite plus
 `ctest --test-dir build -R cartesian_subgrid_device_patterns --output-on-failure`.
 No project PCB/lossy-conductor, physical CUDA or multi-device qualification is
 added by this metadata representation.
+
+### Structured independent-edge address index
+
+The compact core now addresses independent edges through structured base/local
+slot arrays and a base-cell region-owner table instead of a tree. A base-aligned
+edge keeps one common address when seen from either side of a local boundary;
+other edges resolve through at most four adjacent owners. Boundary/PEC/dependent
+slots remain explicitly absent. Original traversal, independent-state numbering,
+coordinates, constraints, mass/curl coefficients and arithmetic order are unchanged.
+Positive observation lookup is const and allocates nothing. The explicit
+`uniformFine` numerical control uses one internal full-domain address mask,
+not only the user's local boxes.
+
+Eight tree-oracle address fixtures cover all leaf edges, duplicate/sparse/missing
+keys, forward/reverse lookup, independent ratios/regions, ratio 16, 64 regions
+and global uniformFine 222/412. The standalone core and address test also pass
+ASan/UBSan. CTest 21/21, Python unit modules 14/14 and the previous full native
+CPU/reference/physical Metal port/PML/dipole/ordinary-engine matrix pass.
+All 11,255 sampled numerical arrays remain exactly equal to frozen `f5aedf2`,
+including time probes and complex port/radiation values. Ten prior runtime
+prefixes remain unchanged.
+
+Three interleaved standalone CPU pairs per fixture, with each executable built
+from its matching source/header snapshot:
+
+| Case | Setup before/after [s] | Accounted before/after [MiB] | Peak RSS before/after [MiB] |
+|---|---:|---:|---:|
+| Uniform16 |0.0118/0.0058|2.45/1.90|4.97/4.36|
+| Local24 |0.0888/0.0433|17.05/13.31|20.59/18.14|
+| Strip512 |0.3097/0.1635|51.18/39.45|62.39/50.14|
+
+Across all seven fixtures, setup is about 43–51% shorter; update time is
+essentially unchanged and sampled fields/CFL are exactly equal. Buffer
+accounting uses actual structured capacities, while the old tree accounting
+was approximate; process RSS is recorded separately. These are standalone-core
+measurements, not ordinary-engine, native-antenna or GPU speed claims.
+Reproduce with [benchmark/subgrid_compare.py](benchmark/subgrid_compare.py).
+Changing a private Grid member changes its C++ object layout: rebuild C++
+callers with matching headers, and never compare shared libraries by relinking
+an old object compiled for the other layout.
+
+Configure-time parent `f5aedf2`; exact source/runtime inventories, sanitizers,
+interleaved benchmark and old-array comparison are in contributor archive
+`experiments/openems-cartesian-local-subgrid-20261112/edge-index/`.
+Frozen prefix `output/openems-subgrid-edge-index-20261115/install`:
+core SHA256 `b73b6824b641ddffcd805acd32684bce0393ab9df33dea7009d86fefd0bcdc5b`;
+nf2ff `63c8e91a7503371485496d9f01c5d9da4dfc6e538d4c0fd35a2f7cfe00a44908`.
+The new [address regression](tests/test_cartesian_subgrid_edge_index.cpp) runs
+with the existing suite. This is an address-storage increment, not structured
+interior field kernels, larger allocation guards, general CAD/losses, physical
+CUDA or multi-device qualification.
 
 ## Tests and observed accuracy
 

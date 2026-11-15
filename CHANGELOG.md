@@ -68,6 +68,11 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Changed
 
+- Experimental Cartesian subgrid independent-edge addressing uses structured
+  base/local slots instead of a tree. State numbering and numerical results
+  remain unchanged in scoped controls; measured small-core setup and memory
+  improve. Rebuild C++ callers with matching headers after the object-layout change.
+
 - Experimental compact subgrid GPU execution shares exact translated curl
   patterns, reducing device metadata without changing coefficient arithmetic
   or field histories. Scoped Metal memory/time controls retain unchanged
