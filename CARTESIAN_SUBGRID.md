@@ -584,8 +584,9 @@ Observed 10 GHz amplitude returns are approximately 7.41e-5 (normal),
 The local-refined normal control gives 7.42e-5. The larger graded-grid return
 remains visible; no claim of reflectionless discretization is made. These
 small 10 GHz controls do not qualify a 24 GHz antenna. Broad/near-cutoff/grazing
-spectra, general material traversals into PML, NF2FF, lossy conductors and
-GPU/multi-device subgridding remain open.
+spectra and general material traversals into PML remain open. The later
+dipole increment below separately qualifies a scoped NF2FF workflow;
+lossy conductors and GPU/multi-device subgridding remain open.
 
 Qualification build: macOS/arm64 Release, source parent `eaa1a31` plus this
 increment, with isolated CPU-only prefix. The actual loaded core SHA256 is
@@ -600,6 +601,109 @@ The native ordinary CPU/cylindrical controls also pass (2/2 groups).
 Matlab PML serialization test source is present, but no local interpreter was
 available, so it was not executed. No device execution or performance result
 is claimed by this build.
+
+### Scoped PEC dipole radiation
+
+`python/Tests/Cartesian_Subgrid_Radiation.py` qualifies the existing serial
+`engine=basic` path for a **1 GHz solid rectangular PEC dipole in vacuum**.
+This increment adds a regression and qualification evidence; it changes no
+numerical engine or NF2FF algorithm. It is not the project's 24 GHz PCB,
+a dielectric/lossy antenna qualification, or a speedup result.
+
+The two 20 × 20 × 60 mm PEC arms occupy Z −65…−5 and +5…+65 mm.
+One 50-ohm source/resistor occupies the independent local Z edge across the
+10 mm gap. An independent native-XML audit checks both finite terminal
+contacts, identical source/resistor/voltage spans, current-plane position,
+direction and signs. A broken contact must fail that audit. Passive arm
+currents use symmetric dual Z planes; their actual positions are recorded
+per mesh and are not compared across different physical observation planes.
+
+The refinement box is `[-30,-30,-75,30,30,75]` mm with ratio `[2,2,1]`.
+The base X/Y spacing is 10 mm; the accepted interior Z spacing is 5 mm,
+except for the preserved single 10 mm port gap. A matching tensor grid
+extends the local 5 mm X/Y lines across the domain. A finer-interior control
+also refines the non-PML transverse air. All controls preserve geometry,
+port cells, timestep and physical PML inner boundary. This is a finite mesh
+sensitivity check, not asymptotic convergence for arbitrary antenna models.
+
+Inner/outer closed NF2FF boxes are ±80/±100 mm in X/Y and ±85/±105 mm in Z.
+All six E/H faces and their node-interpolation neighbours remain in
+homogeneous unrefined air, outside the entire local box and inside PML.
+Actual HDF5 meshes, face coverage, frequencies and finite excited fields are
+audited. A missing-face negative control must fail before postprocessing.
+No mirrors, refinement-crossing surfaces or material-crossing surfaces are
+qualified. The test compares two enclosures, native FD and TD NF2FF,
+sphere-integrated far fields and surface flux, complex near fields,
+directivity, realized gain, accepted/radiated power and passive arm symmetry.
+The analytical thin-wire dipole pattern is a physical sanity check for these
+finite rectangular bars, not their exact solution.
+
+DC-free Gaussian excitation is sampled at 0.9/1.0/1.1 GHz with a common
+5 ps step, over 20 ns and a 30 ns temporal control. The intentionally tiny
+end criterion forces fixed duration; maximum-step warnings remain visible.
+DFTs use the probes' actual timestamps, including the H half-step. Adding
+another half-step causes about 1.57% error and must be detected. The maximum
+FD/TD probe error is 0.047%; complex-vector NF2FF error is 0.0376% and
+radiated-power error 0.0356%. Near-zero Ephi is normalized by the total or
+co-polar field peak, not by its own tiny magnitude.
+
+Observed maxima over the three frequencies and sampled angles:
+
+| Comparison | Complex Z difference | Complex Gamma difference | Complex Etheta far-field error | Common-point E/H error |
+|---|---:|---:|---:|---:|
+| Compact tensor / matched ordinary Yee, PML10 | 0.00860 ohm | 5.57e-5 | 0.00560% | 0.00556% |
+| Local / matching tensor | 0.235 ohm | 0.00232 | 0.249% | 1.43% |
+| Local / finer-interior control | 0.555 ohm | 0.00292 | 0.347% | 1.90% |
+| Local 20 / 30 ns | 2.73e-5 ohm | 2.29e-7 | 1.94e-5% | 3.82e-5% |
+
+Fields are complex and normalized to incident port voltage. Both Ephi and
+Etheta comparisons use the reference Etheta peak; relative errors near a
+pattern null are not used. Local/tensor limits are 0.5 ohm, 0.005 in Gamma
+and 2% in near/far fields, directivity and realized gain. The finer-interior
+limits are 2 ohm, 0.02 and 5%; the tighter ordinary-Yee and temporal gates
+are explicit in the test source. None was loosened after failed trials.
+At 1 GHz the accepted local port is approximately `69.2296+j6.3180 ohm`.
+Its inner-surface radiated/accepted-power ratio is 0.99697…0.99719 across
+the sampled band (outer surface 0.99724…0.99795); this is numerical lossless
+power closure, not a lossy antenna efficiency measurement. The realized-gain
+local/finer-reference difference is below 0.466%. Pulse spectra are
+consistently normalized; no absolute CW-watt claim is made.
+
+Two failures are retained in the local evidence archive. The exploratory
+near-zero Ephi normalization failure was a test error. The first formal
+candidate used 10 mm interior Z: despite local/tensor agreement, its finer
+reference changed Z by 3.9186 ohm and Gamma by 0.02643, failing the original
+2-ohm/0.02 gates. A controlled Z-only refinement reduced this to the accepted
+0.555 ohm/0.00292. The public test keeps the old coarse-Z case as an expected
+negative under the same gates. This is mesh underresolution, not an
+established upstream engine defect. PML6/PML10 controls keep the same inner
+boundary and demonstrate absorber sensitivity of the ordinary-Yee comparison;
+the two solvers use different PML discretizations.
+
+Reproduce with bindings/libraries built from this branch:
+
+```sh
+python3 python/Tests/run_testsuite.py --keep --verbose Cartesian_Subgrid_Radiation
+```
+
+Ten cases include the expected-negative coarse-Z case. Actual qualification
+uses an isolated macOS/arm64 Release CPU build from numerical source
+`55fe3e2bf4be8807f9d136e66ac0e94e847a9d08`, plus this Python test.
+Loaded core SHA256:
+`e10e2a95b9508c64b2763c0f82a61dfaf5351293a8c025305d72dc0b16913f31`;
+loaded nf2ff SHA256:
+`41cfa2d3d34a91fa3e4ace6b0200fd349c88debeb5f64121235b526db9c64fda`;
+CSXCAD SHA256:
+`f1485025adfe48c70aa8664db2dc34a0abdf55834620b7536d63e77cdd6da9f0`.
+Before/after inventories identify the actual test source and check both frozen
+earlier runtimes unchanged; embedded version text identifies the configure-time
+parent. Raw local evidence is retained in the contributor's
+`experiments/openems-cartesian-local-subgrid-20261112/pec-radiation/` archive,
+including failed inputs, numerical results, runtime hashes and figures.
+CTest 11/11, Python unit modules 13/13, native subgrid groups 8/8 and ordinary
+engine/field/radiation groups 4/4 pass on this actual build.
+Matlab/Octave remains unexecuted. General CAD/ports/surfaces, the project array,
+losses, device execution, resource savings and production adoption remain open.
 
 ## Tests and observed accuracy
 
@@ -710,8 +814,9 @@ unsupported media/geometries. They also guard field reconstruction at a
 discontinuous-mu interface; the initial priority-order and boundary-roundoff
 failures were in this experimental adapter/core, not established upstream bugs.
 
-Before antenna use: broader material/PEC geometry and interface qualification, absorbing boundaries,
-distributed/modal port and source qualification and broader scattering tests.
+Beyond the scoped vacuum PEC dipole: broader material/PEC geometry and
+interfaces, distributed/modal ports/sources, absorber spectra, NF2FF placements
+and representative antenna spatial qualification remain necessary.
 Before practical acceleration: structured interior kernels, compact interface
 metadata, memory/RSS and interleaved native benchmarks. Then device kernels,
 domain partitioning and communication can reuse this numerical contract.

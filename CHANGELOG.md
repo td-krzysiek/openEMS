@@ -37,7 +37,11 @@ to what a user notices, in a few lines; the details belong in the commit.
   all six faces through the existing `PML_n` boundary setting, with a checked
   homogeneous unrefined collar and one inner guard cell. Mixed Mur/PML,
   distributed/LC ports and GPU subgridding remain unsupported;
-  `engine=basic` is required. Radiation/NF2FF remains unqualified.
+  `engine=basic` is required. A public vacuum PEC dipole now has scoped CPU
+  port, power, near-field and NF2FF controls against regular grids, including
+  mesh/time/PML sensitivity. Closed NF2FF surfaces and interpolation neighbours
+  stay in homogeneous unrefined air outside refinement and PML. General
+  antenna/radiation workflows, including dielectric PCB models, remain unqualified.
 - **A GPU engine**, `--engine=gpu` (`engine='gpu'` from Python), for AMD and
   NVIDIA GPUs (HIP/CUDA) and on macOS (Metal), with Cartesian and cylindrical
   meshes and the usual extensions. `--gpu-device=N` picks one of the GPUs

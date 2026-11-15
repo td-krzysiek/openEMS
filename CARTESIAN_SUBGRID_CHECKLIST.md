@@ -31,8 +31,9 @@ separate tasks; a passing test on one engine does not qualify another engine.
   outer faces, scoped parallel first-order Mur faces, and classical convolution
   PML on a checked homogeneous unrefined collar. Internal PEC boxes/sheets and axis-aligned cylinders/shells have
   scoped geometry, contact and numerical controls. One-edge positive resistive
-  ports and local U/I integration have short two-port CPU controls.
-  It is not an antenna-ready solver.
+  ports and local U/I integration have short two-port CPU controls. A public
+  vacuum PEC dipole has scoped port, near-field, power and NF2FF CPU evidence;
+  this does not qualify the project PCB antenna or general antenna workflows.
 - The new feature concerns Cartesian coordinates. Preserve the existing
   cylindrical modes and test them for regressions; implementing a new
   cylindrical subgrid is outside this scope.
@@ -166,10 +167,16 @@ material/interface placements remain open.
   refinement outside absorbing layers must be explicit and checked.
 - [ ] **B03** Measure absorbing-boundary reflection over relevant frequencies,
   angles and polarizations, including nonuniform meshes.
-- [ ] **B04** Qualify DFT accumulation, field timing, spatial interpolation and
+- [x] **B04** Qualify DFT accumulation, field timing, spatial interpolation and
   integration weights on NF2FF surfaces sampling the local grid.
-- [ ] **B05** Compare small-antenna input response, near fields, radiation cuts,
+  Scoped serial CPU evidence: closed, node-interpolated E/H surfaces and all
+  interpolation neighbours in homogeneous unrefined air, outside local
+  refinement and PML; no mirror faces or material-crossing surfaces.
+- [x] **B05** Compare small-antenna input response, near fields, radiation cuts,
   power and efficiency with regular fine-grid and analytic controls.
+  Scoped to the public 1 GHz solid rectangular PEC dipole in vacuum, one
+  local-edge 50-ohm port, finite mesh/time/PML sensitivity and thin-wire
+  pattern sanity checks. This is not a PCB or lossy-efficiency qualification.
 
 B02/B03 are **partial**: paired operator/engine Mur extensions support one
 face or two opposite parallel faces, with a checked homogeneous, source-free,
@@ -191,6 +198,11 @@ remain open. The signed-work ledger is not a general passivity proof.
 
 Acceptance: a radiating PEC antenna must work before treating the prototype as
 an antenna solver. Correct E/H file creation alone does not qualify NF2FF.
+The [PEC dipole controls](CARTESIAN_SUBGRID.md#scoped-pec-dipole-radiation)
+now supply this evidence within the stated scope. B04/B05 do not cover
+refinement-crossing or nonhomogeneous NF2FF surfaces, arbitrary CAD/ports,
+the project array or any device backend. A failed coarser-Z candidate is
+preserved and remains an expected-negative mesh control.
 
 ## 5. Scalable representation and CPU execution
 
@@ -282,17 +294,17 @@ their own integration checks; master parity does not automatically qualify them.
 | Milestone | Completion condition | Status |
 |---|---|---|
 | Reference prototype | R01–R08 demonstrated on small CPU controls | Achieved, limited scope |
-| Useful PEC antenna on CPU | Required geometry/mesh/port/PML/NF2FF items, with small-antenna evidence | Open |
+| Useful PEC antenna on CPU | Required geometry/mesh/port/PML/NF2FF items, with small-antenna evidence | Achieved for the public vacuum PEC dipole only; broader antenna workflows open |
 | Useful PEC antenna on one GPU | Previous milestone plus scalable representation and a qualified device backend | Open |
 | Representative lossy antenna | Required conductor support and A01–A07 | Open |
 | Pinned-master Cartesian parity | Full applicable feature/engine matrix and regression suites | Open |
 | Production multi-GPU subgridding | Relevant single-device physics qualified, then D01–D05 | Open |
 
-Next numerical milestone: qualify small-antenna NF2FF with the scoped PML,
-actual PEC contacts and physical ports against regular-grid controls. Then
-implement scalable interiors and one GPU, followed by lossy antenna validation
-and remaining parity work. Absorbing boundaries have scoped implementation
-and CPU evidence; broader scattering and radiation qualification remain open.
+Next implementation milestone: scalable structured interiors and interface
+storage/solves, with measured CPU cost before one GPU. The public PEC dipole
+provides a port/radiation regression for those changes. Dielectric PCB geometry,
+broader scattering/ports/NF2FF placements and representative antenna spatial
+qualification remain open, followed by lossy antenna validation and parity work.
 Nonuniform base geometry is implemented and qualified on small homogeneous
 controls; application compatibility still requires the material, port and
 boundary gates above. These are dependency gates, not a
@@ -316,3 +328,4 @@ numerical change invalidates their prior qualification.
 | 2026-11-13 | B01 scoped PMC/symmetry | This PR, PMC boundary increment (parent `19dd0f1`) | [Core cavity/energy/face controls](tests/test_cartesian_subgrid_boundaries.cpp), [native mirror-domain controls](python/Tests/Cartesian_Subgrid_Boundaries.py), [boundary planes and reconstruction limits](CARTESIAN_SUBGRID.md#outer-pecpmc-boundaries); serial CPU only. PML/NF2FF/GPU remain open. |
 | 2026-11-13 | Partial B02/B03, parallel Mur faces | This PR, paired Mur extension increment (parent `9de9020`) | [Pulse/energy/half-step controls](tests/test_cartesian_subgrid_mur.cpp), [native reflection and scope guards](python/Tests/Cartesian_Subgrid_Mur.py), [contract and limitations](CARTESIAN_SUBGRID.md#first-order-mur-absorbing-faces); serial basic CPU only. Adjacent corners, PML/NF2FF/GPU remain open. |
 | 2026-11-15 | Extended partial B02/B03, classical convolution PML | This PR, paired PML extension increment (parent `eaa1a31`) | [Six-normal/100k-packet/10k-corner/multiple-region controls](tests/test_cartesian_subgrid_pml.cpp), [native normal/TE/TM/graded/local reflection and rejection controls](python/Tests/Cartesian_Subgrid_PML.py), [contract and build evidence](CARTESIAN_SUBGRID.md#classical-convolution-pml). Scoped serial basic CPU only; not UPML/CFS parity, NF2FF, antenna, losses or GPU qualification. |
+| 2026-11-15 | B04/B05 scoped, public PEC CPU antenna milestone; extended partial P05 | This PR, radiation qualification increment (numerical source `55fe3e2`) | [Ten-case native dipole regression](python/Tests/Cartesian_Subgrid_Radiation.py), [results, actual build hashes and limitations](CARTESIAN_SUBGRID.md#scoped-pec-dipole-radiation). Existing numerical engine/NF2FF algorithms unchanged. Homogeneous unrefined closed surfaces, vacuum solid PEC dipole and one-edge port only; coarser-Z case retained as an expected negative. Not project-array, losses, GPU, speedup or production qualification. |
