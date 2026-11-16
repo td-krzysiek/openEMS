@@ -21,6 +21,7 @@ class CompactDevicePML : public GPU_CartesianSubgridPML
 		{
 			throw std::invalid_argument("CartesianSubgrid: invalid paired device PML fields/timestep");
 		}
+		m_Backend.Activate();
 		Init(m_Electric, data.electric, fields.magnetic, fields.magneticCount,
 			fields.electric, fields.electricCount, data.timestep);
 		Init(m_Magnetic, data.magnetic, fields.electric, fields.electricCount,
@@ -34,6 +35,9 @@ class CompactDevicePML : public GPU_CartesianSubgridPML
 		{
 			throw std::invalid_argument("CartesianSubgrid: device PML hook order/timestep mismatch");
 		}
+		// Another worker may have selected a different physical device since
+		// the preceding hook. Fields and stream still belong to this backend.
+		m_Backend.Activate();
 		if (!m_Started)
 		{
 			m_Timestep = ts;
@@ -62,6 +66,7 @@ class CompactDevicePML : public GPU_CartesianSubgridPML
 		{
 			throw std::invalid_argument("CartesianSubgrid: PML diagnostics require a complete timestep");
 		}
+		m_Backend.Activate();
 		double total = 0;
 		for (auto *state : {&m_Electric, &m_Magnetic})
 		{

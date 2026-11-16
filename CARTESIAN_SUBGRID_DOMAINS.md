@@ -332,8 +332,30 @@ exactly; maximum double field error is1.420e-5 and normalized signed-work/energy
 balance error is below4.387e-8. All43 local CTest controls pass.
 
 Local core: `71bb756fcf84001a36eec6027e4c4f3a97cfc3cff337ad0d2262c2cb2f3ac3d6`.
-The broader20-stage local/array replay and43-gate physical CUDA matrix are
-still running, not accepted. Physical two-device PML, representative antenna
-accuracy and production memory/time savings are not qualified by these focused
-logical-domain results. The canonical checklist retains the larger D/B/F/U/A
-items open.
+The broader20-stage local replay now passes CTest43/Python14 with11,255
+unchanged prior arrays. The R16 CUDA replay fails in the first physical pair
+PML case after35 retained gates pass: the compact PML hooks relied on a caller
+leaving their owning device current. This experimental context defect is
+corrected by the separately built r17 follow-up below. R16 is not qualified
+for physical paired PML. Representative antenna and production scaling remain
+open; the larger D/B/F/U/A checklist items are retained.
+
+
+## Compact PML owning-device correction
+
+The r17 PML component activates its backend before allocation, every hook and
+work download. An interleaved worker may leave a different context current;
+callers no longer have to restore it before entering PML. The original R16
+pair failure and immutable source/runtime identities are retained. This fixes
+the experimental compact adapter, not an established ordinary-UPML defect.
+
+The strengthened regression intentionally selects another worker before every
+single-device PML operation. Equations, order and thresholds are unchanged.
+All20 local stages, CTest43/Python14 and11,255 exact prior arrays pass. Five
+physical RTX4090/RTX3080 PML controls pass in each device order, including
+losses, sources and ports; full43-gate CUDA replay is still pending terminal
+review. This does not enable native distributed scripting or DFT/pause.
+
+Local core: `5222750a352def4826d688f988f6f640ba73616370ea500d8eb3b1f0cc641f4b`.
+CUDA core: `cefb3f88291dadd7791e3854f048a55f221b7a69c0d2ea5bf09f4382b88a72dc`.
+No frozen/production runtime, antenna input or allocation guard changes.

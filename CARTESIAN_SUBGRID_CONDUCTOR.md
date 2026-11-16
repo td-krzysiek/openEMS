@@ -246,3 +246,32 @@ General exposed partial-face subdivision and unresolved PEC interface traces
 remain unsupported. Finer curved-line RF, scaling and representative antenna
 qualification remain open; the new RF comparison uses a separately identified
 graded ordinary reference with an unchanged outer/PML collar.
+
+
+## Contained curved-line graded RF control
+
+The r15 diagnostic retains continuous Cu18 U geometry, a contained16/16/1
+region, common physical probes and5fs timestep. Its ordinary Cartesian
+reference inserts the local fine axes while retaining the same coarse outer
+collar/PML. This explicitly differs from R10's globally refined far field.
+Four400,000-step/2ns Metal cases complete using frozen R14 and separately
+pinned ordinary PR242 runtimes. No engine change follows from the comparison.
+
+| Model | Maximum band complex S11 difference | S21 phase | S21 magnitude | Apparent Z difference |
+|---|---:|---:|---:|---:|
+| PEC | 0.002923 | 0.35744 deg | 0.00314 dB | 0.22067 ohm |
+| Smooth copper | 0.012696 | 0.96489 deg | 0.04453 dB | 0.94782 ohm |
+
+Values are maxima over24.000–24.250GHz. PEC passes the predeclared diagnostic
+limits; copper misses complex-S11<0.01. Independent interior-voltage phase
+error reaches0.94166deg, so the residual is not only current-port extraction.
+Raw-TD prefix extraction agrees with the official full port extraction and
+changes complex S11 by less than7.5e-9 from1ns to2ns. This bounds the observed
+recorded tail, not arbitrary later evolution or spatial error.
+
+The identical local-copper input also completes on a physical RTX4090: CUDA
+versus Metal complex-S11 difference is9.62e-9 and phase difference2.67e-7deg.
+That backend agreement is distinct from local-versus-ordinary RF accuracy.
+Point-line launches are not calibrated characteristic-Z ports; conductor
+boundary/fit and spatial convergence remain open. No antenna qualification,
+production speedup or relaxed acceptance threshold is claimed.

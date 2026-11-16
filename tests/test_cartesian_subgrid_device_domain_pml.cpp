@@ -208,7 +208,15 @@ static void Control(const SubgridDeviceTarget &target, unsigned int normal, unsi
 	std::cout << "PML_SINGLE_BACKEND backend=" << backend->GetName() << std::endl;
 	auto single = loss ? one.advance->CreateDevice(*backend) : backend->CreateCartesianSubgrid(one.op->Grid());
 	single->RequireFixedTimestep(dt);
+	// Deliberately leave another context current before allocation, every
+	// hook and diagnostics. The PML component must select its own owner.
+	backends.back()->Activate();
 	auto pml = one.pml->CreateDevice(*backend, single->Fields());
+	const auto hook = [&](bool magnetic, GPU_Hook phase, unsigned int step)
+	{
+		backends.back()->Activate();
+		pml->Hook(magnetic, phase, Engine_Box{}, step);
+	};
 	distributed->RequireFixedTimestep(dt);
 	Reject([&] { distributed->Step(dt * .5, 0); });
 	Reject([&] { one.pml->PrepareDomainData(one.advance); });
@@ -221,14 +229,14 @@ static void Control(const SubgridDeviceTarget &target, unsigned int normal, unsi
 	{
 		const double drive = loss ? std::exp(-std::pow((double(step) - 20) / 8, 2)) : 0;
 		cpu.Step(dt, drive);
-		pml->Hook(false, GPU_PRE, Engine_Box{}, step);
+		hook(false, GPU_PRE, step);
 		single->UpdateElectric(dt, drive);
-		pml->Hook(false, GPU_POST, Engine_Box{}, step);
-		pml->Hook(false, GPU_APPLY, Engine_Box{}, step);
-		pml->Hook(true, GPU_PRE, Engine_Box{}, step);
+		hook(false, GPU_POST, step);
+		hook(false, GPU_APPLY, step);
+		hook(true, GPU_PRE, step);
 		single->UpdateMagnetic(dt);
-		pml->Hook(true, GPU_POST, Engine_Box{}, step);
-		pml->Hook(true, GPU_APPLY, Engine_Box{}, step);
+		hook(true, GPU_POST, step);
+		hook(true, GPU_APPLY, step);
 		distributed->UpdateElectric(dt, drive);
 		if (step == 0)
 		{
@@ -242,6 +250,7 @@ static void Control(const SubgridDeviceTarget &target, unsigned int normal, unsi
 	const double cpuError = FieldError(cpu.op->Grid(), split.op->Grid());
 	const double work = distributed->ReadBoundaryWorkOut();
 	const double scale = std::max(initial, std::abs(cpu.op->Grid().SourceWork()));
+	backends.back()->Activate();
 	const double workError = std::abs(work - pml->ReadBoundaryWorkOut()) / scale;
 	const double cpuWorkError = std::abs(work - cpu.pml->BoundaryWorkOut()) / scale;
 	double material = 0, stored = 0;
