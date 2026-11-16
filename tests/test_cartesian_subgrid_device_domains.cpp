@@ -303,12 +303,16 @@ static void Guards(const SubgridDeviceTarget &target)
 	auto legacy = unavailable.CreateCartesianSubgrid(compatible);
 	legacy->Step(.8 * compatible.StableTimestep(), 0);
 	legacy->ReadFields(compatible);
+	auto unownedHistory = grid;
+	unownedHistory.ImportDeviceLedger(1, 0);
+	Reject([&] { CartesianSubgridDomainPlan invalid(unownedHistory, 0, {mid}); });
 	const auto &axes = grid.BaseLines();
 	grid.SetSources({});
 	grid.SetResistors({{{axes[0][1], axes[1][1], axes[2][1]},
 		{axes[0][1], axes[1][1], axes[2][2]}, 50, 0}}, .7 * grid.StableTimestep());
-	Reject([&] { CartesianSubgridDomainPlan invalid(grid, 0, {mid}); });
-	std::cout << "PASS: domain cuts, unsupported ports/histories and malformed local upload reject" << std::endl;
+	const CartesianSubgridDomainPlan ports(grid, 0, {mid});
+	Require(ports.PortTimestep() == .7 * grid.StableTimestep(), "port recurrence step was lost");
+	std::cout << "PASS: domain cuts and malformed local uploads reject; coupled port plan retains timestep" << std::endl;
 }
 
 int main(int argc, char **argv)

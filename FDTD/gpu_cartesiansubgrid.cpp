@@ -52,6 +52,7 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 		m_StableStep = data.stableTimestep;
 		m_PortStep = data.portTimestep;
 		m_PortCount = data.rootConductance.size();
+		m_TrackSourceWork = m_PortCount != 0 || data.trackSourceWork;
 		m_ElectricCount = data.electric.size();
 		m_MagneticCount = data.magnetic.size();
 		// Domain processing is gathered by its coordinator. Keep the legacy
@@ -83,7 +84,7 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 		m_SourceCurl = {increment, sourceEdge, sourceCurl};
 		m_Source = {electric, sourceEdge, Upload(data.sourceWeight), Upload(data.sourceOffStart),
 			Upload(data.sourceOffEdge), Upload(data.sourceOffWeight), sourceCurl, m_LedgerDevice,
-			0, 0, static_cast<std::uint32_t>(m_PortCount != 0)};
+			0, 0, static_cast<std::uint32_t>(m_TrackSourceWork)};
 		auto *portRHS = Upload(std::vector<float>(m_PortCount, 0));
 		m_PortSolve = {Upload(data.portStart), Upload(data.portEdge), Upload(data.portWeight),
 			Upload(data.rootConductance), Upload(data.portCurrent), Upload(data.portLower),
@@ -150,7 +151,7 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 		m_PortSolve.amplitude = amplitude;
 		m_PortApply.timestep = dt;
 		m_Backend.RunPoints(GPU_OP_SUBGRID_CURL, &m_Transpose, 0, m_OwnedElectric, false);
-		if (m_PortCount && m_SourceCount)
+		if (m_TrackSourceWork && m_SourceCount)
 		{
 			m_Backend.RunPoints(GPU_OP_SUBGRID_SOURCE_CURL, &m_SourceCurl, 0, m_SourceCount, false);
 		}
@@ -212,9 +213,18 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 		grid.ImportDeviceFields(m_Electric.data(), m_Electric.size(), m_Magnetic.data(), m_Magnetic.size());
 		if (m_PortCount)
 		{
-			m_Backend.DeviceDownload(m_Ledger.data(), m_LedgerDevice, sizeof(m_Ledger));
-			grid.ImportDeviceLedger(m_Ledger[0], m_Ledger[2]);
+			const auto ledger = ReadLedger();
+			grid.ImportDeviceLedger(ledger[0], ledger[1]);
 		}
+	}
+	std::array<double, 2> ReadLedger() override
+	{
+		if (m_PendingStep != 0)
+		{
+			throw std::invalid_argument("CartesianSubgrid: ledger requires a complete timestep");
+		}
+		m_Backend.DeviceDownload(m_Ledger.data(), m_LedgerDevice, sizeof(m_Ledger));
+		return {m_Ledger[0], m_Ledger[2]};
 	}
 
 	std::size_t StorageBytes() const override
@@ -238,7 +248,7 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 	GPU_Backend &m_Backend;
 	std::size_t m_StorageBytes = 0, m_BlockCount = 0, m_SourceCount = 0, m_PortCount = 0;
 	double m_StableStep = 0, m_PortStep = 0, m_FixedStep = 0, m_PendingStep = 0;
-	bool m_Started = false, m_Domain = false;
+	bool m_Started = false, m_Domain = false, m_TrackSourceWork = false;
 	std::size_t m_OwnedElectric = 0, m_OwnedMagnetic = 0, m_Epoch = 0;
 	std::size_t m_ElectricCount = 0, m_MagneticCount = 0;
 	std::size_t m_ElectricGhostEpoch = std::numeric_limits<std::size_t>::max();
@@ -280,12 +290,37 @@ void ValidateDomain(const CartesianSubgridDomainData &domain)
 		data.curlStart.size() == domain.ownedMagnetic + 1 &&
 		data.stableTimestep > 0 && std::isfinite(data.stableTimestep),
 		"CartesianSubgrid: invalid domain rows/timestep");
-	require(data.rootConductance.empty() && data.portEdge.empty() && data.responseEdge.empty() &&
-		data.portWeight.empty() && data.responseWeight.empty() && data.portCurrent.empty() &&
-		data.portLower.empty() && data.portStart == std::vector<std::uint32_t>{0} &&
-		data.responseStart == std::vector<std::uint32_t>{0} && data.portTimestep == 0 &&
-		data.ledger == std::vector<float>({0, 0, 0, 0}),
-		"CartesianSubgrid: domain port/loss histories are unsupported");
+	const std::size_t ports = data.rootConductance.size();
+	require(ports <= 64 && data.portCurrent.size() == ports && data.portLower.size() == ports * ports &&
+		(ports ? data.portTimestep > 0 && std::isfinite(data.portTimestep) &&
+			data.portTimestep <= data.stableTimestep : data.portTimestep == 0),
+		"CartesianSubgrid: invalid domain port counts/timestep");
+	const auto sparse = [&](const std::vector<std::uint32_t> &start,
+		const std::vector<std::uint32_t> &edge, const std::vector<float> &weight, std::size_t rows)
+	{
+		require(start.size() == rows + 1 && start.front() == 0 && start.back() == edge.size() &&
+			edge.size() == weight.size() && std::is_sorted(start.begin(), start.end()),
+			"CartesianSubgrid: malformed local port/source sparse rows");
+		for (std::size_t index : edge)
+		{
+			require(index < domain.ownedElectric, "CartesianSubgrid: local port/source response writes a ghost");
+		}
+	};
+	sparse(data.portStart, data.portEdge, data.portWeight, ports);
+	sparse(data.responseStart, data.responseEdge, data.responseWeight, ports);
+	for (std::size_t i = 0; i < ports; ++i)
+	{
+		require(data.rootConductance[i] > 0 && data.portLower[i * ports + i] > 0 &&
+			data.portStart[i] < data.portStart[i + 1] && data.responseStart[i] < data.responseStart[i + 1],
+			"CartesianSubgrid: nonpositive port factor or empty response");
+		for (std::size_t j = i + 1; j < ports; ++j)
+		{
+			require(data.portLower[i * ports + j] == 0, "CartesianSubgrid: port upper triangle is not empty");
+		}
+	}
+	require(data.ledger.size() == 4 && data.ledger[0] >= 0 &&
+		(ports || data.trackSourceWork || data.ledger == std::vector<float>({0, 0, 0, 0})),
+		"CartesianSubgrid: invalid/untracked domain ledger");
 	require(data.blockStart.size() == data.bandwidth.size() + 1 &&
 		data.lowerStart.size() == data.blockStart.size() && data.blockStart.front() == 0 &&
 		data.lowerStart.front() == 0 && data.blockStart.back() == data.blockEdge.size() &&
@@ -308,14 +343,15 @@ void ValidateDomain(const CartesianSubgridDomainData &domain)
 			require(diagonal > 0, "CartesianSubgrid: nonpositive domain factor diagonal");
 		}
 	}
-	require(data.sourceEdge.size() == data.sourceWeight.size() &&
-		data.sourceOffStart == std::vector<std::uint32_t>(data.sourceEdge.size() + 1, 0) &&
-		data.sourceOffEdge.empty() && data.sourceOffWeight.empty(), "CartesianSubgrid: invalid domain sources");
+	require(data.sourceEdge.size() == data.sourceWeight.size(), "CartesianSubgrid: invalid domain sources");
+	sparse(data.sourceOffStart, data.sourceOffEdge, data.sourceOffWeight, data.sourceEdge.size());
 	for (std::size_t edge : data.sourceEdge)
 	{
 		require(edge < domain.ownedElectric, "CartesianSubgrid: source writes a ghost");
 	}
-	for (const auto *values : {&data.electric, &data.magnetic, &data.lower, &data.sourceWeight})
+	for (const auto *values : {&data.electric, &data.magnetic, &data.lower, &data.sourceWeight,
+		&data.portWeight, &data.responseWeight, &data.rootConductance, &data.portCurrent,
+		&data.portLower, &data.sourceOffWeight, &data.ledger})
 	{
 		for (float value : *values)
 		{

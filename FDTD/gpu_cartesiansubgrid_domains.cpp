@@ -49,7 +49,8 @@ class LocalWorker : public CartesianSubgridDomainWorker
 {
   public:
 	LocalWorker(GPU_Backend &backend, const CartesianSubgridDomainData &domain)
-		: m_Backend(backend), m_Execution(CreateCartesianSubgridDomainExecution(backend, ValidateWorkerDomain(backend, domain)))
+		: m_Backend(backend), m_Execution(CreateCartesianSubgridDomainExecution(backend, ValidateWorkerDomain(backend, domain))),
+		  m_TracksLedger(domain.fields.trackSourceWork || !domain.fields.rootConductance.empty())
 	{
 		m_Owned = {domain.ownedElectric, domain.ownedMagnetic};
 		const auto fields = m_Execution->Fields();
@@ -119,6 +120,11 @@ class LocalWorker : public CartesianSubgridDomainWorker
 		m_Backend.DeviceDownload(magnetic, fields.magnetic, magneticCount * sizeof(float));
 	}
 	std::size_t StorageBytes() const override { return m_StorageBytes + m_Execution->StorageBytes(); }
+	std::array<double, 2> ReadLedger(std::size_t epoch) override
+	{
+		Require(!m_Pending && epoch == m_Epoch, "CartesianSubgrid: mixed worker ledger epoch");
+		return m_TracksLedger ? m_Execution->ReadLedger() : std::array<double, 2>{0, 0};
+	}
 
   private:
 	void CheckExchange(Field field, std::size_t epoch) const
@@ -144,6 +150,7 @@ class LocalWorker : public CartesianSubgridDomainWorker
 	std::array<Op_SubgridGather, 2> m_Gather{};
 	std::size_t m_Epoch = 0, m_StorageBytes = 0;
 	double m_Pending = 0;
+	bool m_TracksLedger = false;
 };
 }
 

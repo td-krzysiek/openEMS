@@ -18,8 +18,9 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 - Experimental C++ Cartesian-subgrid domain planning, workers and host-staged
   boundary exchange through the existing reference/GPU backends. The initial
-  lane is limited to lossless/PEC fields and soft sources; it has no native
-  scripting selector or distributed ports, absorbers or processing. Rebuild
+  lane supports lossless/PEC fields, soft sources and scoped coupled resistor
+  ports with per-owner source/loss accounting. It has no native scripting
+  selector, distributed absorbers or processing. Rebuild
   C++ callers and backend plugins against matching headers; plugin mode is
   not qualified by the built-in backend controls.
 - Experimental local Cartesian subgridding: configure one box with

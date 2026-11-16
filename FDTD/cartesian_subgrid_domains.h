@@ -47,6 +47,7 @@ class CartesianSubgridDomainPlan
 	std::size_t MagneticCount() const { return m_MagneticCount; }
 	std::size_t ReassignedElectricCount() const { return m_ReassignedElectric; }
 	double StableTimestep() const { return m_StableStep; }
+	double PortTimestep() const { return m_PortStep; }
 	const CartesianSubgridFloat::TailInfo &FactorTails() const { return m_FactorTails; }
 	const CartesianSubgridFloat::TailInfo &StateTails() const { return m_StateTails; }
 
@@ -54,14 +55,14 @@ class CartesianSubgridDomainPlan
 	std::vector<CartesianSubgridDomainData> m_Domains;
 	std::vector<Transfer> m_ElectricTransfers, m_MagneticTransfers;
 	std::size_t m_ElectricCount = 0, m_MagneticCount = 0, m_ReassignedElectric = 0;
-	double m_StableStep = 0;
+	double m_StableStep = 0, m_PortStep = 0;
 	CartesianSubgridFloat::TailInfo m_FactorTails, m_StateTails;
 };
 
 //! Ordered half-step submission; a remote adapter may implement this contract.
 //! Export/owned reads and ghost installation complete before returning. A queued
 //! epoch is not a physical-device fence; processing must wait for owned reads.
-//! Only bare lossless/PEC fields and soft sources are admitted in this first lane.
+//! Ports keep their complete coupled solve with one owner; other histories reject.
 class CartesianSubgridDomainWorker
 {
   public:
@@ -76,6 +77,7 @@ class CartesianSubgridDomainWorker
 	virtual void InstallGhosts(CartesianSubgridField field, std::size_t epoch, const float *values, std::size_t count) = 0;
 	virtual void ReadOwned(std::size_t epoch, float *electric, std::size_t electricCount,
 		float *magnetic, std::size_t magneticCount) = 0;
+	virtual std::array<double, 2> ReadLedger(std::size_t epoch) = 0;
 	virtual std::size_t StorageBytes() const = 0;
 };
 

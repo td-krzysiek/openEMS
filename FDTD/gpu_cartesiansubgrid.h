@@ -3,6 +3,7 @@
 #define GPU_CARTESIANSUBGRID_H
 
 #include <cstddef>
+#include <array>
 #include "subgrid_device_precision.h"
 #include <cstdint>
 #include <memory>
@@ -38,6 +39,8 @@ struct CartesianSubgridDeviceData
 	std::vector<float> sourceOffWeight, ledger{0, 0, 0, 0};
 	CartesianSubgridFloat::TailInfo factorTails, stateTails;
 	double portTimestep = 0;
+	//! A source-only worker must retain source work when another worker owns ports.
+	bool trackSourceWork = false;
 	double stableTimestep = 0;
 };
 
@@ -75,6 +78,11 @@ class GPU_CartesianSubgrid
 	virtual void AcknowledgeGhosts(bool, std::size_t)
 	{
 		throw std::logic_error("CartesianSubgrid: ghost acknowledgement is unavailable");
+	}
+	//! Complete-step loss/source-work observation; blocking like ReadFields.
+	virtual std::array<double, 2> ReadLedger()
+	{
+		throw std::logic_error("CartesianSubgrid: device ledger observation is unavailable");
 	}
 };
 #endif

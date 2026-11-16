@@ -51,9 +51,10 @@ CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(const CartesianSubgrid &g
 		previous = cut;
 	}
 	const auto data = grid.DeviceData();
-	Require(data.rootConductance.empty() && data.portEdge.empty() && data.responseEdge.empty(),
-		"CartesianSubgrid: distributed resistor ports are not implemented");
+	Require(!data.rootConductance.empty() || data.ledger == std::vector<float>({0, 0, 0, 0}),
+		"CartesianSubgrid: a non-port accumulated ledger has no qualified ownership");
 	m_StableStep = data.stableTimestep;
+	m_PortStep = data.rootConductance.empty() ? 0 : data.portTimestep;
 	m_FactorTails = data.factorTails;
 	m_StateTails = data.stateTails;
 	m_ElectricCount = data.electric.size();
@@ -85,9 +86,59 @@ CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(const CartesianSubgrid &g
 		for (Index k = first; k < stop; ++k)
 		{
 			const Index edge = data.blockEdge[k];
-			m_ReassignedElectric += eOwner[edge] != worker;
 			eOwner[edge] = worker;
 		}
+	}
+	// Preserve the complete small Woodbury solve, its ordering and responses.
+	// Co-locate all ports and every touched mass component; only those electric
+	// states move. Independent port-cluster splitting is a later optimization.
+	Index portOwner = 0;
+	if (!data.rootConductance.empty())
+	{
+		std::vector<bool> touched(m_ElectricCount, false);
+		for (Index edge : data.portEdge)
+		{
+			touched[edge] = true;
+		}
+		for (Index edge : data.responseEdge)
+		{
+			touched[edge] = true;
+		}
+		for (std::size_t block = 0; block < data.bandwidth.size(); ++block)
+		{
+			const auto first = data.blockEdge.begin() + data.blockStart[block];
+			const auto stop = data.blockEdge.begin() + data.blockStart[block + 1];
+			if (std::any_of(first, stop, [&](Index edge) { return touched[edge]; }))
+			{
+				for (auto edge = first; edge != stop; ++edge)
+				{
+					touched[*edge] = true;
+				}
+			}
+		}
+		double centre = 0;
+		std::size_t count = 0;
+		for (Index edge = 0; edge < m_ElectricCount; ++edge)
+		{
+			if (touched[edge])
+			{
+				centre += grid.EdgePosition(edge)[axis];
+				++count;
+			}
+		}
+		Require(count != 0, "CartesianSubgrid: ports have no owned electric support");
+		portOwner = owner(centre / count);
+		for (Index edge = 0; edge < m_ElectricCount; ++edge)
+		{
+			if (touched[edge])
+			{
+				eOwner[edge] = portOwner;
+			}
+		}
+	}
+	for (Index edge = 0; edge < m_ElectricCount; ++edge)
+	{
+		m_ReassignedElectric += eOwner[edge] != owner(grid.EdgePosition(edge)[axis]);
 	}
 	m_Domains.resize(cuts.size() + 1);
 	std::vector<Map> eMaps(m_Domains.size()), hMaps(m_Domains.size());
@@ -96,6 +147,7 @@ CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(const CartesianSubgrid &g
 		auto &domain = m_Domains[worker];
 		auto &local = domain.fields;
 		local.stableTimestep = m_StableStep;
+		local.trackSourceWork = !data.rootConductance.empty();
 		for (Index i = 0; i < m_ElectricCount; ++i)
 		{
 			if (eOwner[i] == worker)
@@ -177,8 +229,38 @@ CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(const CartesianSubgrid &g
 			{
 				local.sourceEdge.push_back(eMaps[worker].at(data.sourceEdge[source]));
 				local.sourceWeight.push_back(data.sourceWeight[source]);
-				local.sourceOffStart.push_back(0);
+				for (Index k = data.sourceOffStart[source]; k < data.sourceOffStart[source + 1]; ++k)
+				{
+					Require(eOwner[data.sourceOffEdge[k]] == worker,
+						"CartesianSubgrid: source work crosses a split mass component");
+					local.sourceOffEdge.push_back(eMaps[worker].at(data.sourceOffEdge[k]));
+					local.sourceOffWeight.push_back(data.sourceOffWeight[k]);
+				}
+				local.sourceOffStart.push_back(static_cast<Index>(local.sourceOffEdge.size()));
 			}
+		}
+		if (!data.rootConductance.empty() && worker == portOwner)
+		{
+			local.portTimestep = data.portTimestep;
+			local.rootConductance = data.rootConductance;
+			local.portCurrent = data.portCurrent;
+			local.portLower = data.portLower;
+			local.portStart = data.portStart;
+			local.responseStart = data.responseStart;
+			local.portWeight = data.portWeight;
+			local.responseWeight = data.responseWeight;
+			for (Index edge : data.portEdge)
+			{
+				Require(eOwner[edge] == worker, "CartesianSubgrid: split port voltage support");
+				local.portEdge.push_back(eMaps[worker].at(edge));
+			}
+			for (Index edge : data.responseEdge)
+			{
+				Require(eOwner[edge] == worker, "CartesianSubgrid: split port response support");
+				local.responseEdge.push_back(eMaps[worker].at(edge));
+			}
+			// Attribute the existing accumulated work once, never per worker.
+			local.ledger = data.ledger;
 		}
 	}
 	for (bool electric : {true, false})

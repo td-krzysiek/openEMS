@@ -351,8 +351,12 @@ have complete-field/epoch/failure controls on reference, physical Metal and
 one physical RTX3080. Local 19-stage qualification passes, with 13 older runtime
 prefixes and 11,255 arrays unchanged; CUDA also passes CTest 23/23 and single-device
 fields/ports/DC. These are logical-domain controls on one physical GPU per lane,
-not physical multi-GPU or distributed RF/processing qualification. Domain ports,
-absorber/loss histories, DFT/NF2FF, collective pause/resume, native selectors,
+not physical multi-GPU or distributed RF/processing qualification. Subsequent
+scoped coupled-resistor/source-ledger controls pass on three logical workers
+on one Metal GPU and one RTX3080, retaining complete small port solves on one
+owner. All 20 local stages and CUDA CTest 24/24 pass; 14 older prefixes and 11,255
+arrays remain unchanged. Domain absorber/bulk-loss histories, DFT/NF2FF,
+collective pause/resume, native selectors,
 asynchronous transport and scalability remain open. The D items are incomplete.
 
 ## Milestone decisions
@@ -421,3 +425,5 @@ numerical change invalidates their prior qualification.
 | 2026-11-15 | Extended partial U02/U04/U05/U06: single physical CUDA | Numerical source `02b94ef` + test-only `a846ebf` include | [Pinned source/build, errors and limits](CARTESIAN_SUBGRID_CUDA.md#qualified-single-rtx3080-lane). All eleven original gates pass across four immutable bounded attempts: CTest 21/21, Python 14/14, fields/ports/DC, native ports/PML, public dipole/NF2FF and ordinary controls. Earlier timeouts preserved; final identities pass. RTX3080 SM86 only, built-in HIP/nvcc, no hidden fallback. Later CAD/larger-interface CUDA, RTX4090 hardware, plugin mode, losses/PCB and multi-device remain open. |
 
 | 2026-11-16 | Partial D01–D05: compact-domain ownership and host transport | This PR, domain increment (configure-time parent `1a8f48f`) | [Contract, tests, runtime and limitations](CARTESIAN_SUBGRID_DOMAINS.md). Local 19-stage suite, CTest 23/23 / Python 14/14; 13 older prefixes and 11,255 arrays unchanged. Reference, one physical Metal GPU and one physical RTX3080 support 1–4 logical domains and mixed CPU-reference/GPU workers with identical one-device fields. ASan/UBSan domain-source and actual 16,384-edge Metal controls pass. Physical multi-GPU, domain ports/PML/losses/DFT, native selectors, scalability and representative antenna qualification remain open. |
+
+| 2026-11-16 | Extended partial D01–D05 and P05: coupled domain ports/work | This PR, port-domain increment (configure-time parent `15daf56`) | [Source, gates, hashes and limits](CARTESIAN_SUBGRID_DOMAINS.md#coupled-resistors-and-source-ledgers). All 20 local stages, CTest 24/24/Python 14/14, CUDA six gates/CTest 24/24; 14 older prefixes and 11,255 arrays unchanged. Three logical workers on reference/one Metal GPU/one RTX3080, including mixed CPU-reference/GPU and source-only workers, warm ledgers and strong DC. Identical one-device fields; maximum double error 1.941e-5. Physical multi-GPU, native domain selectors, domain PML/bulk loss/DFT and representative antenna/scaling qualification remain open. |

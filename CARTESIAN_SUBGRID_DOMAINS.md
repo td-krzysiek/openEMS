@@ -15,6 +15,11 @@ belongs entirely to one worker, so geometric assignment may move electric
 edges across a cut. The plan records that count. This avoids splitting a
 coupled solve; it does not guarantee balanced work.
 
+The subsequent coupled-port increment also co-locates the complete small
+Woodbury solve, its voltage/response supports and every touched mass component.
+Other owned states remain distributed. This preserves the already qualified
+port arithmetic; independently splitting port clusters is not implemented.
+
 Each worker has owned-first local E/H arrays followed by read-only ghosts.
 Local row remapping retains the exact operand order and split coefficients.
 Ghost dependencies may fan out or cross non-neighbour workers. Only unique
@@ -99,9 +104,54 @@ qualify physical multi-GPU, domain ports/PML or native CAD CUDA paths.
 - [CUDA reproduction scope](CARTESIAN_SUBGRID_CUDA.md#scoped-logical-domains-on-one-rtx3080).
 
 All existing total-cell, interface-factor and refinement-alignment guards
-remain. The domain constructor rejects resistor ports/history and the local
-upload rejects nonzero unsupported ledger state. PML, losses/conductors,
-distributed ports, DFT/NF2FF, collective pause/resume and native processing
-are not implemented in this domain lane. Their one-device tests do not imply
+remain. Unsupported imported non-port ledger history and malformed port
+metadata reject explicitly. PML, bulk losses/conductors, DFT/NF2FF, collective
+pause/resume and native processing are not implemented in this domain lane.
+Their one-device tests do not imply
 distributed support. No throughput, representative PCB accuracy or physical
 multi-GPU claim follows from logical domains on one physical device.
+
+## Coupled resistors and source ledgers
+
+Configure-time parent `15daf56`; the physics, source ordering and shared
+point operations are unchanged. The plan retains all port rows, responses and
+the small factor on one owner, with a common fixed port timestep. The initial
+accumulated ledger is attributed once. A worker without a local port still
+records its soft-source work using the original mass neighbours and unsolved
+curl. Per-owner complete-step reads sum losses/work without copying full
+fields each half-step. A partial-step ledger read rejects.
+
+[Port-domain controls](tests/test_cartesian_subgrid_device_domain_ports.cpp)
+compare three uneven logical domains with one FP32 device and double CPU:
+50/75-ohm resistors, Norton drive, source-only workers, mass-coupled/repeated
+soft kicks, warm accumulated history, strong DC and repeated observations.
+All XYZ cuts and mixed CPU-reference/GPU workers are covered. Malformed
+responses/conductances, wrong timestep and ledger phase reject. Unsupported
+imported non-port history must reject instead of disappearing.
+
+All 20 local qualification stages pass: CTest 24/24, Python modules 14/14,
+retained native CPU/reference/Metal ports/DC, PML, dipole, polygons and ordinary
+engines. Fourteen older runtime prefixes remain unchanged; 11,255 arrays equal
+the frozen domain build exactly. Five reference and six physical Metal
+port-domain cases pass. One-device fields are identical; maximum double field
+error is 1.94051e-5 and energy-balance error 1.70516e-6 (gates 2e-4). Separate
+ASan/UBSan domain-source controls pass; no LeakSanitizer claim.
+
+The same numerical source passes six port-domain cases on one physical RTX3080,
+including mixed CPU-reference/CUDA workers, with identical one-device fields
+and the same error bounds. CTest 24/24 and retained CUDA fields/ports/DC also
+pass; final source/runtime and terminal checks pass. This is three logical
+workers on one physical GPU, not three physical GPUs or native distributed RF.
+
+Frozen local prefix:
+`output/openems-subgrid-domain-ports-20261116/install`.
+
+- Core SHA256: `e2625eed13c24b9c5c07819fcc9015d0998e317a39da895adc66c5902ac00eb1`.
+- NF2FF SHA256: `74c23472937c94c5c8731d9c34b0bdb8b19d8b4f7b4447e8dadd767c6af5e6bd`.
+- CUDA core SHA256: `f9af217240707dba76822509402fd835c5a5a47cbbf10e4eef121d79096ef0de`.
+
+Exact source/runtime identities, failed/passed observations and compact evidence
+remain under `experiments/openems-cartesian-local-subgrid-20261112/domain-ports/`
+in the project study. This does not qualify native domain selectors, distributed
+PML/loss/DFT, physical heterogeneous devices, broader sources/modal ports,
+production scaling or representative antenna accuracy.

@@ -213,13 +213,38 @@ class Coordinator : public GPU_CartesianSubgrid
 					m_Magnetic[domain.globalMagnetic[i]] = m_ReadMagnetic[i];
 				}
 			}
+			const auto ledger = ReadLedger();
 			grid.ImportDeviceFields(m_Electric.data(), m_Electric.size(), m_Magnetic.data(), m_Magnetic.size());
+			grid.ImportDeviceLedger(ledger[0], ledger[1]);
 		}
 		catch (...)
 		{
 			m_Failed = true;
 			throw;
 		}
+	}
+	std::array<double, 2> ReadLedger() override
+	{
+		Healthy();
+		Require(!m_Pending, "CartesianSubgrid: coordinator ledger requires a complete step");
+		std::array<double, 2> result{};
+		try
+		{
+			for (auto &worker : m_Workers)
+			{
+				const auto ledger = worker->ReadLedger(m_Epoch);
+				Require(std::isfinite(ledger[0]) && ledger[0] >= 0 && std::isfinite(ledger[1]),
+					"CartesianSubgrid: invalid worker work/loss ledger");
+				result[0] += ledger[0];
+				result[1] += ledger[1];
+			}
+		}
+		catch (...)
+		{
+			m_Failed = true;
+			throw;
+		}
+		return result;
 	}
 	std::size_t StorageBytes() const override
 	{
@@ -243,6 +268,7 @@ class Coordinator : public GPU_CartesianSubgrid
 		Require(timestep > 0 && timestep <= m_Plan->StableTimestep() && std::isfinite(dt) &&
 			dt >= std::numeric_limits<float>::min() && std::isfinite(static_cast<float>(amplitude)) &&
 			(timestep == double(dt) || std::abs(low) >= std::numeric_limits<float>::min()) &&
+			(m_Plan->PortTimestep() == 0 || timestep == m_Plan->PortTimestep()) &&
 			(m_Fixed == 0 || m_Fixed == timestep), "CartesianSubgrid: invalid coordinator timestep/source");
 	}
 	std::shared_ptr<const CartesianSubgridDomainPlan> m_Plan;

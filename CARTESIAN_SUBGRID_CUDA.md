@@ -176,3 +176,25 @@ in the project study's `domains/cuda-qualification.json` and
 `output/openems-subgrid-domains-cuda-20261115/completed-r02/`. This does not
 qualify physical multi-GPU, native CAD/large-interface CUDA, plugin mode,
 distributed ports/PML/DFT, losses or representative PCB antenna workflows.
+
+## Coupled-domain-port CUDA lane
+
+The [port-domain increment](CARTESIAN_SUBGRID_DOMAINS.md#coupled-resistors-and-source-ledgers),
+configure-time parent `15daf56` plus its recorded source diff, adds complete small
+port-solve ownership and per-worker source/loss accounting. Six three-worker
+cases pass on one RTX3080, including mixed CPU-reference/CUDA, source-only
+workers, warm accumulated ledgers and strong DC. Fields are identical to one
+FP32 device; maximum double error 1.94051e-5 and balance 1.70516e-6 (gates 2e-4).
+
+All six campaign gates pass: retained bare domains, coupled port domains,
+fields, ports, DC and CTest 24/24. The first bounded attempt completes and exits 0
+without OOM; no numerical gate or model changed during the campaign. CTest
+uses 587 s in this concurrent run; no throughput claim. Final source/cache/binary
+checks pass. The 48-file compact archive and independent collector are in the
+project study's `domain-ports/` and
+`output/openems-subgrid-domain-ports-cuda-20261116/completed-r01/`.
+
+Core SHA256: `f9af217240707dba76822509402fd835c5a5a47cbbf10e4eef121d79096ef0de`.
+Built-in HIP/nvcc 12.6.85, SM86/SM89 compiled, only RTX3080 SM86 physically tested.
+Physical multi-GPU, native domain RF/processing, PML/loss histories, plugin mode
+and representative PCB/conductor accuracy remain unqualified.
