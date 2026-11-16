@@ -54,8 +54,15 @@ an established ordinary upstream solver defect.
   11,255 bit-identical prior arrays. A separate eight-case comparison retains
   all16 expanded-operator/CPU-field files exactly. This does not qualify later
   device changes automatically.
-- The composed r04 native/CUDA replay and interleaved layout timing are still
-  being collected. Do not treat focused controls as their terminal acceptance.
+- The composed r04 local replay passes14 terminal stages, CTest39/39 and
+  Python14/14;11,255 prior arrays are bit-identical. The full physical CUDA
+  replay is separate and is not inferred from focused controls.
+- Three interleaved same-build Metal repetitions compare equal duration and
+  sampled final state. The spatial layout is slower: median1.28x at3,240 leaves
+  and1.40x at25,920 leaves. It is a memory/addressing increment, not a throughput
+  optimization. These are layout diagnostics, not an ordinary-master benchmark
+  or antenna speedup. A separate unpublished transpose-slot candidate is being
+  evaluated; it is not yet the implementation represented here.
 
 With a configured test build:
 

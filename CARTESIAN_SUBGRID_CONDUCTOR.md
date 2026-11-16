@@ -97,6 +97,17 @@ It cannot establish antenna accuracy or characteristic impedance. A two-length
 attempt also produces negative apparent attenuation in both lanes and is not
 admitted as a physical conductor-loss reference.
 
+A third-level fixed-interior-voltage diagnostic completes local/ordinary
+ratio2/4/8 cases with PEC and smooth copper. The maximum band phase change
+falls from approximately12.9rad/m (2→4) to5.7rad/m (4→8) in both solvers;
+within-level phase differences remain below0.637rad/m. The incremental conductor
+alpha/beta differences are below0.825%/0.562%. Ratio8 uses5fs, versus10fs at
+ratio2/4, so this is combined spatial/time evidence. Five fixed voltage paths
+avoid the changing point-current normalization, but the finite-ground,
+point-line launch and single-mode fit remain diagnostic, not modal-port,
+physical attenuation or antenna acceptance. A larger refined-air-collar setup
+is prepared separately; setup alone is not an RF result.
+
 Further acceptance requires spatial/time convergence, broad conductor CAD and
 ports, scalable field/interface representation, distributed loss/PML/DFT state
 and representative antenna comparisons. F02 remains incomplete.
