@@ -110,6 +110,13 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Changed
 
+- Experimental single-device Cartesian-subgrid preparation streams compressed
+  curl rows instead of retaining both expanded operators. Scoped CPU/Metal
+  controls retain fields, ports and losses; a bounded layout benchmark reduces
+  peak setup memory with a small setup-time cost. Domain preparation and
+  representative antenna qualification remain separate.
+
+
 - Experimental Cartesian subgridding accepts longer narrow interface factors
   (up to 16,384 edges), with guarded bandwidth and stability-bound computation.
   Base axes may have up to 16,384 intervals; total cell caps remain unchanged.

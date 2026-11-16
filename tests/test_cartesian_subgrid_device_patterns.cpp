@@ -19,6 +19,22 @@ static void Check(const std::vector<std::uint32_t> &start, const std::vector<std
 	const std::vector<float> &high, const std::vector<float> &low, std::size_t input, bool arbitrary = false)
 {
 	const CartesianSubgridDeviceCurl patterns(start, column, high, low, input, arbitrary);
+	CartesianSubgridDeviceCurl::Builder builder(start.size() - 1, input, arbitrary);
+	std::vector<CartesianSubgridDeviceCurl::Term> terms;
+	for (std::size_t row = 0; row + 1 < start.size(); ++row)
+	{
+		terms.clear();
+		for (std::size_t k = start[row]; k < start[row + 1]; ++k)
+		{
+			terms.push_back({column[k], high[k], low[k]});
+		}
+		builder.Append(terms);
+	}
+	const auto streamed = builder.Finish();
+	Require(patterns.start == streamed.start && patterns.offset == streamed.offset &&
+		patterns.base == streamed.base && patterns.pattern == streamed.pattern &&
+		patterns.weight == streamed.weight && patterns.residual == streamed.residual,
+		"streamed pattern identity changed");
 	for (std::size_t row = 0; row + 1 < start.size(); ++row)
 	{
 		const std::size_t p = patterns.pattern[row], first = patterns.start[p];
@@ -113,6 +129,22 @@ int main()
 		const CartesianSubgridDeviceCurl p(start, column, high, low, 11);
 		Require(p.pattern[0] == p.pattern[1] && p.pattern[1] == p.pattern[4], "translated reuse lost");
 		Require(p.pattern[0] != p.pattern[3], "signed-zero residual was quantized");
+		Require(p.start == std::vector<std::uint32_t>({0, 2, 2, 4}) &&
+			p.offset == std::vector<std::uint32_t>({0, 2, 0, 2}) &&
+			p.base == std::vector<std::uint32_t>({0, 3, 0, 0, 8}) &&
+			p.pattern == std::vector<std::uint32_t>({0, 0, 1, 2, 0}),
+			"translated/signed-zero golden pattern layout changed");
+		using Builder = CartesianSubgridDeviceCurl::Builder;
+		Builder consumed(1, 3);
+		Reject([&] { consumed.Finish(); });
+		Reject([&] { consumed.Append({{2, 1, 0}, {1, 1, 0}}); });
+		consumed.Append({{1, 1, 0}});
+		const auto complete = consumed.Finish();
+		Require(complete.base == std::vector<std::uint32_t>{1}, "rejected row changed the builder");
+		Reject([&] { consumed.Finish(); });
+		Reject([&] { consumed.Append({}); });
+		Reject([] { Builder invalid(std::size_t(1) << 32, 1); });
+		Reject([] { Builder invalid(1, std::size_t(1) << 32); });
 		// Owned-first domain mapping can make columns non-monotone. Preserve
 		// exact term order, including repeats, without unsigned offset wrap.
 		Check({0, 3, 6}, {5, 1, 3, 15, 11, 13}, {1, 1e8f, -1e8f, 1, 1e8f, -1e8f},

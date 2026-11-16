@@ -19,25 +19,40 @@ CM_FN bool subgrid_geometry_regular(CM_GLOBAL const uint32_t *geometry, uint32_t
 	const uint32_t leaf = 4 + 9 * geometry[0] + 4 * (face / 6);
 	return (geometry[leaf + 2] & (1u << (face % 6))) != 0;
 }
-CM_FN uint32_t subgrid_geometry_edge_index(CM_GLOBAL const uint32_t *geometry,
-	uint32_t face, uint32_t term)
+struct SubgridFaceLocation
+{
+	uint32_t block, axis, x, y, z;
+};
+CM_FN SubgridFaceLocation subgrid_geometry_location(CM_GLOBAL const uint32_t *geometry, uint32_t face)
 {
 	const uint32_t leaf = 4 + 9 * geometry[0] + 4 * (face / 6);
 	const uint32_t block = 4 + 9 * geometry[leaf];
 	uint32_t point[3] = {geometry[leaf + 1] / (geometry[block + 1] * geometry[block + 2]),
 		(geometry[leaf + 1] / geometry[block + 2]) % geometry[block + 1], geometry[leaf + 1] % geometry[block + 2]};
-	const uint32_t n = (face % 6) / 2, a = (n + 1) % 3, b = (n + 2) % 3;
+	const uint32_t axis = (face % 6) / 2;
+	point[axis] += face % 2;
+	return {block, axis, point[0], point[1], point[2]};
+}
+CM_FN uint32_t subgrid_geometry_edge_at(CM_GLOBAL const uint32_t *geometry,
+	SubgridFaceLocation location, uint32_t term)
+{
+	uint32_t point[3] = {location.x, location.y, location.z};
+	const uint32_t a = (location.axis + 1) % 3, b = (location.axis + 2) % 3;
 	const uint32_t direction = term < 2 ? b : a, cross = term < 2 ? a : b;
-	point[n] += face % 2;
 	point[cross] += (term % 2 == 0 ? 1 : 0);
-	const uint32_t sy = geometry[block + 1] + (direction == 1 ? 0 : 1);
-	const uint32_t sz = geometry[block + 2] + (direction == 2 ? 0 : 1);
-	return geometry[geometry[block + 6 + direction] + (point[0] * sy + point[1]) * sz + point[2]];
+	const uint32_t sy = geometry[location.block + 1] + (direction == 1 ? 0 : 1);
+	const uint32_t sz = geometry[location.block + 2] + (direction == 2 ? 0 : 1);
+	return geometry[geometry[location.block + 6 + direction] + (point[0] * sy + point[1]) * sz + point[2]];
+}
+CM_FN uint32_t subgrid_geometry_edge_index(CM_GLOBAL const uint32_t *geometry,
+	uint32_t face, uint32_t term)
+{
+	return subgrid_geometry_edge_at(geometry, subgrid_geometry_location(geometry, face), term);
 }
 CM_FN SubgridMetricPair subgrid_geometry_term(CM_GLOBAL const uint32_t *geometry,
 	CM_GLOBAL const float *coefficients, uint32_t face, uint32_t term, uint32_t)
 {
-	const uint32_t pattern = geometry[geometry[3] + face];
+	const uint32_t pattern = (geometry[geometry[3] + face] >> 8) * 8;
 	return {coefficients[pattern + term], coefficients[pattern + 4 + term]};
 }
 CM_FN uint32_t subgrid_geometry_exception(CM_GLOBAL const uint32_t *geometry, uint32_t face)

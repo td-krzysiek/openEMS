@@ -1,5 +1,5 @@
-#include "subgrid_device_geometry.h"
 /* SPDX-License-Identifier: GPL-3.0-or-later */
+#include "subgrid_device_geometry.h"
 #include "cartesian_subgrid.h"
 #include "subgrid_inverse_bound.h"
 #include "subgrid_device_precision.h"
@@ -1834,6 +1834,16 @@ double CartesianSubgrid::ResistorVoltage(std::size_t port) const
 // Checked FP32 upload contract; no CPU numerical update is changed.
 CartesianSubgridDeviceData CartesianSubgrid::DeviceData() const
 {
+	return PrepareDeviceData(true);
+}
+
+CartesianSubgridDeviceData CartesianSubgrid::DeviceStateData() const
+{
+	return PrepareDeviceData(false);
+}
+
+CartesianSubgridDeviceData CartesianSubgrid::PrepareDeviceData(bool includeCurls) const
+{
 	Require(m_PendingMagneticTimestep == 0, "CartesianSubgrid: device upload requires a complete timestep");
 	const auto index = [](std::size_t value)
 	{
@@ -1854,42 +1864,46 @@ CartesianSubgridDeviceData CartesianSubgrid::DeviceData() const
 		return converted;
 	};
 	CartesianSubgridDeviceData data;
+	data.streamCurls = !includeCurls;
 	data.stableTimestep = m_StableStep;
 	data.electric = CartesianSubgridFloat::State(m_Electric, data.stateTails);
 	data.magnetic = CartesianSubgridFloat::State(m_Magnetic, data.stateTails);
-	quantity = "curl coefficient";
-	data.transposeStart.assign(m_Electric.size() + 1, 0);
-	for (std::size_t row = 0; row < m_Magnetic.size(); ++row)
+	if (includeCurls)
 	{
-		m_CurlOperator.ForEach(row, [&](std::size_t edge, double value)
+		quantity = "curl coefficient";
+		data.transposeStart.assign(m_Electric.size() + 1, 0);
+		for (std::size_t row = 0; row < m_Magnetic.size(); ++row)
 		{
-			data.curlColumn.push_back(index(edge));
-			const float high = scalar(value);
-			data.curlWeight.push_back(high);
-			quantity = "curl coefficient residual";
-			data.curlLow.push_back(scalar(value - double(high)));
-			quantity = "curl coefficient";
-			++data.transposeStart[edge + 1];
-		}, CurlMetrics());
-		data.curlStart.push_back(index(data.curlColumn.size()));
-	}
-	for (std::size_t edge = 0; edge < m_Electric.size(); ++edge)
-	{
-		data.transposeStart[edge + 1] = index(std::size_t(data.transposeStart[edge + 1]) +
-														 data.transposeStart[edge]);
-	}
-	data.transposeColumn.resize(data.curlColumn.size());
-	data.transposeWeight.resize(data.curlColumn.size());
-	data.transposeLow.resize(data.curlColumn.size());
-	auto cursor = data.transposeStart;
-	for (std::size_t row = 0; row < m_Magnetic.size(); ++row)
-	{
-		for (std::size_t k = data.curlStart[row]; k < data.curlStart[row + 1]; ++k)
+			m_CurlOperator.ForEach(row, [&](std::size_t edge, double value)
+			{
+				data.curlColumn.push_back(index(edge));
+				const float high = scalar(value);
+				data.curlWeight.push_back(high);
+				quantity = "curl coefficient residual";
+				data.curlLow.push_back(scalar(value - double(high)));
+				quantity = "curl coefficient";
+				++data.transposeStart[edge + 1];
+			}, CurlMetrics());
+			data.curlStart.push_back(index(data.curlColumn.size()));
+		}
+		for (std::size_t edge = 0; edge < m_Electric.size(); ++edge)
 		{
-			const auto target = cursor[data.curlColumn[k]]++;
-			data.transposeColumn[target] = index(row);
-			data.transposeWeight[target] = data.curlWeight[k];
-			data.transposeLow[target] = data.curlLow[k];
+			data.transposeStart[edge + 1] = index(std::size_t(data.transposeStart[edge + 1]) +
+															 data.transposeStart[edge]);
+		}
+		data.transposeColumn.resize(data.curlColumn.size());
+		data.transposeWeight.resize(data.curlColumn.size());
+		data.transposeLow.resize(data.curlColumn.size());
+		auto cursor = data.transposeStart;
+		for (std::size_t row = 0; row < m_Magnetic.size(); ++row)
+		{
+			for (std::size_t k = data.curlStart[row]; k < data.curlStart[row + 1]; ++k)
+			{
+				const auto target = cursor[data.curlColumn[k]]++;
+				data.transposeColumn[target] = index(row);
+				data.transposeWeight[target] = data.curlWeight[k];
+				data.transposeLow[target] = data.curlLow[k];
+			}
 		}
 	}
 	quantity = "interface factor";
@@ -1961,10 +1975,169 @@ CartesianSubgridDeviceData CartesianSubgrid::DeviceData() const
 	}
 	quantity = "ledger state";
 	data.ledger = {scalar(m_ResistorLoss), 0, scalar(m_SourceWork), 0};
-	const CartesianSubgridDeviceGeometry spatial(m_CurlOperator.Regular(), CurlMetrics());
-	data.curlGeometry = spatial.geometry;
-	data.curlMetrics = spatial.metrics;
+	if (includeCurls)
+	{
+		const CartesianSubgridDeviceGeometry spatial(m_CurlOperator.Regular(), CurlMetrics());
+		data.curlGeometry = spatial.geometry;
+		data.curlMetrics = spatial.metrics;
+	}
 	return data;
+}
+
+CartesianSubgridDeviceOperators CartesianSubgrid::DeviceCurls() const
+{
+	Require(m_PendingMagneticTimestep == 0, "CartesianSubgrid: device curls require a complete timestep");
+	const auto narrow = [](std::size_t value)
+	{
+		Require(value <= std::numeric_limits<std::uint32_t>::max(), "CartesianSubgrid: device curl index overflow");
+		return static_cast<std::uint32_t>(value);
+	};
+	const auto scalar = [](double value)
+	{
+		const float converted = static_cast<float>(value);
+		Require(std::isfinite(value) && std::isfinite(converted) &&
+			(value == 0 || std::abs(converted) >= std::numeric_limits<float>::min()),
+			"CartesianSubgrid: nonrepresentable streamed curl coefficient");
+		return converted;
+	};
+	const auto view = CurlMetrics();
+	CartesianSubgridDeviceGeometry spatial(m_CurlOperator.Regular(), view);
+	CartesianSubgridDeviceOperators result;
+	using Curl = CartesianSubgridDeviceCurl;
+	std::vector<Curl::Term> terms, packedTerms;
+	Curl packedCurl;
+	std::vector<std::uint32_t> incoming(m_Electric.size() + 1, 0);
+	// Dictionaries are released before transpose preparation. Their contents
+	// are not needed by the completed compressed row representation.
+	{
+		Curl::Builder builder(m_Magnetic.size(), m_Electric.size());
+		std::unique_ptr<Curl::Builder> packed;
+		if (spatial.rows)
+		{
+			packed = std::make_unique<Curl::Builder>(m_Magnetic.size() - spatial.rows, m_Electric.size());
+		}
+		for (std::size_t face = 0; face < m_Magnetic.size(); ++face)
+		{
+			terms.clear();
+			m_CurlOperator.ForEach(face, [&](std::size_t edge, double value)
+			{
+				const float high = scalar(value), low = scalar(value - double(high));
+				terms.push_back({narrow(edge), high, low});
+				++incoming[edge + 1];
+			}, view);
+			builder.Append(terms);
+			if (!packed)
+			{
+				continue;
+			}
+			if (!subgrid_geometry_regular(spatial.geometry.data(), narrow(face)))
+			{
+				packed->Append(terms);
+				continue;
+			}
+			Require(terms.size() == 4, "CartesianSubgrid: streamed spatial row is not a four-edge curl");
+			// Check every pair before it can be shared by C and C^T. This is
+			// independent of the expanded upload retained by DeviceData().
+			for (unsigned int rank = 0; rank < 4; ++rank)
+			{
+				const auto descriptor = spatial.geometry[spatial.geometry[3] + face];
+				const auto slot = (descriptor >> (2 * rank)) & 3u;
+				SubgridMetricPair coefficient;
+				const auto edge = subgrid_geometry_edge(spatial.geometry.data(), spatial.metrics.data(),
+					narrow(face), slot, coefficient);
+				Require(edge == terms[rank].column &&
+					std::memcmp(&coefficient.high, &terms[rank].high, sizeof(float)) == 0 &&
+					std::memcmp(&coefficient.low, &terms[rank].low, sizeof(float)) == 0,
+					"CartesianSubgrid: streamed spatial pair differs from the canonical curl");
+			}
+		}
+		result.curl = builder.Finish();
+		if (packed)
+		{
+			packedCurl = packed->Finish();
+		}
+	}
+	for (std::size_t edge = 0; edge < m_Electric.size(); ++edge)
+	{
+		incoming[edge + 1] = narrow(std::size_t(incoming[edge]) + incoming[edge + 1]);
+	}
+	// Transpose preparation retains only incoming face IDs, not a second
+	// expanded column/high/low operator. Ascending face traversal preserves
+	// the original accumulation order exactly.
+	std::vector<std::uint32_t> faces(incoming.back());
+	{
+		auto cursor = incoming;
+		for (std::size_t face = 0; face < m_Magnetic.size(); ++face)
+		{
+			const auto pattern = result.curl.pattern[face];
+			for (std::size_t k = result.curl.start[pattern]; k < result.curl.start[pattern + 1]; ++k)
+			{
+				const auto edge = result.curl.base[face] + result.curl.offset[k];
+				faces[cursor[edge]++] = narrow(face);
+			}
+		}
+	}
+	Curl::Builder transpose(m_Electric.size(), m_Magnetic.size());
+	std::unique_ptr<Curl::Builder> packedTranspose;
+	if (spatial.rows)
+	{
+		packedTranspose = std::make_unique<Curl::Builder>(m_Electric.size(), m_Magnetic.size());
+	}
+	for (std::size_t edge = 0; edge < m_Electric.size(); ++edge)
+	{
+		terms.clear();
+		packedTerms.clear();
+		for (std::size_t i = incoming[edge]; i < incoming[edge + 1]; ++i)
+		{
+			const auto face = faces[i], pattern = result.curl.pattern[face];
+			const auto first = result.curl.offset.begin() + result.curl.start[pattern];
+			const auto stop = result.curl.offset.begin() + result.curl.start[pattern + 1];
+			const auto found = std::lower_bound(first, stop, narrow(edge - result.curl.base[face]));
+			Require(found != stop && *found == edge - result.curl.base[face],
+				"CartesianSubgrid: streamed transpose lost its canonical curl term");
+			const auto k = std::size_t(found - result.curl.offset.begin());
+			const Curl::Term term{face, result.curl.weight[k], result.curl.residual[k]};
+			terms.push_back(term);
+			if (!packedTranspose)
+			{
+				continue;
+			}
+			if (!subgrid_geometry_regular(spatial.geometry.data(), face))
+			{
+				packedTerms.push_back(term);
+				continue;
+			}
+			unsigned int slot = 0;
+			while (slot < 4 && subgrid_geometry_edge_index(spatial.geometry.data(), face, slot) != edge)
+			{
+				++slot;
+			}
+			Require(slot < 4, "CartesianSubgrid: streamed transpose lost its spatial slot");
+			packedTerms.push_back({face, static_cast<float>(slot), 0});
+		}
+		transpose.Append(terms);
+		if (packedTranspose)
+		{
+			packedTranspose->Append(packedTerms);
+		}
+	}
+	result.transpose = transpose.Finish();
+	result.legacyBytes = result.curl.DeviceBytes() + result.transpose.DeviceBytes();
+	if (packedTranspose)
+	{
+		auto candidate = packedTranspose->Finish();
+		const std::size_t bytes = packedCurl.DeviceBytes() + candidate.DeviceBytes() +
+			spatial.geometry.size() * sizeof(std::uint32_t) + spatial.metrics.size() * sizeof(float);
+		if (bytes < result.legacyBytes)
+		{
+			result.curl = std::move(packedCurl);
+			result.transpose = std::move(candidate);
+			result.geometry = std::move(spatial.geometry);
+			result.metrics = std::move(spatial.metrics);
+			result.spatialRows = spatial.rows;
+		}
+	}
+	return result;
 }
 
 void CartesianSubgrid::ImportDeviceFields(const float *electric, std::size_t electricCount,

@@ -181,7 +181,7 @@ std::unique_ptr<GPU_CartesianSubgrid> Engine_Ext_CartesianSubgrid_Conductivity::
 		}
 		return result;
 	};
-	auto data = m_Grid.DeviceData();
+	auto data = m_Grid.DeviceStateData();
 	if (data.rootConductance.empty())
 	{
 		data.portTimestep = 0;

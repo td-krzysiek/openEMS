@@ -62,8 +62,8 @@ an established ordinary upstream solver defect.
   sampled final state. The spatial layout is slower: median1.28x at3,240 leaves
   and1.40x at25,920 leaves. It is a memory/addressing increment, not a throughput
   optimization. These are layout diagnostics, not an ordinary-master benchmark
-  or antenna speedup. A separate unpublished transpose-slot candidate is being
-  evaluated; it is not yet the implementation represented here.
+  or antenna speedup. The subsequent exact-order and streamed-preparation
+  increments are recorded below.
 
 With a configured test build:
 
@@ -84,10 +84,59 @@ Raw source/build manifests, negative attempts and numerical logs remain in the
 contributor's evidence archive. Build hashes identify tested binaries, not a
 claim that every caller/platform is qualified.
 
+## Exact ordering and streamed preparation
+
+The r06 increment stores an exact0..3 edge-slot tag in regular transpose
+terms and the canonical four-term order in the existing face descriptor.
+It removes repeated edge searches and per-step sorting, retaining exact
+coefficient pairs and sparse exceptions. Physical RTX4090/RTX3080 replay
+passes33 gates/CTest39/39, including both retained lossless device orders.
+
+The composed r07 single-device preparation streams canonical rows directly
+into translated patterns. Transpose setup retains incoming face IDs, then
+recovers the same coefficient pairs from the compressed curl. It no longer
+retains expanded column/high/low arrays for both operators while packing
+alternatives. The native conductivity/surface provider uses the state-only
+path too. Expanded `DeviceData()` remains an independent arithmetic oracle
+and is retained by domain preparation; unsupported mixed state/CSR requests
+reject explicitly. Dictionaries are temporary; the timestep kernels and
+byte-selection rule are unchanged from r06.
+
+The composed r07 local replay passes14 stages, CTest39/39, Python14/14 and
+11,255 unchanged prior numerical arrays. Tests compare selected packed
+operators, exact coefficient pools, order and state-only factor/source/port
+metadata against independent expanded preparation; malformed/incomplete row
+streams and duplicate ordering are rejected. Physical Metal includes the
+20,000-step exact-FP32 field and strong-DC controls. R07 CUDA qualification
+is still in progress; r06 CUDA results do not qualify this new preparation.
+
+Three interleaved Metal repetitions on a491,520-leaf procedural fixture give:
+
+|Median|r06 expanded preparation|r07 streamed preparation|
+|---|---:|---:|
+|Peak process RSS|1,614,561,280B|1,233,518,592B|
+|Whole setup|3.0630s|3.1654s|
+|2,000 timesteps|2.3479s|2.3511s|
+|Device allocation|141,076,208B|141,076,208B|
+
+Peak RSS is23.60% lower; setup is3.34% longer. This is a memory improvement,
+not a timestep speedup. The sampled final fields/energy, device allocations
+and timestep are identical. A larger interleaved attempt was stopped by its
+owned-process memory-reserve guard and remains partial evidence.
+The r06 spatial kernel still takes about9.78% longer than old translated
+patterns at699,840 leaves while using26.25% less accounted device storage.
+No production/ordinary-Yee performance claim follows from these diagnostics.
+
+Actual r07 local core SHA256:
+`4af61e6916978ba5d017b802e1bc64355cd6b3ce133d3753568e4dde896ece1f`.
+The native replay is a correctness suite, not a CPU speed benchmark; its
+reference-backend timings need separate controlled review before performance
+adoption. No allocation guard has been raised.
+
 ## Remaining work
 
-Expanded CSR upload still exists as a bounded intermediate and independent
-oracle. Host topology, fields, magnetic quadrature and observations retain their
+Expanded CSR remains the independent oracle and domain-preparation
+intermediate; single-device preparation now uses the streamed path. Host topology, fields, magnetic quadrature and observations retain their
 reference organization. Device DFT, proportional multi-domain preparation,
 distributed loss/PML histories, full structured scheduling, representative PCB
 RF convergence, end-to-end memory/time savings and general interface scaling

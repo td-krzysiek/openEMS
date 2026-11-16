@@ -237,11 +237,15 @@ class CartesianSubgrid
 
 	//! Checked upload and complete-step observation mirror for existing device backends.
 	CartesianSubgridDeviceData DeviceData() const;
+	//! Single-device preparation without the expanded curl/transpose oracle.
+	CartesianSubgridDeviceData DeviceStateData() const;
+	CartesianSubgridDeviceOperators DeviceCurls() const;
 	void ImportDeviceLedger(double resistorLoss, double sourceWork);
 	void ImportDeviceFields(const float *electric, std::size_t electricCount,
 							const float *magnetic, std::size_t magneticCount);
 
   private:
+	CartesianSubgridDeviceData PrepareDeviceData(bool includeCurls) const;
 	struct Edge
 	{
 		int axis;

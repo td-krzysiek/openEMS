@@ -273,10 +273,22 @@ Focused reference/Metal and physical RTX4090/RTX3080 geometry controls pass;
 the composed local replay passes14 stages/CTest39/39/Python14/14 with11,255
 prior arrays unchanged. Full CUDA replay passes33 gates and CTest39/39 on the actual RTX4090/RTX3080 pair. Interleaved Metal
 layout timing is1.28–1.40x slower despite metadata savings; no speedup is claimed.
-Expanded upload,
+Expanded domain upload,
 reference topology/field layout and production scaling remain open, so C01/C03
 remain unchecked. The host-only r02 matrix passes13 stages/CTest38/38/Python14/14
 with11,255 prior arrays unchanged; it does not qualify later device code.
+
+Further partial C01/C03/C05/U01–U03/U05: exact transpose slots and stored
+four-term order retain the r06 physical CUDA33-gate/CTest39 controls.
+The composed r07 single-device row-stream preparation avoids both expanded
+CSR operators, with local14-stage/CTest39/Python14 qualification and11,255
+unchanged prior arrays. At491,520 leaves, three interleaved Metal repetitions
+reduce peak RSS23.60% (1.615→1.234GB), with3.34% longer setup and effectively
+unchanged timestep time. Full r07 CUDA replay is pending. See the
+[exact-order/streamed evidence](CARTESIAN_SUBGRID_BLOCKS.md#exact-ordering-and-streamed-preparation).
+CPU reference performance, general field/interface scaling, distributed
+preparation and antenna qualification remain open; no item is completed by
+this bounded memory result.
 
 ## 6. One GPU through the existing backends
 
@@ -511,3 +523,5 @@ numerical change invalidates their prior qualification.
 | 2026-11-16 | Further partial F02/G01/P02/P05/U04/U05 | Native volume/path increment `c006caa` | [Contract, source/build identities and limits](CARTESIAN_SUBGRID_CONDUCTOR.md). Actual r03 source matches the published numerical/test files; all 34 local stages, CTest 37/37/Python 14/14, all 27 physical CUDA gates and CTest 37/37 pass. Native Cu18/Cu35 opaque volumes, same-metal unions/priority cuts and ordinary per-cell R/N paths run on CPU/reference/Metal and each RTX4090/RTX3080. Retained lossless pair controls pass both orders; 11,255 older arrays remain bit-identical. Actual older-CSXCAD build passes 35 solver tests with two explicit absent-feature skips. Point-port RF mesh changes remain unresolved; arbitrary CAD, scalable interiors/interfaces, distributed histories/DFT and antenna acceptance remain open. |
 
 | 2026-11-16 | Partial C01/C03/U01–U03/U05, focused spatial interiors | This PR, exact-pair spatial-curl increment (parent `d026d92`) | [Source contract, controls and limits](CARTESIAN_SUBGRID_BLOCKS.md). Host-only r02:13 stages/CTest38/38/Python14/14 and11,255 exact prior arrays. Later focused device geometry passes on reference/Metal and each physical RTX4090/RTX3080; composed local replay passes14 stages/CTest39/39/Python14/14 with11,255 exact prior arrays. Full CUDA replay passes33 gates and CTest39/39 on the actual RTX4090/RTX3080 pair. Interleaved Metal layout timing is1.28–1.40x slower; no speedup is claimed. Expanded upload/reference field organization, distributed histories, general scaling and antenna acceptance remain open. |
+
+| 2026-11-16 | Partial C01/C03/C05/U01–U03/U05; no guard increase | This PR, exact order and streamed preparation | R06 CUDA33 gates/CTest39; composed r07 local14 stages/CTest39/Python14 and11,255 unchanged arrays. Bounded491,520-leaf peak RSS−23.60%, setup+3.34%; r07 CUDA pending. See [block evidence](CARTESIAN_SUBGRID_BLOCKS.md#exact-ordering-and-streamed-preparation). Local r07 core `4af61e6916978ba5d017b802e1bc64355cd6b3ce133d3753568e4dde896ece1f`.|

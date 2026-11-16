@@ -5,6 +5,7 @@
 #include <cstddef>
 #include <array>
 #include "subgrid_device_precision.h"
+#include "subgrid_device_curl.h"
 #include <cstdint>
 #include <memory>
 #include <stdexcept>
@@ -22,6 +23,15 @@ struct GPU_CartesianSubgridFields
 	double fixedTimestep = 0;
 };
 
+//! Completed single-device operator package. No expanded CSR is retained.
+struct CartesianSubgridDeviceOperators
+{
+	CartesianSubgridDeviceCurl curl, transpose;
+	std::vector<std::uint32_t> geometry;
+	std::vector<float> metrics;
+	std::size_t spatialRows = 0, legacyBytes = 0;
+};
+
 //! Backend-neutral upload contract for the first scoped device implementation.
 /*! Expanded curls are a bounded intermediate representation. They do not
  *  allocate a global fine parent lattice, but are not structured block kernels.
@@ -29,6 +39,9 @@ struct GPU_CartesianSubgridFields
  */
 struct CartesianSubgridDeviceData
 {
+	//! State-only preparation requests exact curl streams from its owning grid.
+	//! Expanded arrays must be empty in this mode; domains retain expanded data.
+	bool streamCurls = false;
 	//! Optional single-device spatial curl. Expanded arrays remain the independent oracle.
 	std::vector<std::uint32_t> curlGeometry;
 	std::vector<float> curlMetrics;

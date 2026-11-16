@@ -45,30 +45,14 @@ struct Op_SubgridCurl
 		float value = 0, correction = 0;
 		if (geometry && !transposed && subgrid_geometry_regular(geometry, uint32_t(row)))
 		{
-			uint32_t edges[4];
-			SubgridMetricPair coefficients[4];
-			for (uint32_t term = 0; term < 4; ++term)
+			const SubgridFaceLocation location = subgrid_geometry_location(geometry, uint32_t(row));
+			const uint32_t order = geometry[geometry[3] + uint32_t(row)] & 255u;
+			for (uint32_t rank = 0; rank < 4; ++rank)
 			{
-				edges[term] = subgrid_geometry_edge(geometry, metrics, uint32_t(row), term, coefficients[term]);
-			}
-			// Preserve the canonical E order and compensated accumulation of the oracle.
-			for (uint32_t term = 1; term < 4; ++term)
-			{
-				uint32_t at = term;
-				while (at && edges[at] < edges[at - 1])
-				{
-					const uint32_t edge = edges[at];
-					edges[at] = edges[at - 1];
-					edges[at - 1] = edge;
-					const SubgridMetricPair coefficient = coefficients[at];
-					coefficients[at] = coefficients[at - 1];
-					coefficients[at - 1] = coefficient;
-					--at;
-				}
-			}
-			for (uint32_t term = 0; term < 4; ++term)
-			{
-				Accumulate(value, correction, coefficients[term].high, coefficients[term].low, input[edges[term]]);
+				const uint32_t term = (order >> (2 * rank)) & 3u;
+				const uint32_t edge = subgrid_geometry_edge_at(geometry, location, term);
+				const SubgridMetricPair coefficient = subgrid_geometry_term(geometry, metrics, uint32_t(row), term, edge);
+				Accumulate(value, correction, coefficient.high, coefficient.low, input[edge]);
 			}
 		}
 		else
@@ -81,7 +65,8 @@ struct Op_SubgridCurl
 				float high = weight[k], residual = low[k];
 				if (geometry && transposed && subgrid_geometry_regular(geometry, edge))
 				{
-					const SubgridMetricPair coefficient = subgrid_geometry_coefficient(geometry, metrics, edge, uint32_t(row));
+					// The packed regular-transpose weight is an exact slot tag.
+					const SubgridMetricPair coefficient = subgrid_geometry_term(geometry, metrics, edge, uint32_t(weight[k]), uint32_t(row));
 					high = coefficient.high;
 					residual = coefficient.low;
 				}

@@ -68,12 +68,18 @@ class CartesianSubgridDeviceGeometry
 					continue;
 				}
 				std::array<float, 8> coefficients{};
+				std::array<std::pair<std::uint32_t, unsigned int>, 4> ordered;
+				const auto location = subgrid_geometry_location(geometry.data(), Narrow(row));
+				for (unsigned int term = 0; term < 4; ++term)
+				{
+					ordered[term] = {subgrid_geometry_edge_at(geometry.data(), location, term), term};
+				}
 				unsigned int count = 0;
 				regular.ForEach(row, view, [&](std::size_t edge, double value)
 				{
 					for (unsigned int term = 0; term < 4; ++term)
 					{
-						if (subgrid_geometry_edge_index(geometry.data(), Narrow(row), term) != edge)
+						if (ordered[term].first != edge)
 						{
 							continue;
 						}
@@ -93,7 +99,14 @@ class CartesianSubgridDeviceGeometry
 					found = patterns.emplace(key, Narrow(metrics.size())).first;
 					metrics.insert(metrics.end(), coefficients.begin(), coefficients.end());
 				}
-				geometry[geometry[3] + row] = found->second;
+				std::sort(ordered.begin(), ordered.end());
+				std::uint32_t order = 0;
+				for (unsigned int rank = 0; rank < 4; ++rank)
+				{
+					order |= ordered[rank].second << (2 * rank);
+				}
+				Require(found->second / 8 < (1u << 24), "spatial pattern/order descriptor overflows");
+				geometry[geometry[3] + row] = (found->second / 8) * 256u + order;
 				++rows;
 			}
 		}
@@ -149,13 +162,20 @@ class CartesianSubgridDeviceGeometry
 					continue;
 				}
 				++rows;
-				const std::size_t pattern = g[g[3] + 6 * leaf + face];
+				const std::uint32_t descriptor = g[g[3] + 6 * leaf + face];
+				const std::size_t pattern = (descriptor >> 8) * 8;
 				Require(pattern % 8 == 0 && pattern <= m.size() && m.size() - pattern >= 8,
 					"spatial coefficient pattern is out of bounds");
-				for (unsigned int term = 0; term < 4; ++term)
+				unsigned int seen = 0;
+				std::uint32_t previous = 0;
+				for (unsigned int rank = 0; rank < 4; ++rank)
 				{
-					Require(subgrid_geometry_edge_index(g.data(), Narrow(6 * leaf + face), term) < edges,
-						"selected spatial face has an absent independent E edge");
+					const unsigned int term = (descriptor >> (2 * rank)) & 3u;
+					Require(!(seen & (1u << term)), "spatial order repeats a stencil term");
+					seen |= 1u << term;
+					const auto edge = subgrid_geometry_edge_index(g.data(), Narrow(6 * leaf + face), term);
+					Require(edge < edges && (rank == 0 || edge > previous), "spatial order lost canonical independent E order");
+					previous = edge;
 				}
 			}
 		}

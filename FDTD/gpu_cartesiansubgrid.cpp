@@ -19,18 +19,96 @@
 
 namespace
 {
+//! The expanded contract remains available for independent controls and domains.
+CartesianSubgridDeviceOperators PackExpanded(const CartesianSubgridDeviceData &data, bool domain)
+{
+	CartesianSubgridDeviceOperators result;
+	CartesianSubgridDeviceCurl transpose(data.transposeStart, data.transposeColumn,
+		data.transposeWeight, data.transposeLow, data.magnetic.size(), domain);
+	CartesianSubgridDeviceCurl curl(data.curlStart, data.curlColumn,
+		data.curlWeight, data.curlLow, data.electric.size(), domain);
+	const auto spatialRows = domain ? 0 : CartesianSubgridDeviceGeometry::Validate(
+		data.curlGeometry, data.curlMetrics, data.electric.size(), data.magnetic.size());
+	if (spatialRows)
+	{
+		CartesianSubgridDeviceGeometry::ValidateRows(data);
+		std::vector<std::uint32_t> start{0}, columns;
+		std::vector<float> high, low;
+		for (std::size_t row = 0; row < data.magnetic.size(); ++row)
+		{
+			if (!subgrid_geometry_regular(data.curlGeometry.data(), std::uint32_t(row)))
+			{
+				for (std::size_t k = data.curlStart[row]; k < data.curlStart[row + 1]; ++k)
+				{
+					columns.push_back(data.curlColumn[k]);
+					high.push_back(data.curlWeight[k]);
+					low.push_back(data.curlLow[k]);
+				}
+				start.push_back(static_cast<std::uint32_t>(columns.size()));
+			}
+		}
+		CartesianSubgridDeviceCurl packedCurl(start, columns, high, low, data.electric.size());
+		high = data.transposeWeight;
+		low = data.transposeLow;
+		for (std::size_t edge = 0; edge < data.electric.size(); ++edge)
+		{
+			for (std::size_t k = data.transposeStart[edge]; k < data.transposeStart[edge + 1]; ++k)
+			{
+				const auto face = data.transposeColumn[k];
+				if (!subgrid_geometry_regular(data.curlGeometry.data(), face))
+				{
+					continue;
+				}
+				// A regular transpose term stores an exact 0..3 slot, not an
+				// approximate coefficient. Both gathers read the same pair.
+				unsigned int term = 0;
+				while (term < 4 && subgrid_geometry_edge_index(data.curlGeometry.data(), face, term) != edge)
+				{
+					++term;
+				}
+				if (term == 4)
+				{
+					throw std::logic_error("CartesianSubgrid: validated transpose lost its spatial edge slot");
+				}
+				high[k] = static_cast<float>(term);
+				low[k] = 0;
+			}
+		}
+		CartesianSubgridDeviceCurl packedTranspose(data.transposeStart, data.transposeColumn,
+			high, low, data.magnetic.size());
+		const std::size_t oldBytes = curl.DeviceBytes() + transpose.DeviceBytes();
+		const std::size_t packedBytes = packedCurl.DeviceBytes() + packedTranspose.DeviceBytes() +
+			data.curlGeometry.size() * sizeof(std::uint32_t) + data.curlMetrics.size() * sizeof(float);
+		// A simple uniform grid may already have smaller translated patterns.
+		if (packedBytes < oldBytes)
+		{
+			curl = std::move(packedCurl);
+			transpose = std::move(packedTranspose);
+			result.spatialRows = spatialRows;
+			result.legacyBytes = oldBytes;
+			result.geometry = data.curlGeometry;
+			result.metrics = data.curlMetrics;
+		}
+	}
+
+	result.curl = std::move(curl);
+	result.transpose = std::move(transpose);
+	return result;
+}
+
 //! Existing backend allocation/point operations; fields stay on that backend.
 class CartesianSubgridExecution : public GPU_CartesianSubgrid
 {
   public:
 	CartesianSubgridExecution(GPU_Backend &backend, const CartesianSubgrid &grid)
-		: CartesianSubgridExecution(backend, grid.DeviceData(), 0, 0, false)
+		: CartesianSubgridExecution(backend, grid.DeviceStateData(), 0, 0, false, {}, &grid)
 	{
 	}
 
 	CartesianSubgridExecution(GPU_Backend &backend, const CartesianSubgridDeviceData &data,
 		std::size_t ownedElectric, std::size_t ownedMagnetic, bool domain,
-		std::unique_ptr<GPU_CartesianSubgridRecurrence> recurrence = {})
+		std::unique_ptr<GPU_CartesianSubgridRecurrence> recurrence = {},
+		const CartesianSubgrid *streamingGrid = nullptr)
 		: m_Backend(backend), m_Recurrence(std::move(recurrence)), m_Domain(domain),
 		  m_OwnedElectric(domain ? ownedElectric : data.electric.size()),
 		  m_OwnedMagnetic(domain ? ownedMagnetic : data.magnetic.size())
@@ -67,56 +145,26 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 		}
 		m_BlockCount = data.bandwidth.size();
 		m_SourceCount = data.sourceEdge.size();
-		CartesianSubgridDeviceCurl transpose(data.transposeStart, data.transposeColumn,
-			data.transposeWeight, data.transposeLow, data.magnetic.size(), domain);
-		CartesianSubgridDeviceCurl curl(data.curlStart, data.curlColumn,
-			data.curlWeight, data.curlLow, data.electric.size(), domain);
-		const auto spatialRows = domain ? 0 : CartesianSubgridDeviceGeometry::Validate(
-			data.curlGeometry, data.curlMetrics, data.electric.size(), data.magnetic.size());
-		if (spatialRows)
+		if (data.streamCurls && (!streamingGrid || domain || !data.curlColumn.empty() ||
+			!data.curlWeight.empty() || !data.curlLow.empty() || data.curlStart != std::vector<std::uint32_t>{0} ||
+			!data.transposeStart.empty() || !data.transposeColumn.empty() ||
+			!data.transposeWeight.empty() || !data.transposeLow.empty() ||
+			!data.curlGeometry.empty() || !data.curlMetrics.empty()))
 		{
-			CartesianSubgridDeviceGeometry::ValidateRows(data);
-			std::vector<std::uint32_t> start{0}, columns;
-			std::vector<float> high, low;
-			for (std::size_t row = 0; row < data.magnetic.size(); ++row)
-			{
-				if (!subgrid_geometry_regular(data.curlGeometry.data(), std::uint32_t(row)))
-				{
-					for (std::size_t k = data.curlStart[row]; k < data.curlStart[row + 1]; ++k)
-					{
-						columns.push_back(data.curlColumn[k]);
-						high.push_back(data.curlWeight[k]);
-						low.push_back(data.curlLow[k]);
-					}
-					start.push_back(static_cast<std::uint32_t>(columns.size()));
-				}
-			}
-			CartesianSubgridDeviceCurl packedCurl(start, columns, high, low, data.electric.size());
-			high = data.transposeWeight;
-			low = data.transposeLow;
-			for (std::size_t k = 0; k < data.transposeColumn.size(); ++k)
-			{
-				if (subgrid_geometry_regular(data.curlGeometry.data(), data.transposeColumn[k]))
-				{
-					high[k] = low[k] = 0;
-				}
-			}
-			CartesianSubgridDeviceCurl packedTranspose(data.transposeStart, data.transposeColumn,
-				high, low, data.magnetic.size());
-			const std::size_t oldBytes = curl.DeviceBytes() + transpose.DeviceBytes();
-			const std::size_t packedBytes = packedCurl.DeviceBytes() + packedTranspose.DeviceBytes() +
-				data.curlGeometry.size() * sizeof(std::uint32_t) + data.curlMetrics.size() * sizeof(float);
-			// A simple uniform grid may already have smaller translated patterns.
-			if (packedBytes < oldBytes)
-			{
-				curl = std::move(packedCurl);
-				transpose = std::move(packedTranspose);
-				m_SpatialRows = spatialRows;
-				m_Geometry = Upload(data.curlGeometry);
-				m_Metrics = Upload(data.curlMetrics);
-				std::cout << "CartesianSubgrid spatial device curl: rows=" << spatialRows
-					<< " metadata_bytes=" << packedBytes << " legacy_bytes=" << oldBytes << std::endl;
-			}
+			throw std::invalid_argument("CartesianSubgrid: invalid state-only curl upload");
+		}
+		auto operators = data.streamCurls ? streamingGrid->DeviceCurls() : PackExpanded(data, domain);
+		const auto &curl = operators.curl;
+		const auto &transpose = operators.transpose;
+		m_SpatialRows = operators.spatialRows;
+		if (m_SpatialRows)
+		{
+			m_Geometry = Upload(operators.geometry);
+			m_Metrics = Upload(operators.metrics);
+			const std::size_t bytes = curl.DeviceBytes() + transpose.DeviceBytes() +
+				operators.geometry.size() * sizeof(std::uint32_t) + operators.metrics.size() * sizeof(float);
+			std::cout << "CartesianSubgrid spatial device curl: rows=" << m_SpatialRows
+				<< " metadata_bytes=" << bytes << " legacy_bytes=" << operators.legacyBytes << std::endl;
 		}
 
 		auto *electric = Upload(data.electric), *magnetic = Upload(data.magnetic);
@@ -380,7 +428,7 @@ std::unique_ptr<GPU_CartesianSubgrid> GPU_Backend::CreateCartesianSubgrid(const 
 
 namespace
 {
-void ValidateDomain(const CartesianSubgridDomainData &domain)
+void ValidateDomain(const CartesianSubgridDomainData &domain, bool allowStream = false)
 {
 	const auto &data = domain.fields;
 	const auto require = [](bool condition, const char *message)
@@ -393,8 +441,9 @@ void ValidateDomain(const CartesianSubgridDomainData &domain)
 	require(domain.ownedElectric && domain.ownedElectric <= data.electric.size() &&
 		domain.ownedMagnetic && domain.ownedMagnetic <= data.magnetic.size(),
 		"CartesianSubgrid: invalid domain owned counts");
-	require(data.transposeStart.size() == domain.ownedElectric + 1 &&
-		data.curlStart.size() == domain.ownedMagnetic + 1 &&
+	require((data.streamCurls ? allowStream :
+		(data.transposeStart.size() == domain.ownedElectric + 1 &&
+			data.curlStart.size() == domain.ownedMagnetic + 1)) &&
 		data.stableTimestep > 0 && std::isfinite(data.stableTimestep),
 		"CartesianSubgrid: invalid domain rows/timestep");
 	const std::size_t ports = data.rootConductance.size();
@@ -490,8 +539,8 @@ std::unique_ptr<GPU_CartesianSubgrid> GPU_CreateCartesianSubgridAdvanced(
 	checked.ownedElectric = data.electric.size();
 	checked.ownedMagnetic = data.magnetic.size();
 	checked.fields = std::move(data);
-	ValidateDomain(checked);
-	auto execution = std::make_unique<CartesianSubgridExecution>(backend, checked.fields, 0, 0, false, std::move(recurrence));
+	ValidateDomain(checked, true);
+	auto execution = std::make_unique<CartesianSubgridExecution>(backend, checked.fields, 0, 0, false, std::move(recurrence), &grid);
 	execution->RequireFixedTimestep(timestep);
 	return execution;
 }
