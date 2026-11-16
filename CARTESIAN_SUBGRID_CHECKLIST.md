@@ -169,11 +169,13 @@ conventional Yee references. Energy/source-work/loss agrees within 1.46e-12
 through 100k steps; broader sources, distributed R/LC/modal workflows and
 material/interface placements remain open.
 
-A separate frozen native-adapter control also exposed that the two-sample
-Step waveform falls to zero after its stored samples, whereas the ordinary
-source retains sample0. This experimental native-adapter discrepancy is
-reproduced but not corrected in the current milestone. Gaussian/Dirac pulse
-controls and the direct core/domain DC controls do not establish Step parity.
+The frozen native-adapter Step/sample0 discrepancy is corrected by the
+[source-tail increment](CARTESIAN_SUBGRID.md#native-source-waveform-tails).
+Scoped CPU/reference/Metal and each physical RTX4090/RTX3080 waveform controls,
+plus actual native Step scripting, pass. The full local 21-stage suite and
+physical CUDA 26/26 CTest pass;17 older prefixes and11,255 arrays are retained.
+Direct C++ periodic controls do not admit normal native periodic/steady-state
+scripting. H-source/delay/TFSF and broader P01 coverage remain open.
 
 ## 4. Boundaries and radiation postprocessing
 
@@ -446,3 +448,5 @@ numerical change invalidates their prior qualification.
 | 2026-11-16 | Further partial D02/D03/D05: physical mixed-device contexts | This PR, context increment (configure-time parent `458e612`) | [Reproduction, fix, physical gates and hashes](CARTESIAN_SUBGRID_DOMAINS.md#physical-mixed-device-contexts). Actual RTX4090/RTX3080 pair, both orders, nine field/domain and six coupled-port cases per lane plus retained single-device/fields/ports/DC and CUDA CTest 24/24. Fields identical to one-device; maximum double error 1.941e-5, balance 1.706e-6. All 20 local stages, CTest 24/24/Python 14/14; 15 older prefixes and 11,255 arrays unchanged. ASan/UBSan domain-source controls pass. Host-only activation timing is not FDTD throughput evidence. Native distributed selectors/PML/losses/DFT, collective pause/resume, production scaling and antenna acceptance remain open. |
 
 | 2026-11-16 | Partial extension/parity infrastructure | This PR, paired-advance increment (configure-time parent `c640333`) | [Boundary, tests, source/build and limits](CARTESIAN_SUBGRID.md#paired-compact-advance-extensions). All21 local stages, CTest25/25/Python14/14;16 older prefixes and11,255 arrays unchanged. Physical RTX4090/RTX3080 retained domains/ports plus CTest25/25; canonical real-drive CPU/reference/Metal/RTX4090/RTX3080 supplement separates the repaired test's earlier initial-only coverage. No conductivity/native lossy admission, distributed histories or antenna qualification. |
+
+| 2026-11-16 | Further partial P01/U05: native source tails | This PR, waveform increment (parent b48e819) | [Contract and evidence](CARTESIAN_SUBGRID.md#native-source-waveform-tails). Step/custom sample-zero repair;21 local stages, CTest 26/26, Python 14/14 and17 older prefixes/11,255 arrays unchanged. Physical RTX4090/RTX3080 waveform/Step plus retained domain/port controls and CUDA CTest 26/26 pass. Native periodic/SSD, delayed/H/TFSF and antenna qualification remain open. |

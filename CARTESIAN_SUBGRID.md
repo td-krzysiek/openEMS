@@ -1549,3 +1549,39 @@ source-only supplements use unchanged cores and separately identified tests.
 No production or antenna runtime is changed. Conductivity, absorber/material
 history combinations, distributed processing and representative antenna
 qualification remain separate milestones.
+
+
+## Native source waveform tails
+
+The experimental native adapter now follows the ordinary source's sample-zero
+fallback outside a stored nonperiodic waveform. The two-sample Step retains
+one, rather than silently dropping to zero after step two. Gaussian/Dirac
+zero tails are unchanged. C++ periodic sample indices use the global timestep;
+normal native periodic/steady-state scripting remains explicitly rejected.
+
+A frozen negative control reproduced the old Step error (about 0.9074 maximum
+field discrepancy). Direct Step/custom/Dirac/periodic controls retain the
+unchanged 2e-4 CPU/device field gate and a negative legacy-tail control. Actual
+Python/native Step uses the real two stored unit samples; CPU/reference/Metal
+and HIP/NVIDIA comparisons pass. This is not H-source, delayed-source, TFSF or
+steady-state parity.
+
+Local source/configure parent is b48e819, plus this focused source-tail patch:
+core SHA-256 237a52de2af1d0d1be7173fe83239e659c9804d28fc9b8d0786bb570fb849709.
+All 21 compatibility stages pass, including26/26 CTest, 14/14 Python,
+fields/ports/PML/dipole/polygons and two frozen CPU dipoles. Seventeen older
+runtime prefixes and 11,255 numerical arrays remain unchanged. Earlier b48e819
+ordinary-engine controls are retained with unchanged ordinary implementation.
+
+The separately built HIP/NVIDIA runtime passes 26/26 CTest, eight waveform cases
+on each physical RTX4090 and RTX3080, actual native Step, and retained two-device
+field/port controls in both orders. Largest waveform field error 2.454e-6.
+Runtime/source/terminal hashes and compact logs are in the contributor's
+`native-waveforms/{qualification,cuda-qualification,prior-array-comparison}.json`
+archive. The direct periodic tests do not override the scripting restriction.
+
+```sh
+build/tests/test_cartesian_subgrid_device_waveforms --metal
+# Use a separately built HIP/NVIDIA runtime:
+build/tests/test_cartesian_subgrid_device_waveforms --cuda
+```

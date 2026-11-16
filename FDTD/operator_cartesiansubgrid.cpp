@@ -159,9 +159,24 @@ class Engine_CartesianSubgrid : public Engine
 	bool IterateCompact(unsigned int steps)
 	{
 		Excitation *signal = m_Operator->Signal();
+		const auto length = signal->GetLength();
+		unsigned int period = 0;
+		if (signal->GetSignalPeriod() > 0)
+		{
+			const double samples = signal->GetSignalPeriod() / signal->GetTimestep();
+			if (!std::isfinite(samples) || samples < .5 ||
+				samples > std::numeric_limits<unsigned int>::max())
+			{
+				throw std::invalid_argument("CartesianSubgrid: invalid excitation period");
+			}
+			period = signal->GetSignalPeriodTS();
+		}
 		for (unsigned int step = 0; step < steps; ++step)
 		{
-			const double drive = numTS < signal->GetLength() ? signal->GetVoltageSignal()[numTS] : 0;
+			const auto position = period ? numTS % period : numTS;
+			// Ordinary soft sources use sample0 outside a stored nonperiodic
+			// waveform. It is zero for pulses, but one for a Step excitation.
+			const double drive = length ? signal->GetVoltageSignal()[position < length ? position : 0] : 0;
 			if (m_Device)
 			{
 				if (m_DeviceExtensions.empty())

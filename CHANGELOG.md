@@ -144,6 +144,9 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Fixed
 
+- Experimental Cartesian-subgrid soft-E sources retain sample zero after a
+  stored nonperiodic waveform, matching ordinary Step/custom-source behavior.
+  Native periodic/steady-state scripting remains unsupported.
 - Experimental Cartesian subgrid device fields: retain coefficient and timestep
   residuals with compensated FP32 arithmetic, avoiding accumulated interface
   field errors in the reproduced DC and long RF controls. Existing CPU/ordinary
