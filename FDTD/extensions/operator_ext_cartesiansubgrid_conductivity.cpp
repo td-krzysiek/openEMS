@@ -9,6 +9,7 @@
 #include <cmath>
 #include <stdexcept>
 #include <utility>
+#include <string>
 
 namespace
 {
@@ -29,6 +30,13 @@ Operator_Ext_CartesianSubgrid_Conductivity::Operator_Ext_CartesianSubgrid_Conduc
 	Require(m_Compact && bool(m_Sample), "CartesianSubgrid conductivity requires a compact operator and sampler");
 }
 
+void Operator_Ext_CartesianSubgrid_Conductivity::SetSurfaceAdmittances(
+	std::vector<SurfaceAdmittance> surfaces)
+{
+	Require(m_Timestep == 0, "CartesianSubgrid surface admittance must be configured before preparation");
+	m_Surfaces = std::move(surfaces);
+}
+
 bool Operator_Ext_CartesianSubgrid_Conductivity::BuildExtension()
 {
 	const auto &g = m_Compact->Grid();
@@ -46,6 +54,9 @@ bool Operator_Ext_CartesianSubgrid_Conductivity::BuildExtension()
 	m_Factors.clear();
 	m_Responses.clear();
 	m_PortLower.clear();
+	m_SurfaceTrace.clear();
+	m_SurfaceRate.clear();
+	m_SurfaceDenominator.clear();
 	for (std::size_t c = 0; c < g.CellCount(); ++c)
 	{
 		const auto start = g.LeafStart(c), length = g.LeafLengths(c);
@@ -101,6 +112,68 @@ bool Operator_Ext_CartesianSubgrid_Conductivity::BuildExtension()
 			}
 		}
 	}
+	// Physical conductance and eliminated inductive states have distinct ledgers.
+	const auto addTrace = [](std::vector<double> &diagonal, Couplings &off,
+		const Trace &trace, double weight)
+	{
+		for (const auto &a : trace)
+		{
+			diagonal[a.first] += weight * a.second * a.second;
+			for (const auto &b : trace)
+			{
+				if (a.first < b.first)
+				{
+					off[{a.first, b.first}] += weight * a.second * b.second;
+				}
+			}
+		}
+	};
+	for (const auto &surface : m_Surfaces)
+	{
+		Require(std::isfinite(surface.conductance) && surface.conductance >= 0,
+			"CartesianSubgrid surface conductance must be finite and nonnegative");
+		const auto path = g.VoltagePath(surface.start, surface.stop);
+		Require(!path.weights.empty(), "CartesianSubgrid surface voltage path is empty or PEC");
+		if (surface.conductance > 0)
+		{
+			Trace trace = path.weights;
+			for (auto &term : trace)
+			{
+				term.second *= std::sqrt(surface.conductance);
+			}
+			addTrace(m_Diagonal, m_OffDiagonal, trace, 1);
+			m_Trace.push_back(std::move(trace));
+			m_HasLoss = true;
+		}
+		for (const auto &pole : surface.poles)
+		{
+			Require(std::isfinite(pole.resistance) && pole.resistance >= 0 &&
+				std::isfinite(pole.inductance) && pole.inductance > 0,
+				"CartesianSubgrid surface pole requires finite R>=0 and L>0");
+			Trace trace = path.weights;
+			for (auto &term : trace)
+			{
+				term.second /= std::sqrt(pole.inductance);
+				Require(std::isfinite(term.second) && term.second != 0,
+					"CartesianSubgrid surface trace is unrepresentable");
+			}
+			const double rate = pole.resistance / pole.inductance;
+			const double denominator = 1 + .5 * m_Timestep * rate;
+			Require(std::isfinite(rate) && std::isfinite(denominator),
+				"CartesianSubgrid surface relaxation overflows");
+			m_SurfaceTrace.push_back(std::move(trace));
+			m_SurfaceRate.push_back(rate);
+			m_SurfaceDenominator.push_back(denominator);
+			m_HasLoss = true; // Includes lossless stored inductive energy.
+		}
+	}
+	m_EffectiveDiagonal = m_Diagonal;
+	m_EffectiveOffDiagonal = m_OffDiagonal;
+	for (std::size_t pole = 0; pole < m_SurfaceTrace.size(); ++pole)
+	{
+		addTrace(m_EffectiveDiagonal, m_EffectiveOffDiagonal, m_SurfaceTrace[pole],
+			.5 * m_Timestep / m_SurfaceDenominator[pole]);
+	}
 	if (!m_HasLoss)
 	{
 		return true;
@@ -118,13 +191,18 @@ bool Operator_Ext_CartesianSubgrid_Conductivity::BuildExtension()
 	{
 		mass.emplace(term.first, term.second);
 	}
-	for (const auto &term : m_OffDiagonal)
+	for (const auto &term : m_EffectiveOffDiagonal)
 	{
-		Require(mass.count(term.first), "CartesianSubgrid conductivity escaped the electric mass graph");
+		if (!mass.count(term.first))
+		{
+			throw std::invalid_argument("CartesianSubgrid conductivity escaped the electric mass graph: edges " +
+				std::to_string(term.first.first) + "," + std::to_string(term.first.second) +
+				" weight " + std::to_string(term.second));
+		}
 	}
 	for (std::size_t i = 0; i < g.EdgeCount(); ++i)
 	{
-		const double diagonal = 1 + .5 * m_Timestep * m_Diagonal[i];
+		const double diagonal = 1 + .5 * m_Timestep * m_EffectiveDiagonal[i];
 		Require(diagonal > 0 && std::isfinite(diagonal), "CartesianSubgrid implicit conductivity diagonal overflows");
 		m_IndependentInverse[i] = 1 / diagonal;
 	}
@@ -137,14 +215,14 @@ bool Operator_Ext_CartesianSubgrid_Conductivity::BuildExtension()
 		{
 			const auto edge = block.edges[i];
 			m_IndependentInverse[edge] = 1;
-			block.lower[i * stride] = 1 + .5 * m_Timestep * m_Diagonal[edge];
+			block.lower[i * stride] = 1 + .5 * m_Timestep * m_EffectiveDiagonal[edge];
 			for (std::size_t j = i > block.halfBandwidth ? i - block.halfBandwidth : 0; j < i; ++j)
 			{
 				const auto pair = std::minmax(edge, block.edges[j]);
 				const std::pair<std::size_t, std::size_t> key{pair.first, pair.second};
-				const auto a = mass.find(key), b = m_OffDiagonal.find(key);
+				const auto a = mass.find(key), b = m_EffectiveOffDiagonal.find(key);
 				block.lower[i * stride + i - j] = (a != mass.end() ? a->second : 0) +
-					.5 * m_Timestep * (b != m_OffDiagonal.end() ? b->second : 0);
+					.5 * m_Timestep * (b != m_EffectiveOffDiagonal.end() ? b->second : 0);
 			}
 		}
 		Factor(block);
@@ -164,7 +242,7 @@ void Operator_Ext_CartesianSubgrid_Conductivity::ValidatePreparedExtensions() co
 	std::vector<bool> affected(grid.EdgeCount(), false);
 	for (std::size_t edge = 0; edge < affected.size(); ++edge)
 	{
-		affected[edge] = m_Diagonal[edge] != 0;
+		affected[edge] = m_EffectiveDiagonal[edge] != 0;
 	}
 	// Any nonzero G on a coupled mass block protects the entire block: an
 	// implicit solve can change every member even if its own G diagonal is zero.

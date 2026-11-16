@@ -56,14 +56,64 @@ class CompactDeviceConductivity : public GPU_CartesianSubgridRecurrence
 		Require(m_TraceCount <= std::numeric_limits<std::uint32_t>::max() / 2 &&
 			m_MagneticCount <= std::numeric_limits<std::uint32_t>::max() / 2,
 			"CartesianSubgrid: conductivity ledger exceeds device indexing");
-		if (m_TraceCount)
+		m_SurfaceCount = m_Data.surfaceRate.size();
+		Require(m_SurfaceCount <= std::numeric_limits<std::uint32_t>::max() / 2,
+			"CartesianSubgrid: surface states exceed device indexing");
+		if (m_TraceCount || m_SurfaceCount)
 		{
 			std::vector<std::uint32_t> edges(fields.electricCount);
 			std::iota(edges.begin(), edges.end(), 0);
 			m_Previous = {fields.electric, Upload(edges), Upload(std::vector<float>(fields.electricCount, 0))};
+		}
+		if (m_TraceCount)
+		{
 			m_ElectricLoss = {Upload(t.start), Upload(t.edge), Upload(t.weight), Upload(t.low),
 				m_Previous.curl, fields.electric, Upload(std::vector<float>(2 * m_TraceCount, 0)), Normal(m_Timestep)};
 			InitReduction(m_ElectricReduction, m_TraceCount);
+		}
+		if (!m_SurfaceCount)
+		{
+			const auto empty = [](const CartesianSubgridConductivityData::Rows &rows)
+			{
+				return rows.start == std::vector<std::uint32_t>{0} && rows.edge.empty() && rows.weight.empty() && rows.low.empty();
+			};
+			Require(empty(m_Data.surfaceTrace) && empty(m_Data.surfaceHistory),
+				"CartesianSubgrid: surface tables exist without branch states");
+		}
+		if (m_SurfaceCount)
+		{
+			const auto &trace = m_Data.surfaceTrace, &history = m_Data.surfaceHistory;
+			Require(trace.start.size() == m_SurfaceCount + 1 && history.start.size() == fields.electricCount + 1,
+				"CartesianSubgrid: surface device dimensions differ");
+			for (std::size_t pole = 0; pole < m_SurfaceCount; ++pole)
+			{
+				Require(trace.start[pole] < trace.start[pole + 1],
+					"CartesianSubgrid: empty device surface trace");
+			}
+			const CartesianSubgridDeviceCurl checked(trace.start, trace.edge, trace.weight, trace.low, fields.electricCount, true);
+			(void)checked;
+			const CartesianSubgridDeviceCurl incidence(history.start, history.edge, history.weight, history.low, m_SurfaceCount);
+			auto *state = Upload(std::vector<float>(m_SurfaceCount, 0));
+			m_SurfaceHistory = {Upload(incidence.start), Upload(incidence.offset), Upload(incidence.base),
+				Upload(incidence.pattern), Upload(incidence.weight), Upload(incidence.residual), state, rhs, -1, 0, 1};
+			std::vector<float> decay, decayLow, change, changeLow, rateStep;
+			for (double rate : m_Data.surfaceRate)
+			{
+				Require(rate >= 0 && std::isfinite(rate) && std::isfinite(m_Timestep * rate),
+					"CartesianSubgrid: invalid surface relaxation rate");
+				const double a = .5 * m_Timestep * rate;
+				const double d = -m_Timestep * rate / (1 + a), c = m_Timestep / (1 + a);
+				decay.push_back(Normal(d));
+				decayLow.push_back(Normal(d - double(decay.back())));
+				change.push_back(Normal(c));
+				changeLow.push_back(Normal(c - double(change.back())));
+				rateStep.push_back(Normal(m_Timestep * rate));
+			}
+			m_Surface = {Upload(trace.start), Upload(trace.edge), Upload(trace.weight), Upload(trace.low),
+				m_Previous.curl, fields.electric, Upload(decay), Upload(decayLow), Upload(change), Upload(changeLow),
+				Upload(rateStep), state, Upload(std::vector<float>(2 * m_SurfaceCount, 0)),
+				Upload(std::vector<float>(2 * m_SurfaceCount, 0))};
+			InitReduction(m_SurfaceReduction, m_SurfaceCount);
 		}
 		std::vector<float> decay, decayLow, change, changeLow, rateStep;
 		for (double rate : m_Data.magneticRate)
@@ -93,11 +143,15 @@ class CompactDeviceConductivity : public GPU_CartesianSubgridRecurrence
 		Require(m_Backend && m_Phase == 0 && timestep == m_Timestep,
 			"CartesianSubgrid: conductivity electric phase/timestep mismatch");
 		m_Phase = 1;
-		if (m_TraceCount)
+		if (m_TraceCount || m_SurfaceCount)
 		{
 			m_Backend->RunPoints(GPU_OP_SUBGRID_GATHER, &m_Previous, 0, m_ElectricCount, false);
 		}
 		m_Backend->RunPoints(GPU_OP_SUBGRID_CURL, &m_Conductance, 0, m_ElectricCount, false);
+		if (m_SurfaceCount)
+		{
+			m_Backend->RunPoints(GPU_OP_SUBGRID_CURL, &m_SurfaceHistory, 0, m_ElectricCount, false);
+		}
 	}
 	void FinishElectric(double timestep) override
 	{
@@ -106,6 +160,10 @@ class CompactDeviceConductivity : public GPU_CartesianSubgridRecurrence
 		if (m_TraceCount)
 		{
 			m_Backend->RunPoints(GPU_OP_SUBGRID_ELECTRIC_LOSS, &m_ElectricLoss, 0, m_TraceCount, false);
+		}
+		if (m_SurfaceCount)
+		{
+			m_Backend->RunPoints(GPU_OP_SUBGRID_SURFACE_STATE, &m_Surface, 0, m_SurfaceCount, false);
 		}
 	}
 	void UpdateMagnetic(const Op_SubgridCurl &curl, double timestep) override
@@ -135,6 +193,16 @@ class CompactDeviceConductivity : public GPU_CartesianSubgridRecurrence
 		CheckObservation();
 		return {m_TraceCount ? Reduce(m_ElectricLoss.loss, m_ElectricReduction, m_TraceCount) : 0,
 			m_HasMagneticLoss ? Reduce(m_MagneticLoss.loss, m_MagneticReduction, m_MagneticCount) : 0};
+	}
+	std::array<double, 2> ReadSurfaceLedger() override
+	{
+		CheckObservation();
+		if (!m_SurfaceCount)
+		{
+			return {0, 0};
+		}
+		return {Reduce(m_Surface.loss, m_SurfaceReduction, m_SurfaceCount),
+			Reduce(m_Surface.energy, m_SurfaceReduction, m_SurfaceCount)};
 	}
 	std::size_t StorageBytes() const override { return m_StorageBytes; }
 
@@ -177,12 +245,13 @@ class CompactDeviceConductivity : public GPU_CartesianSubgridRecurrence
 	}
 	CartesianSubgridConductivityData m_Data;
 	GPU_Backend *m_Backend = nullptr;
-	Op_SubgridCurl m_Conductance{};
+	Op_SubgridCurl m_Conductance{}, m_SurfaceHistory{};
 	Op_SubgridGather m_Previous{};
 	Op_SubgridElectricLoss m_ElectricLoss{};
 	Op_SubgridMagneticLoss m_MagneticLoss{};
-	std::vector<float *> m_ElectricReduction, m_MagneticReduction;
-	std::size_t m_StorageBytes = 0, m_ElectricCount = 0, m_MagneticCount = 0, m_TraceCount = 0;
+	Op_SubgridSurfaceState m_Surface{};
+	std::vector<float *> m_ElectricReduction, m_MagneticReduction, m_SurfaceReduction;
+	std::size_t m_StorageBytes = 0, m_ElectricCount = 0, m_MagneticCount = 0, m_TraceCount = 0, m_SurfaceCount = 0;
 	double m_Timestep = 0;
 	unsigned int m_Phase = 0;
 	bool m_HasMagneticLoss = false;

@@ -11,7 +11,8 @@
 Engine_Ext_CartesianSubgrid_Conductivity::Engine_Ext_CartesianSubgrid_Conductivity(
 	Operator_Ext_CartesianSubgrid_Conductivity *op)
 	: Engine_Ext_CartesianSubgrid_Advance(op), m_Conductivity(op), m_Grid(op->m_Compact->Grid()),
-	  m_OldElectric(m_Grid.EdgeCount()), m_SourceCurl(m_Grid.EdgeCount())
+	  m_OldElectric(m_Grid.EdgeCount()), m_SourceCurl(m_Grid.EdgeCount()),
+	  m_SurfaceState(op->m_SurfaceTrace.size(), 0)
 {
 	m_Conductivity->ValidatePreparedExtensions();
 }
@@ -51,12 +52,20 @@ void Engine_Ext_CartesianSubgrid_Conductivity::UpdateElectric(double timestep, d
 	std::copy(g.m_Increment.begin(), g.m_Increment.end(), m_SourceCurl.begin());
 	for (std::size_t i = 0; i < g.EdgeCount(); ++i)
 	{
-		g.m_Increment[i] -= c.m_Diagonal[i] * g.m_Electric[i];
+		g.m_Increment[i] -= c.m_EffectiveDiagonal[i] * g.m_Electric[i];
 	}
-	for (const auto &term : c.m_OffDiagonal)
+	for (const auto &term : c.m_EffectiveOffDiagonal)
 	{
 		g.m_Increment[term.first.first] -= term.second * g.m_Electric[term.first.second];
 		g.m_Increment[term.first.second] -= term.second * g.m_Electric[term.first.first];
+	}
+	for (std::size_t pole = 0; pole < m_SurfaceState.size(); ++pole)
+	{
+		const double history = m_SurfaceState[pole] / c.m_SurfaceDenominator[pole];
+		for (const auto &term : c.m_SurfaceTrace[pole])
+		{
+			g.m_Increment[term.first] -= term.second * history;
+		}
 	}
 	c.Solve(g.m_Increment, m_Scratch);
 	if (g.m_PortVoltage.empty())
@@ -79,6 +88,20 @@ void Engine_Ext_CartesianSubgrid_Conductivity::UpdateElectric(double timestep, d
 			field += term.second * .5 * (m_OldElectric[term.first] + g.m_Electric[term.first]);
 		}
 		Add(m_ElectricLoss, timestep * field * field);
+	}
+	// Advance sqrt(L)*I from the implicit field midpoint before soft kicks.
+	for (std::size_t pole = 0; pole < m_SurfaceState.size(); ++pole)
+	{
+		double voltage = 0;
+		for (const auto &term : c.m_SurfaceTrace[pole])
+		{
+			voltage += term.second * .5 * (m_OldElectric[term.first] + g.m_Electric[term.first]);
+		}
+		const double previous = m_SurfaceState[pole];
+		const double a = .5 * timestep * c.m_SurfaceRate[pole];
+		m_SurfaceState[pole] = ((1 - a) * previous + timestep * voltage) / c.m_SurfaceDenominator[pole];
+		const double midpoint = .5 * (previous + m_SurfaceState[pole]);
+		Add(m_SurfaceLoss, timestep * c.m_SurfaceRate[pole] * midpoint * midpoint);
 	}
 	for (const auto &source : g.m_Sources)
 	{
@@ -247,12 +270,12 @@ std::unique_ptr<GPU_CartesianSubgrid> Engine_Ext_CartesianSubgrid_Conductivity::
 	std::vector<std::vector<std::pair<std::size_t, double>>> rows(m_Grid.EdgeCount());
 	for (std::size_t edge = 0; edge < rows.size(); ++edge)
 	{
-		if (c.m_Diagonal[edge] != 0)
+		if (c.m_EffectiveDiagonal[edge] != 0)
 		{
-			rows[edge].emplace_back(edge, c.m_Diagonal[edge]);
+			rows[edge].emplace_back(edge, c.m_EffectiveDiagonal[edge]);
 		}
 	}
-	for (const auto &term : c.m_OffDiagonal)
+	for (const auto &term : c.m_EffectiveOffDiagonal)
 	{
 		rows[term.first.first].emplace_back(term.first.second, term.second);
 		rows[term.first.second].emplace_back(term.first.first, term.second);
@@ -274,8 +297,32 @@ std::unique_ptr<GPU_CartesianSubgrid> Engine_Ext_CartesianSubgrid_Conductivity::
 		}
 		loss.trace.start.push_back(index(loss.trace.edge.size()));
 	}
-	return GPU_CreateCartesianSubgridAdvanced(backend, m_Grid, std::move(data),
+	if (!c.m_SurfaceTrace.empty())
+	{
+		std::vector<std::vector<std::pair<std::size_t, double>>> history(m_Grid.EdgeCount());
+		for (std::size_t pole = 0; pole < c.m_SurfaceTrace.size(); ++pole)
+		{
+			for (const auto &term : c.m_SurfaceTrace[pole])
+			{
+				append(loss.surfaceTrace, term.first, term.second);
+				history[term.first].emplace_back(pole, term.second / c.m_SurfaceDenominator[pole]);
+			}
+			loss.surfaceTrace.start.push_back(index(loss.surfaceTrace.edge.size()));
+		}
+		for (const auto &row : history)
+		{
+			for (const auto &term : row)
+			{
+				append(loss.surfaceHistory, term.first, term.second);
+			}
+			loss.surfaceHistory.start.push_back(index(loss.surfaceHistory.edge.size()));
+		}
+		loss.surfaceRate = c.m_SurfaceRate;
+	}
+	auto device = GPU_CreateCartesianSubgridAdvanced(backend, m_Grid, std::move(data),
 		GPU_CreateCartesianSubgridConductivity(std::move(loss)), c.m_Timestep);
+	m_UsingDevice = true;
+	return device;
 }
 
 void Engine_Ext_CartesianSubgrid_Conductivity::ReadDeviceDiagnostics(GPU_CartesianSubgrid &device)
@@ -285,5 +332,25 @@ void Engine_Ext_CartesianSubgrid_Conductivity::ReadDeviceDiagnostics(GPU_Cartesi
 		const auto loss = device.ReadAdvanceLedger();
 		m_ElectricLoss = {loss[0], 0};
 		m_MagneticLoss = {loss[1], 0};
+		if (!m_Conductivity->m_SurfaceTrace.empty())
+		{
+			const auto surface = device.ReadAdvanceSurfaceLedger();
+			m_SurfaceLoss = {surface[0], 0};
+			m_DeviceSurfaceEnergy = surface[1];
+		}
 	}
+}
+
+double Engine_Ext_CartesianSubgrid_Conductivity::AdditionalStoredEnergy() const
+{
+	if (m_UsingDevice)
+	{
+		return m_DeviceSurfaceEnergy;
+	}
+	double value = 0;
+	for (double state : m_SurfaceState)
+	{
+		value += .5 * state * state;
+	}
+	return value;
 }

@@ -16,10 +16,16 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Added
 
+- Experimental C++ Cartesian-subgrid surface conductance/RL states share the
+  bulk-loss advance on CPU and existing GPU backends. Stored energy, Ohmic
+  loss and disjoint PML have scoped controls; native conductor geometry and
+  distributed surface histories are not yet supported. Matching rebuilt
+  callers/plugins are required; see `CARTESIAN_SUBGRID_SURFACE.md`.
+
 - Experimental Cartesian subgrids accept constant isotropic electric/magnetic
   conductivity in native material boxes through paired CPU/device updates.
   Separated loss/PML is checked against prepared correction/collar supports.
-  Overlapping loss/PML, Mur with loss, surface/ADE conductors and distributed
+  Overlapping loss/PML, Mur with loss, native surface/ADE conductors and distributed
   loss remain unsupported; see `CARTESIAN_SUBGRID_CONDUCTIVITY.md` for the qualified scope.
 - Experimental compact Cartesian physics extensions can supply a paired
   operator/engine advance through the existing CPU/device boundary. Missing
@@ -147,6 +153,9 @@ to what a user notices, in a few lines; the details belong in the commit.
   now, and openEMS prints how long it took.
 
 ### Fixed
+
+- Experimental Cartesian-subgrid reconstruction and path integration now use
+  consistent boundary-roundoff support, retaining genuine interior interpolation.
 
 - Experimental Cartesian-subgrid soft-E sources retain sample zero after a
   stored nonperiodic waveform, matching ordinary Step/custom-source behavior.

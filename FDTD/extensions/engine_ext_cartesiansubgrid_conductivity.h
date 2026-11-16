@@ -14,6 +14,8 @@ class Engine_Ext_CartesianSubgrid_Conductivity : public Engine_Ext_CartesianSubg
 	void ReadDeviceDiagnostics(GPU_CartesianSubgrid &device) override;
 	double ElectricLoss() const { return m_ElectricLoss[0] + m_ElectricLoss[1]; }
 	double MagneticLoss() const { return m_MagneticLoss[0] + m_MagneticLoss[1]; }
+	double SurfaceLoss() const { return m_SurfaceLoss[0] + m_SurfaceLoss[1]; }
+	double AdditionalStoredEnergy() const override;
 
   private:
 	static void Add(std::array<double, 2> &sum, double value);
@@ -22,5 +24,9 @@ class Engine_Ext_CartesianSubgrid_Conductivity : public Engine_Ext_CartesianSubg
 	CartesianSubgrid &m_Grid;
 	std::vector<double> m_OldElectric, m_SourceCurl, m_Scratch;
 	std::array<double, 2> m_ElectricLoss{}, m_MagneticLoss{};
+	std::array<double, 2> m_SurfaceLoss{};
+	std::vector<double> m_SurfaceState;
+	double m_DeviceSurfaceEnergy = 0;
+	bool m_UsingDevice = false;
 };
 #endif

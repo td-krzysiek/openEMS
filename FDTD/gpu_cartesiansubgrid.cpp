@@ -270,6 +270,16 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 		m_Backend.Activate();
 		return m_Recurrence->ReadLedger();
 	}
+	std::array<double, 2> ReadAdvanceSurfaceLedger() override
+	{
+		if (!m_Recurrence || m_PendingStep != 0)
+		{
+			throw std::invalid_argument("CartesianSubgrid: surface diagnostics require a complete advanced step");
+		}
+		m_Recurrence->CheckObservation();
+		m_Backend.Activate();
+		return m_Recurrence->ReadSurfaceLedger();
+	}
 
   private:
 	template <class T> T *Upload(const std::vector<T> &values)

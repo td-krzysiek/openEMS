@@ -30,6 +30,8 @@ class Engine_Ext_CartesianSubgrid_Advance : public Engine_Extension
 	virtual std::unique_ptr<GPU_CartesianSubgrid> CreateDevice(GPU_Backend &backend) = 0;
 	//! Called only after the returned device's complete-step ReadFields.
 	virtual void ReadDeviceDiagnostics(GPU_CartesianSubgrid &device) = 0;
+	//! Physical energy in constitutive histories, beyond the E/H field energy.
+	virtual double AdditionalStoredEnergy() const { return 0; }
 };
 
 //! An operator half must explicitly opt in and construct the matching provider.

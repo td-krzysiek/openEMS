@@ -59,6 +59,8 @@ class GPU_CartesianSubgridRecurrence
 	virtual void UpdateMagnetic(const Op_SubgridCurl &curl, double timestep) = 0;
 	virtual void CheckObservation() const = 0;
 	virtual std::array<double, 2> ReadLedger() = 0;
+	//! Surface Ohmic loss and instantaneous stored constitutive energy.
+	virtual std::array<double, 2> ReadSurfaceLedger() { return {0, 0}; }
 	virtual std::size_t StorageBytes() const = 0;
 };
 
@@ -106,6 +108,10 @@ class GPU_CartesianSubgrid
 	virtual std::array<double, 2> ReadAdvanceLedger()
 	{
 		throw std::logic_error("CartesianSubgrid: recurrence diagnostics unavailable");
+	}
+	virtual std::array<double, 2> ReadAdvanceSurfaceLedger()
+	{
+		throw std::logic_error("CartesianSubgrid: surface diagnostics unavailable");
 	}
 };
 

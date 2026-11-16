@@ -22,7 +22,21 @@ class Operator_Ext_CartesianSubgrid_Conductivity : public Operator_Ext_Cartesian
 		double magnetic = 0; //!< ohm/m, the magnetic conductivity of Maxwell's equations
 	};
 	using Sampler = std::function<Coefficients(const CartesianSubgrid::Point &, const CartesianSubgrid::Point &)>;
+	//! A positive-real admittance on a resolved physical voltage path.
+	//! This C++ interface does not classify native metal faces or PEC interiors.
+	struct SurfaceAdmittance
+	{
+		struct Pole
+		{
+			double resistance = 0; //!< ohm, nonnegative
+			double inductance = 0; //!< H, strictly positive
+		};
+		CartesianSubgrid::Point start{}, stop{};
+		double conductance = 0; //!< S, nonnegative parallel instantaneous term
+		std::vector<Pole> poles;
+	};
 	Operator_Ext_CartesianSubgrid_Conductivity(Operator *op, Sampler sampler);
+	void SetSurfaceAdmittances(std::vector<SurfaceAdmittance> surfaces);
 	bool BuildExtension() override;
 	void ValidatePreparedExtensions() const override;
 	Engine_Ext_CartesianSubgrid_Advance *CreateEngineExtention() override;
@@ -41,6 +55,11 @@ class Operator_Ext_CartesianSubgrid_Conductivity : public Operator_Ext_Cartesian
 	double m_Timestep = 0;
 	std::vector<double> m_Diagonal, m_MagneticRate, m_IndependentInverse;
 	Couplings m_OffDiagonal;
+	std::vector<double> m_EffectiveDiagonal;
+	Couplings m_EffectiveOffDiagonal;
+	std::vector<SurfaceAdmittance> m_Surfaces;
+	std::vector<Trace> m_SurfaceTrace;
+	std::vector<double> m_SurfaceRate, m_SurfaceDenominator;
 	std::vector<Trace> m_Trace;
 	std::vector<CartesianSubgrid::MassBlock> m_Factors;
 	std::vector<CartesianSubgrid::Integral> m_Responses;

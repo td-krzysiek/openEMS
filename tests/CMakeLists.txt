@@ -33,6 +33,9 @@ set(TESTS
   test_cartesian_subgrid_conductivity_guards
   test_cartesian_subgrid_native_conductivity
   test_cartesian_subgrid_conductivity_pml
+  test_cartesian_subgrid_surface
+  test_cartesian_subgrid_surface_guards
+  test_cartesian_subgrid_integral_roundoff
 )
 
 foreach(test ${TESTS})

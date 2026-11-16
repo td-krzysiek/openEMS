@@ -28,6 +28,36 @@ struct Op_SubgridElectricLoss
 	}
 };
 
+//! Midpoint series-RL state; one independent thread owns each branch.
+struct Op_SubgridSurfaceState
+{
+	CM_GLOBAL const uint32_t *start, *edge;
+	CM_GLOBAL const float *weight, *low, *previous, *electric;
+	CM_GLOBAL const float *decay, *decayLow, *change, *changeLow, *rateStep;
+	CM_GLOBAL float *state, *loss, *energy;
+	CM_FN void operator()(uint64_t pole) const
+	{
+		float voltage = 0, correction = 0;
+		for (uint32_t k = start[pole]; k < start[pole + 1]; ++k)
+		{
+			const float mid = .5f * previous[edge[k]] + .5f * electric[edge[k]];
+			const float product = weight[k] * mid;
+			subgrid_curl_add(voltage, correction, product);
+			subgrid_curl_add(voltage, correction,
+				subgrid_curl_product_error(weight[k], mid, product) + low[k] * mid);
+		}
+		voltage += correction;
+		const float old = state[pole];
+		float next = subgrid_field_increment(old, decay[pole], decayLow[pole], old);
+		next = subgrid_field_increment(next, change[pole], changeLow[pole], voltage);
+		state[pole] = next;
+		const float midpoint = .5f * old + .5f * next;
+		subgrid_add_work(loss, uint32_t(2 * pole), rateStep[pole] * midpoint * midpoint);
+		energy[2 * pole] = .5f * next * next;
+		energy[2 * pole + 1] = 0;
+	}
+};
+
 //! Crank-Nicolson H update and its nonnegative per-face midpoint loss.
 struct Op_SubgridMagneticLoss
 {

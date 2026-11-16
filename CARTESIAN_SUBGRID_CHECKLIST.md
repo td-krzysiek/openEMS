@@ -334,6 +334,15 @@ all15 CUDA gates and CTest30/30 pass;22 older prefixes and11,255 arrays remain
 unchanged. Overlapping/Mur loss, broader propagation, surface/ADE conductors
 and distributed histories remain open, so F01 is not checked off.
 
+Partial F02: the [passive physical-path surface-state component](CARTESIAN_SUBGRID_SURFACE.md)
+passes a full monolithic oracle, seven CPU/reference/Metal and physical
+RTX4090/RTX3080 cases, two disjoint surface/PML controls and fourteen negative
+guards. All30 local stages, all19 CUDA gates, CTest33/33 and Python14/14 pass;
+11,255 prior arrays are bit-identical. Native physical conductor faces/interiors,
+short RF lines, roughness and distributed surface histories are not admitted.
+F02 stays unchecked. A reproduced reconstruction-roundoff defect in PR29 is
+corrected without moving mesh/CAD coordinates or weakening mass-graph guards.
+
 ## 8. Representative antenna qualification
 
 - [ ] **A01** Freeze a regular-grid PEC antenna reference, geometry/material/
@@ -468,3 +477,5 @@ numerical change invalidates their prior qualification.
 | 2026-11-16 | Partial F01 and native G01/U04/U05: constant conductivity | This PR, conductivity increment (configure-time parent b48e819 plus qualified waveform patch) | [Contract, hashes and evidence](CARTESIAN_SUBGRID_CONDUCTIVITY.md). Independent dense and native analytic/priority/unit controls; all 25 local stages, CTest 29/29/Python 14/14; physical RTX4090/RTX3080 single-device loss/native controls and retained pair fields/ports, CUDA 13-gates/CTest 29/29 pass. 21 older prefixes and 11,255 arrays unchanged. PML/loss, skin/surface/ADE, distributed histories, scalability and antenna qualification remain open. |
 
 | 2026-11-16 | Further partial F01/B02/B03/U04/U05: disjoint conductivity/PML | This PR, prepared-support increment (parent `ec73f8d`) | [Joint contract and build hashes](CARTESIAN_SUBGRID_CONDUCTIVITY.md#disjoint-conductivity-and-pml). All26 local stages, CTest30/30/Python14/14; all15 physical CUDA gates/CTest30/30. Twenty-four ledger cases/eight field comparisons per RTX4090/RTX3080, native scripting, zero-loss/order/overlap guards and retained lossless pair controls. Maximum joint field error7.431e-7 and balance1.805e-7. Twenty-two older prefixes/11,255 arrays unchanged. No overlapping/Mur loss, surface/ADE, distributed histories, representative PCB or scaling qualification. |
+
+| 2026-11-16 | Partial F02, retained F01/B02/U04/U05 | This PR, surface-state increment (parent `08e2274`) | [Equations, source/build identities and limits](CARTESIAN_SUBGRID_SURFACE.md). All30 local stages/all19 physical CUDA gates, CTest33/33/Python14/14;11,255 arrays unchanged. CPU/reference/Metal and RTX4090/RTX3080 scalar/path surface controls, disjoint PML, unchanged retained lossless pair controls in both orders. Native conductor geometry, RF line/array, distributed histories and scaling remain open. |

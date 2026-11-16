@@ -21,6 +21,15 @@ void Require(bool condition, const char *message)
 		throw std::invalid_argument(message);
 	}
 }
+// Same roundoff envelope as FindLeaf. This disambiguates basis support at
+// an already selected cell boundary; it does not move grid lines or geometry.
+bool SameBoundaryCoordinate(double position, double boundary, double width)
+{
+	const double tolerance = std::min(width * 1e-8,
+		32 * std::numeric_limits<double>::epsilon() *
+			std::max({std::abs(position), std::abs(boundary), width}));
+	return std::abs(position - boundary) <= tolerance;
+}
 CartesianSubgrid::Axes UniformLines(CartesianSubgrid::Index cells, CartesianSubgrid::Point spacing)
 {
 	CartesianSubgrid::Axes lines;
@@ -843,6 +852,22 @@ double CartesianSubgrid::Length(const Leaf &leaf, unsigned int axis) const
 	return (m_Lines[axis][root + 1] - m_Lines[axis][root]) * leaf.size[axis] / m_Ratio[axis];
 }
 
+double CartesianSubgrid::LocalFraction(const Leaf &leaf, unsigned int axis, double position) const
+{
+	const double lo = Coordinate(axis, leaf.lo[axis]);
+	const double hi = Coordinate(axis, leaf.lo[axis] + leaf.size[axis]);
+	const double width = Length(leaf, axis);
+	if (SameBoundaryCoordinate(position, lo, width))
+	{
+		return 0;
+	}
+	if (SameBoundaryCoordinate(position, hi, width))
+	{
+		return 1;
+	}
+	return (position - lo) / width;
+}
+
 CartesianSubgrid::Point CartesianSubgrid::LeafStart(std::size_t leaf) const
 {
 	const auto &cell = m_Leaves.at(leaf);
@@ -981,8 +1006,8 @@ double CartesianSubgrid::Electric(unsigned int n, const Point &position) const
 	Require(n < 3, "CartesianSubgrid: invalid component");
 	const Leaf &cell = m_Leaves[FindLeaf(position)];
 	const unsigned int a = (n + 1) % 3, b = (n + 2) % 3;
-	const double u = (position[a] - Coordinate(a, cell.lo[a])) / Length(cell, a);
-	const double v = (position[b] - Coordinate(b, cell.lo[b])) / Length(cell, b);
+	const double u = LocalFraction(cell, a, position[a]);
+	const double v = LocalFraction(cell, b, position[b]);
 	double value = 0;
 	for (unsigned int i = 0; i < 2; ++i)
 	{
@@ -999,7 +1024,7 @@ double CartesianSubgrid::Magnetic(unsigned int n, const Point &position) const
 	Require(n < 3, "CartesianSubgrid: invalid component");
 	const std::size_t index = FindLeaf(position);
 	const Leaf &cell = m_Leaves[index];
-	const double t = (position[n] - Coordinate(n, cell.lo[n])) / Length(cell, n);
+	const double t = LocalFraction(cell, n, position[n]);
 	const double area = Length(cell, (n + 1) % 3) * Length(cell, (n + 2) % 3);
 	const std::size_t first = 6 * index + 2 * n;
 	return ((1 - t) * m_Magnetic[first] / m_SqrtReluctance[first] +
@@ -1151,9 +1176,14 @@ CartesianSubgrid::Integral CartesianSubgrid::LineIntegral(bool magnetic, const P
 		bool intersects = true;
 		for (unsigned int n = 0; n < 3; ++n)
 		{
-			if (n != axis && (start[n] < origin[n] || start[n] > origin[n] + length[n]))
+			if (n != axis)
 			{
-				intersects = false;
+				const double upper = Coordinate(n, m_Leaves[cell].lo[n] + m_Leaves[cell].size[n]);
+				if ((start[n] < origin[n] && !SameBoundaryCoordinate(start[n], origin[n], length[n])) ||
+					(start[n] > upper && !SameBoundaryCoordinate(start[n], upper, length[n])))
+				{
+					intersects = false;
+				}
 			}
 		}
 		if (intersects)
@@ -1180,7 +1210,7 @@ CartesianSubgrid::Integral CartesianSubgrid::LineIntegral(bool magnetic, const P
 		const double distance = sign * (cuts[k] - cuts[k - 1]);
 		if (magnetic)
 		{
-			const double t = (p[axis] - Coordinate(axis, cell.lo[axis])) / Length(cell, axis);
+			const double t = LocalFraction(cell, axis, p[axis]);
 			const double area = Length(cell, (axis + 1) % 3) * Length(cell, (axis + 2) % 3);
 			const auto face = 6 * index + 2 * axis + (t < .5 ? 0 : 1);
 			weights[face] += distance / (area * m_Media[index].permeability * m_SqrtReluctance[face]);
@@ -1188,8 +1218,8 @@ CartesianSubgrid::Integral CartesianSubgrid::LineIntegral(bool magnetic, const P
 		else
 		{
 			const unsigned int a = (axis + 1) % 3, b = (axis + 2) % 3;
-			const double u = (p[a] - Coordinate(a, cell.lo[a])) / Length(cell, a);
-			const double v = (p[b] - Coordinate(b, cell.lo[b])) / Length(cell, b);
+			const double u = LocalFraction(cell, a, p[a]);
+			const double v = LocalFraction(cell, b, p[b]);
 			for (unsigned int i = 0; i < 2; ++i)
 			{
 				for (unsigned int j = 0; j < 2; ++j)

@@ -277,7 +277,8 @@ class Engine_CartesianSubgrid : public Engine
 		// Engine_Interface_FDTD multiplies by vacuum epsilon/mu. Return the
 		// correctly integrated energy, not a count-dependent coarse sample sum.
 		electric = 2 * m_Operator->Grid().ElectricEnergy() / EPS0;
-		magnetic = 2 * m_Operator->Grid().MagneticEnergy() / MUE0;
+		const double history = m_Advance ? m_Advance->AdditionalStoredEnergy() : 0;
+		magnetic = 2 * (m_Operator->Grid().MagneticEnergy() + history) / MUE0;
 		return true;
 	}
 	void SetVolt(unsigned int, unsigned int, unsigned int, unsigned int, FDTD_FLOAT) override

@@ -11,7 +11,8 @@ struct CartesianSubgridConductivityData
 		std::vector<std::uint32_t> start{0}, edge;
 		std::vector<float> weight, low;
 	};
-	Rows conductance, trace;
+	Rows conductance, trace, surfaceTrace, surfaceHistory;
+	std::vector<double> surfaceRate;
 	std::vector<double> magneticRate;
 	double timestep = 0;
 };

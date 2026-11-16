@@ -241,6 +241,7 @@ class CartesianSubgrid
 	void ApplyResistors(double timestep, double sourceAmplitude,
 		const std::vector<Integral> &responses, const std::vector<double> &lower);
 	double Coordinate(unsigned int axis, double lattice) const;
+	double LocalFraction(const Leaf &leaf, unsigned int axis, double position) const;
 	double Length(const Leaf &leaf, unsigned int axis) const;
 
 	Index m_Cells;

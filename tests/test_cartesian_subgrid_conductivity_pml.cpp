@@ -34,7 +34,7 @@ struct Configuration
 	int direction = 1;
 	double electric = .05, magnetic = 0;
 	bool native = false, lossFirst = false, addLoss = true, overlap = false, guardOnly = false;
-	bool soft = false, ports = false, corner = false;
+	bool soft = false, ports = false, corner = false, surface = false;
 };
 struct Fixture
 {
@@ -106,6 +106,26 @@ struct Fixture
 			}
 		}
 		auto *loss = test.addLoss && !test.native ? new Loss(op.get(), sample) : nullptr;
+		if (loss && test.surface)
+		{
+			const auto en = (test.normal + 1) % 3;
+			Loss::SurfaceAdmittance surface;
+			surface.start = {.002, .002, .002};
+			surface.start[test.normal] = test.corner ? .012 : .036;
+			surface.start[en] = .001;
+			surface.stop = surface.start;
+			surface.stop[en] = .002;
+			if (test.corner)
+			{
+				surface.start = {.012, .012, .012};
+				surface.start[(en + 1) % 3] += .0005;
+				surface.stop = surface.start;
+				surface.stop[en] += .0005;
+			}
+			surface.conductance = .01;
+			surface.poles = {{25, 1e-10}, {50, 2e-10}};
+			loss->SetSurfaceAdmittances({surface});
+		}
 		if (loss && test.lossFirst)
 		{
 			op->AddExtension(loss);
@@ -136,7 +156,7 @@ struct Result
 {
 	std::vector<double> electric, magnetic;
 	double balance = 0, loss = 0, residual = 0;
-	double sourceWork = 0;
+	double sourceWork = 0, surfaceLoss = 0;
 };
 static Result Run(const Configuration &test, const SubgridDeviceTarget *device)
 {
@@ -235,7 +255,7 @@ static Result Run(const Configuration &test, const SubgridDeviceTarget *device)
 	for (unsigned int step = 0; step < steps; ++step)
 	{
 		engine->IterateTS(1);
-		double boundary = 0, material = 0;
+		double boundary = 0, material = 0, history = 0;
 		for (std::size_t i = 0; i < engine->GetExtensionCount(); ++i)
 		{
 			if (const auto *pml = dynamic_cast<Engine_Ext_CartesianSubgrid_PML *>(engine->GetExtension(i)))
@@ -244,10 +264,12 @@ static Result Run(const Configuration &test, const SubgridDeviceTarget *device)
 			}
 			if (const auto *loss = dynamic_cast<Engine_Ext_CartesianSubgrid_Conductivity *>(engine->GetExtension(i)))
 			{
-				material += loss->ElectricLoss() + loss->MagneticLoss();
+				material += loss->ElectricLoss() + loss->MagneticLoss() + loss->SurfaceLoss();
+				history += loss->AdditionalStoredEnergy();
+				result.surfaceLoss = loss->SurfaceLoss() / initial;
 			}
 		}
-		const double energy = op.Grid().Energy(dt);
+		const double energy = op.Grid().Energy(dt) + history;
 		const double available = initial + std::max(0., op.Grid().SourceWork());
 		Require(std::isfinite(energy) && material >= 0 && energy / available < 1.1,
 			"joint PML evolution exceeds initial and supplied energy");
@@ -288,10 +310,15 @@ static Result Run(const Configuration &test, const SubgridDeviceTarget *device)
 	{
 		Require(std::abs(result.sourceWork) > 1e-8, "joint drive did no measured work");
 	}
+	if (test.surface)
+	{
+		Require(result.surfaceLoss > 1e-5, "joint packet did not interact with surface histories");
+	}
 	std::cout << "JOINT_PML normal=" << test.normal << " direction=" << test.direction << " native=" << test.native
 		<< " first=" << test.lossFirst << " device=" << bool(device) << " balance=" << result.balance
 		<< " material_loss=" << result.loss << " residual=" << result.residual << " soft=" << test.soft
-		<< " ports=" << test.ports << " corner=" << test.corner << " source_work=" << result.sourceWork << std::endl;
+		<< " ports=" << test.ports << " corner=" << test.corner << " source_work=" << result.sourceWork
+		<< " surface=" << test.surface << " surface_loss=" << result.surfaceLoss << std::endl;
 	return result;
 }
 static double Compare(const Result &a, const Result &b, bool exact = false)
@@ -316,8 +343,37 @@ int main(int argc, char **argv)
 	try
 	{
 		SetThreadLimit(1);
-		Require(argc <= 2, "expected optional --metal or --cuda");
-		const auto target = argc == 2 ? SubgridDeviceTarget::FromFlag(argv[1]) : SubgridDeviceTarget{};
+		Require(argc <= 3, "expected optional --surface-only and --metal/--cuda");
+		SubgridDeviceTarget target;
+		bool surfaceOnly = false;
+		for (int argument = 1; argument < argc; ++argument)
+		{
+			if (std::string(argv[argument]) == "--surface-only")
+			{
+				surfaceOnly = true;
+			}
+			else
+			{
+				target = SubgridDeviceTarget::FromFlag(argv[argument]);
+			}
+		}
+		if (surfaceOnly)
+		{
+			for (bool corner : {false, true})
+			{
+				Configuration test;
+				test.surface = true;
+				test.corner = corner;
+				test.soft = !corner;
+				test.ports = !corner;
+				test.magnetic = test.electric * MUE0 / EPS0;
+				const auto cpu = Run(test, nullptr);
+				const double error = Compare(cpu, Run(test, &target));
+				std::cout << "JOINT_SURFACE corner=" << corner << " field_error=" << error << std::endl;
+			}
+			std::cout << "PASS: disjoint surface-state/PML fields, stored energy and work" << std::endl;
+			return 0;
+		}
 		for (unsigned int normal : {0u, 1u, 2u})
 		{
 			Configuration test;
