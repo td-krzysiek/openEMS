@@ -23,7 +23,7 @@ struct GPU_CartesianSubgridFields
 	double fixedTimestep = 0;
 };
 
-//! Completed single-device operator package. No expanded CSR is retained.
+//! Completed single-device or local-domain package, without expanded CSR.
 struct CartesianSubgridDeviceOperators
 {
 	CartesianSubgridDeviceCurl curl, transpose;
@@ -39,8 +39,8 @@ struct CartesianSubgridDeviceOperators
  */
 struct CartesianSubgridDeviceData
 {
-	//! State-only preparation requests exact curl streams from its owning grid.
-	//! Expanded arrays must be empty in this mode; domains retain expanded data.
+	//! State-only preparation uses its owning grid or a prepared local package.
+	//! Expanded arrays must be empty; ExpandedOracle retains the legacy path.
 	bool streamCurls = false;
 	//! Optional single-device spatial curl. Expanded arrays remain the independent oracle.
 	std::vector<std::uint32_t> curlGeometry;

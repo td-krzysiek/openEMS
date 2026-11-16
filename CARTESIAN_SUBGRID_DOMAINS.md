@@ -88,8 +88,11 @@ hashed before compilation and rechecked after the build and tests.
 
 Local R20-r03 core SHA256:
 `65309099920fd3f93e5e039ffde808ed77fb520910d9f1c17d672f1ce7de39c7`.
-Physical CUDA qualification is running on the RTX4090/RTX3080 pair, including
-both orders. Its final native scripting/CTest gates are not yet accepted.
+Physical CUDA qualification passes14 gates and CTest45/45 on the
+RTX4090/RTX3080 pair, including both orders,24 exact metadata/field cases,
+13 malformed-package guards and16 native Python TD/FD/U/I cases. Terminal
+source/runtime hashes are rechecked; CUDA core SHA256:
+`d22631691f0a4a38b756f279ef27673adfe52e7d0373af47c99e9786c04f94cf`.
 The original R19 fixture/source-binary audit remains preserved above; R20's
 test contains the corrected resistor-before-source ordering.
 
@@ -115,6 +118,44 @@ cell guards, per-state hash maps, global host topology/fields, magnetic
 quadratures and general interface scaling remain unchanged. Evidence is the
 separately frozen `local-domain-stream-r20-r03` study; no production runtime
 or antenna is modified.
+
+## Shared owned-state domain addresses
+
+R21 replaces each worker's owned-state hash entries with one shared direct
+local-address slot per global electric/magnetic state. Per-worker hash maps
+retain only ghost entries. Ownership is finalized before lookup construction;
+shared slots and owners outlive all maps during serial preparation. The
+constitutive owned-only view rejects ghost access. `ExpandedOracle` retains
+independent full hash maps. No fields, arithmetic, row order, histories,
+transport or backend update kernels change.
+
+The focused map oracle checks10,007 states and1,818 ghosts, duplicate/missing
+addresses, invalid dimensions/IDs and strict owned-only access; it stores1,818
+hashed entries instead of11,825. Sanitized preflight passes. Six reference/six
+Metal exact compressed-metadata/256-step port-field cases, native8/16-case
+TD/FD/U/I controls and fresh CTest46/46 pass on a complete source snapshot
+fixed before compilation. Local core SHA256:
+`368bd107b338abe898716849052def0785ac80eb501882842022b3b4567f4367`.
+Physical CUDA qualification is running separately on the actual4090/3080 pair;
+its terminal result is not yet accepted.
+
+Three interleaved setup-only repetitions against the actual frozen R20-r03
+library preserve owned/ghost counts, logical term counts and timestep:
+
+| Case | R20 peak RSS | R21 peak RSS | Whole-setup change |
+|---|---:|---:|---:|
+| Uniform491,520 leaves/three domains |657,801,216B|495,206,400B|−9.78%|
+| Graded two-material61,440 leaves |175,144,960B|158,023,680B|−7.47%|
+
+Uniform peak RSS falls24.72%; domain-plan time falls22.55%
+(0.5163→0.3999s). The graded memory reduction is9.78%. A960,000-leaf
+setup-only control has median peak RSS931,610,624B, below the retained1.5GiB
+process cap. These do not establish FDTD speed, large-grid evolution or antenna
+accuracy. The first extra benchmark's CSR-only parent term counter correctly
+triggered its equality guard; logs are preserved and the corrected identical
+logical-term accounting was repeated. Source/runtime numerics were unchanged.
+Evidence: separately frozen `domain-address-r21` study. Cell/interface guards,
+global reference fields/topology and magnetic quadratures remain unchanged.
 
 ## Ownership, workers and transport
 

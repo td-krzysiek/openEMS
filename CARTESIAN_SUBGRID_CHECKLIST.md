@@ -1,6 +1,6 @@
 # Cartesian subgridding — implementation and qualification checklist
 
-Last reviewed: **16 November 2026**.
+Last reviewed: **17 November 2026**.
 
 This is the canonical detailed checklist for extending the Cartesian subgridding prototype
 to the functionality of the regular Cartesian solver. Check an item only after
@@ -540,9 +540,22 @@ transfer and256-step port-field cases,13 pre-allocation malformed-package
 guards, native8/16-case TD/FD/ports and fresh CTest45/45 pass. An actual frozen
 R19 comparison at491,520 leaves reduces peak RSS30.37%, with7.93% longer whole
 setup; a graded two-material control saves only2.88% RAM. A960,000-leaf setup
-passes below1.5GiB, without FDTD/RF acceptance at that size. Physical CUDA is
-running, not yet accepted. Per-state maps, global host fields/topology and
-large-interface scaling remain open; guards and production runtimes are unchanged.
+passes below1.5GiB, without FDTD/RF acceptance at that size. Physical CUDA
+passes14 gates/CTest45,24 exact metadata/field cases, both pair orders,
+13 malformed-package guards and16 actual native Python cases, with terminal
+source/runtime rechecks. Global host fields/topology and large-interface
+scaling remain open; guards and production runtimes are unchanged.
+
+Further partial C03/C05/D01/D05: [shared owned-state domain addresses](CARTESIAN_SUBGRID_DOMAINS.md#shared-owned-state-domain-addresses)
+replace owned hash entries with shared direct slots; private ghost hashes and
+the independent expanded oracle remain. Sanitized map/negative controls,
+12 reference/Metal exact metadata/field cases, native8/16 TD/FD/U/I and fresh
+CTest46/46 pass. Interleaved comparison against frozen R20-r03 reduces
+491,520-leaf peak RSS24.72% and whole setup9.78%; the graded61,440-leaf
+reduction is9.78% RAM/7.47% setup. A960k-leaf setup-only control remains below
+1.5GiB. Physical CUDA is running, not yet accepted. This is preparation-only
+memory work; reference fields/topology, interfaces and actual antenna
+convergence/scaling remain open. No guard increase or production adoption.
 
 ## Milestone decisions
 
@@ -634,3 +647,5 @@ numerical change invalidates their prior qualification.
 | 2026-11-16 | Qualification audit and test-fixture correction | R19 fixed test over `ef5a17b` | The original local test binary lacks the late port edit; the original CUDA fixture rejects resistor-after-source setup before backend creation. Preserve both records. A corrected separately compiled fixture passes6 reference/6 Metal cases against unchanged core `560fa47d...`; this does not accept the failed CUDA run or qualify an antenna. |
 
 | 2026-11-16 | Further partial C01/C03/C05/D01/D05: exact local row packages | R20-r03 over `21eff5b` | [Local package and measurements](CARTESIAN_SUBGRID_DOMAINS.md#streamed-local-domain-preparation). Fresh source-before-build reference/Metal and native8/16-case controls; CTest45/45 and13 rejection guards. Actual R19 comparison: peak RSS−30.37%, whole setup+7.93%; graded benefit2.88%.960k setup-only control passes. Local core `65309099920fd3f93e5e039ffde808ed77fb520910d9f1c17d672f1ce7de39c7`; physical CUDA pending, no antenna acceptance. |
+
+| 2026-11-17 | Further partial C03/C05/D01/D05: shared owned-state domain addresses | R21, parent `648683d` | [Address/storage evidence](CARTESIAN_SUBGRID_DOMAINS.md#shared-owned-state-domain-addresses): focused sanitized map oracle, exact reference/Metal metadata/fields, native8/16 and CTest46 pass. Interleaved RSS/setup gains only; physical CUDA running. No guard increase, antenna or production qualification. |

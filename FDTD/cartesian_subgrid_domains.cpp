@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include "cartesian_subgrid_domains.h"
 #include "cartesian_subgrid.h"
+#include "subgrid_domain_map.h"
 #include "extensions/engine_ext_cartesiansubgrid_conductivity.h"
 #include "extensions/engine_ext_cartesiansubgrid_pml.h"
 #include <algorithm>
@@ -57,9 +58,9 @@ void Require(bool condition, const char *message)
 		throw std::invalid_argument(message);
 	}
 }
-void Rows(const std::vector<Index> &owned, const std::vector<Index> &starts,
+template <class Lookup> void Rows(const std::vector<Index> &owned, const std::vector<Index> &starts,
 	const std::vector<Index> &columns, const std::vector<float> &high, const std::vector<float> &low,
-	const Map &input, std::vector<Index> &outStart, std::vector<Index> &outColumn,
+	const Lookup &input, std::vector<Index> &outStart, std::vector<Index> &outColumn,
 	std::vector<float> &outHigh, std::vector<float> &outLow)
 {
 	outStart.assign(1, 0);
@@ -216,7 +217,22 @@ CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(const CartesianSubgrid &g
 		m_ReassignedElectric += eOwner[edge] != owner(grid.EdgePosition(edge)[axis]);
 	}
 	m_Domains.resize(cuts.size() + 1);
-	std::vector<Map> eMaps(m_Domains.size()), hMaps(m_Domains.size());
+	// One direct local address for every globally owned state. Only ghosts
+	// need a per-worker hash entry. The expanded oracle retains full maps.
+	std::vector<Index> eLocal, hLocal;
+	if (data.streamCurls)
+	{
+		eLocal.assign(m_ElectricCount, CartesianSubgridDomainMap::absent);
+		hLocal.assign(m_MagneticCount, CartesianSubgridDomainMap::absent);
+	}
+	std::vector<CartesianSubgridDomainMap> eMaps, hMaps;
+	eMaps.reserve(m_Domains.size());
+	hMaps.reserve(m_Domains.size());
+	for (Index worker = 0; worker < m_Domains.size(); ++worker)
+	{
+		eMaps.emplace_back(eOwner, eLocal, worker, data.streamCurls);
+		hMaps.emplace_back(hOwner, hLocal, worker, data.streamCurls);
+	}
 	for (Index worker = 0; worker < m_Domains.size(); ++worker)
 	{
 		auto &domain = m_Domains[worker];
@@ -299,7 +315,7 @@ CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(const CartesianSubgrid &g
 			hMaps[worker].emplace(global, static_cast<Index>(local.magnetic.size()));
 			local.magnetic.push_back(data.magnetic[global]);
 		}
-		const auto rows = [&](bool transpose, const std::vector<Index> &owned, const Map &input,
+		const auto rows = [&](bool transpose, const std::vector<Index> &owned, const CartesianSubgridDomainMap &input,
 			std::vector<Index> &starts, std::vector<Index> &columns,
 			std::vector<float> &weight, std::vector<float> &low)
 		{
@@ -417,7 +433,7 @@ CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(const CartesianSubgrid &g
 			domain.pml.emplace();
 			domain.pml->timestep = prepared.pml->timestep;
 			const auto select = [&](const CartesianSubgridPMLData::Rows &input,
-				const std::vector<Index> &owners, const Map &targets, const Map &sources,
+				const std::vector<Index> &owners, const auto &targets, const auto &sources,
 				CartesianSubgridPMLData::Rows &output)
 			{
 				for (Index group = 0; group + 1 < input.group.size(); ++group)
@@ -458,18 +474,14 @@ CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(const CartesianSubgrid &g
 				loss.magneticRate.push_back(source.magneticRate.at(row));
 			}
 			const auto ownedRows = [&](const CartesianSubgridConductivityData::Rows &input,
-				const std::vector<Index> &rows, const Map &columns, CartesianSubgridConductivityData::Rows &output)
+				const std::vector<Index> &rows, const auto &columns, CartesianSubgridConductivityData::Rows &output)
 			{
 				Rows(rows, input.start, input.edge, input.weight, input.low,
 					columns, output.start, output.edge, output.weight, output.low);
 			};
 			// Every conductance and surface trace must stay within one complete
 			// electric mass component. Ghost fields are for curls, never histories.
-			Map ownedMap;
-			for (Index k = 0; k < ownedE.size(); ++k)
-			{
-				ownedMap.emplace(ownedE[k], k);
-			}
+			const auto ownedMap = eMaps[worker].Owned();
 			ownedRows(source.conductance, ownedE, ownedMap, loss.conductance);
 			const auto select = [&](const CartesianSubgridConductivityData::Rows &rows)
 			{
