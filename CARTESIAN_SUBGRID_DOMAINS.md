@@ -176,9 +176,12 @@ metadata/field cases, native8/16-case TD/FD/U/I controls and fresh CTest47/47
 pass. The full source was fixed before compilation and rechecked afterward.
 Local core SHA256:
 `4404bf43382c6ee10504630b344a10d243adbc78efae50300d0bb6bda6ca5484`.
-The GPU-free CUDA build passes. Physical R22 qualification starts only after
-reviewed R21 terminal acceptance and is now running on the authorized pair.
-No physical R22 acceptance is claimed yet.
+The separate physical CUDA qualification passes14 gates/CTest47,24 exact
+metadata/field cases,13 malformed-package guards, both4090/3080 orders and
+16 actual native Python TD/FD/U/I cases. The first-use reference-work test
+passes in that fresh replay. Terminal source/runtime identities are rechecked.
+CUDA core SHA256:
+`778c6ee7478fc284889a0c26acc5a4f233cc06a0486b8d37c39c10f25db7fb14`.
 
 Three interleaved setup-only repetitions against actual frozen R21:
 

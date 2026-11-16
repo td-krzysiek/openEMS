@@ -566,8 +566,10 @@ controls,12 reference/Metal exact cases, native8/16 and CTest47/47 pass.
 Interleaved comparison against actual frozen R21 reduces491,520-leaf peak
 RSS7.04%, with exactly35,047,680B lower accounted cold grid storage. The graded
 control reduces RSS8.17%; no update speedup is claimed. GPU-free CUDA build
-passes; physical R22 is now running after reviewed R21 acceptance. No
-allocation-guard increase, antenna adoption or large-scale acceptance follows.
+passes; physical R22 passes14 gates/CTest47,24 exact cases,13 package guards,
+both4090/3080 orders and16 native Python cases, with terminal source/runtime
+rechecks. No allocation-guard increase, antenna adoption or large-scale
+acceptance follows.
 
 ## Milestone decisions
 
@@ -662,4 +664,4 @@ numerical change invalidates their prior qualification.
 
 | 2026-11-17 | Further partial C03/C05/D01/D05: shared owned-state domain addresses | R21, parent `648683d` | [Address/storage evidence](CARTESIAN_SUBGRID_DOMAINS.md#shared-owned-state-domain-addresses): focused sanitized map oracle, exact reference/Metal metadata/fields, native8/16 and CTest46 pass. Interleaved RSS/setup gains only; physical14-gate/CTest46 replay passes on4090/3080 in both orders, with native observations. No guard increase, antenna or production qualification. |
 
-| 2026-11-17 | Further partial C03/C05/U04/D05: lazy CPU reference workspace | R22, parent `ef323a2` | [Workspace evidence](CARTESIAN_SUBGRID_DOMAINS.md#lazy-serial-reference-workspace): first-use/negative/capacity controls, reference/Metal exact metadata/fields, native8/16 and CTest47 pass. Interleaved cold-storage/RSS reductions only; physical CUDA running after reviewed R21 acceptance. No guard increase or production/antenna qualification. |
+| 2026-11-17 | Further partial C03/C05/U04/D05: lazy CPU reference workspace | R22, parent `ef323a2` | [Workspace evidence](CARTESIAN_SUBGRID_DOMAINS.md#lazy-serial-reference-workspace): first-use/negative/capacity controls, reference/Metal exact metadata/fields, native8/16 and CTest47 pass. Interleaved cold-storage/RSS reductions only; physical14-gate/CTest47 replay passes in both pair orders after terminal review. No guard increase or production/antenna qualification. |
