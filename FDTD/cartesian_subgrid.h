@@ -35,6 +35,12 @@ class CartesianSubgrid
 	using Index = std::array<unsigned int, 3>;
 	using Axes = std::array<std::vector<double>, 3>;
 	using Field = std::function<double(unsigned int, const Point &)>;
+	//! Internal storage policy: CPU reference patterns or spatial GPU-preparation blocks.
+	enum class CurlLayout
+	{
+		Patterns,
+		SpatialBlocks
+	};
 	enum class BoundaryType
 	{
 		PEC,
@@ -112,7 +118,8 @@ class CartesianSubgrid
 					 const std::vector<Region> &regions, bool uniformFine = false,
 					 const MediumSampler &medium = MediumSampler(), const PECSelector &pec = PECSelector(),
 					 const BoundaryConditions &boundaries = BoundaryConditions{},
-					 const OpaqueSelector &opaque = OpaqueSelector());
+					 const OpaqueSelector &opaque = OpaqueSelector(),
+					 CurlLayout layout = CurlLayout::Patterns);
 	//! Actual local edge classification, including dependent interface traces.
 	bool LeafEdgeIsPEC(std::size_t leaf, unsigned int axis, unsigned int first, unsigned int second) const;
 	std::size_t PECTraceCount() const
@@ -201,6 +208,15 @@ class CartesianSubgrid
 	{
 		return m_CurlOperator.PatternCount();
 	}
+	struct StructuredCurlInfo
+	{
+		std::size_t blocks = 0, regularRows = 0, exceptionRows = 0, bytes = 0;
+	};
+	StructuredCurlInfo StructuredCurlStorage() const
+	{
+		return {m_CurlOperator.RegularBlockCount(), m_CurlOperator.RegularRowCount(),
+			m_CurlOperator.RowCount() - m_CurlOperator.RegularRowCount(), m_CurlOperator.AllocationBytes()};
+	}
 	//! C++ reference diagnostics; counts allocated factor/work entries, not process RSS.
 	struct InterfaceStorageInfo
 	{
@@ -255,6 +271,11 @@ class CartesianSubgrid
 	std::size_t FindLeaf(const Point &position) const;
 	double TraceValue(const Trace &trace, const std::vector<double> &amplitude) const;
 	void Build(const MediumSampler &medium, const PECSelector &pec, const OpaqueSelector &opaque);
+	void ConfigureRegularCurl();
+	CartesianSubgridMetricView CurlMetrics() const
+	{
+		return {m_SqrtMass.data(), m_SqrtReluctance.data(), m_SqrtMass.size(), m_SqrtReluctance.size()};
+	}
 	Point EdgePoint(const Edge &edge, double fraction) const;
 	double FactorMass(const std::map<std::pair<std::size_t, std::size_t>, double> &offDiagonal);
 	void Curl(const std::vector<double> &electric, std::vector<double> &magnetic) const;
@@ -277,6 +298,7 @@ class CartesianSubgrid
 	double m_Epsilon;
 	double m_Mu;
 	bool m_UniformFine;
+	CurlLayout m_CurlLayout;
 	double m_StableStep = 0;
 	std::vector<Leaf> m_Leaves;
 	std::vector<Medium> m_Media;

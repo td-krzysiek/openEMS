@@ -26,6 +26,8 @@ if(APPLE AND ENABLE_METAL)
   # is the same source for an offline compile: `cmake --build . --target metal_check` (CI).
   set(METAL_CM_PARTS
     ${CMAKE_CURRENT_SOURCE_DIR}/kernels/cell_update.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/kernels/subgrid_arithmetic.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/kernels/subgrid_geometry.h
     ${CMAKE_CURRENT_SOURCE_DIR}/kernels/subgrid_update.h
     ${CMAKE_CURRENT_SOURCE_DIR}/kernels/subgrid_pml.h
     ${CMAKE_CURRENT_SOURCE_DIR}/kernels/subgrid_conductivity.h

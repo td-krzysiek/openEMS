@@ -18,6 +18,8 @@ set(TESTS
   test_cartesian_subgrid_factor
   test_cartesian_subgrid_bound
   test_cartesian_subgrid_curl
+  test_cartesian_subgrid_device_geometry
+  test_cartesian_subgrid_regular_curl
   test_cartesian_subgrid_edge_index
   test_cartesian_subgrid_device
   test_cartesian_subgrid_device_ports
@@ -48,7 +50,7 @@ foreach(test ${TESTS})
   target_include_directories(${test} PRIVATE ${openEMS_SOURCE_DIR})
   target_link_libraries(${test} openEMS)
 
-  if(test MATCHES "^test_cartesian_subgrid_device" AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|IntelLLVM")
+  if((test MATCHES "^test_cartesian_subgrid_device" OR test STREQUAL "test_cartesian_subgrid_regular_curl") AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|IntelLLVM")
     target_compile_options(${test} PRIVATE -ffp-contract=off)
   endif()
   if(ENABLE_HIP AND NOT OPENEMS_GPU_PLUGINS AND (OPENEMS_HIP_AS_CUDA OR CMAKE_HIP_PLATFORM STREQUAL "nvidia"))

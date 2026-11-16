@@ -1,3 +1,4 @@
+#include "subgrid_device_geometry.h"
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include "cartesian_subgrid.h"
 #include "subgrid_inverse_bound.h"
@@ -82,10 +83,12 @@ CartesianSubgrid::CartesianSubgrid(Index cells, Point spacing, double epsilon, d
 CartesianSubgrid::CartesianSubgrid(const Axes &lines, double epsilon, double permeability,
 								   const std::vector<Region> &regions, bool uniformFine,
 								   const MediumSampler &medium, const PECSelector &pec,
-								   const BoundaryConditions &boundaries, const OpaqueSelector &opaque)
+								   const BoundaryConditions &boundaries, const OpaqueSelector &opaque, CurlLayout layout)
 	: m_Ratio{1, 1, 1}, m_Boundaries(boundaries), m_Epsilon(epsilon), m_Mu(permeability),
-	  m_UniformFine(uniformFine)
+	  m_UniformFine(uniformFine), m_CurlLayout(layout)
 {
+	Require(layout == CurlLayout::Patterns || layout == CurlLayout::SpatialBlocks,
+		"CartesianSubgrid: unsupported curl storage policy");
 	for (BoundaryType boundary : m_Boundaries)
 	{
 		Require(boundary == BoundaryType::PEC || boundary == BoundaryType::PMC,
@@ -550,7 +553,14 @@ void CartesianSubgrid::Build(const MediumSampler &medium, const PECSelector &pec
 	off.clear();
 	std::vector<double> columns(m_Edges.size(), 0);
 	double maxRow = 0;
-	CartesianSubgridCurl::Builder curl(m_CurlOperator, 6 * m_Leaves.size(), m_Edges.size());
+	if (m_CurlLayout == CurlLayout::SpatialBlocks)
+	{
+		ConfigureRegularCurl();
+	}
+	m_SqrtReluctance.reserve(6 * m_Leaves.size());
+	const CartesianSubgridMetricView buildMetrics{m_SqrtMass.data(), m_SqrtReluctance.data(),
+		m_SqrtMass.size(), 6 * m_Leaves.size()};
+	CartesianSubgridCurl::Builder curl(m_CurlOperator, 6 * m_Leaves.size(), m_Edges.size(), buildMetrics);
 	std::vector<std::pair<std::size_t, double>> normalizedRow;
 	normalizedRow.reserve(8);
 	for (std::size_t cellIndex = 0; cellIndex < m_Leaves.size(); ++cellIndex)
@@ -607,11 +617,11 @@ void CartesianSubgrid::Build(const MediumSampler &medium, const PECSelector &pec
 					}
 				}
 				maxRow = std::max(maxRow, sum);
+				m_SqrtReluctance.push_back(reluctance);
 				curl.Append(normalizedRow.begin(), normalizedRow.end());
 				m_PECFaces.push_back(LeafIsOpaque(cellIndex) || (zeroTrace && touchesPEC));
 				// One half-volume per face. Coincident faces are deliberately
 				// separate quadrature histories, not a global fine H lattice.
-				m_SqrtReluctance.push_back(reluctance);
 			}
 		}
 	}
@@ -624,6 +634,120 @@ void CartesianSubgrid::Build(const MediumSampler &medium, const PECSelector &pec
 	m_Magnetic.assign(m_SqrtReluctance.size(), 0);
 	m_Increment.resize(m_Electric.size());
 	m_Curl.resize(m_Magnetic.size());
+}
+
+void CartesianSubgrid::ConfigureRegularCurl()
+{
+	using Regular = CartesianSubgridRegularCurl;
+	std::vector<Regular::Block> blocks;
+	std::vector<std::array<int, 3>> origins, steps;
+	auto append = [&](const Index &cells, const std::array<int, 3> &origin, const std::array<int, 3> &step)
+	{
+		Regular::Block block;
+		block.cells = cells;
+		for (unsigned int n = 0; n < 3; ++n)
+		{
+			block.length[n].reserve(cells[n]);
+			for (unsigned int i = 0; i < cells[n]; ++i)
+			{
+				const unsigned int root = unsigned(origin[n] + int(i) * step[n]) / m_Ratio[n];
+				block.length[n].push_back((m_Lines[n][root + 1] - m_Lines[n][root]) * step[n] / m_Ratio[n]);
+			}
+			block.edge[n].assign(Regular::CellCount(Regular::EdgeShape(cells, n)), Regular::absent);
+		}
+		blocks.push_back(std::move(block));
+		origins.push_back(origin);
+		steps.push_back(step);
+	};
+	Index base = m_Cells;
+	if (m_UniformFine)
+	{
+		for (unsigned int n = 0; n < 3; ++n)
+		{
+			base[n] *= m_Ratio[n];
+		}
+		append(base, {0, 0, 0}, {1, 1, 1});
+	}
+	else
+	{
+		append(base, {0, 0, 0}, {int(m_Ratio[0]), int(m_Ratio[1]), int(m_Ratio[2])});
+		for (const auto &region : m_Regions)
+		{
+			if (region.ratio == Index{1, 1, 1})
+			{
+				continue;
+			}
+			Index cells;
+			std::array<int, 3> origin, step;
+			for (unsigned int n = 0; n < 3; ++n)
+			{
+				cells[n] = (region.box.stop[n] - region.box.start[n]) * region.ratio[n];
+				origin[n] = int(region.box.start[n] * m_Ratio[n]);
+				step[n] = int(m_Ratio[n] / region.ratio[n]);
+			}
+			append(cells, origin, step);
+		}
+	}
+	// Independent IDs retain their canonical order. These spatial slot tables
+	// have no fields in covered base cells, only addresses used by real leaves.
+	for (std::size_t block = 0; block < blocks.size(); ++block)
+	{
+		for (std::size_t id = 0; id < m_Edges.size(); ++id)
+		{
+			const auto &edge = m_Edges[id];
+			if (edge.size != steps[block][edge.axis])
+			{
+				continue;
+			}
+			const auto shape = Regular::EdgeShape(blocks[block].cells, unsigned(edge.axis));
+			Index point;
+			bool inside = true;
+			for (unsigned int n = 0; n < 3; ++n)
+			{
+				const int delta = edge.lo[n] - origins[block][n];
+				inside = inside && delta >= 0 && delta % steps[block][n] == 0;
+				point[n] = delta >= 0 ? unsigned(delta / steps[block][n]) : 0;
+				inside = inside && point[n] < shape[n];
+			}
+			if (inside)
+			{
+				auto &slot = blocks[block].edge[edge.axis][Regular::Offset(shape, point)];
+				Require(slot == Regular::absent, "CartesianSubgrid: duplicate structured independent edge");
+				slot = static_cast<std::uint32_t>(id);
+			}
+		}
+	}
+	std::vector<Regular::Address> addresses;
+	addresses.reserve(m_Leaves.size());
+	for (const auto &leaf : m_Leaves)
+	{
+		std::size_t owner = 0;
+		for (std::size_t block = 1; block < blocks.size(); ++block)
+		{
+			bool inside = true;
+			for (unsigned int n = 0; n < 3; ++n)
+			{
+				inside = inside && leaf.lo[n] >= origins[block][n] &&
+					leaf.lo[n] < origins[block][n] + int(blocks[block].cells[n]) * steps[block][n];
+			}
+			if (inside)
+			{
+				owner = block;
+				break;
+			}
+		}
+		Index point;
+		for (unsigned int n = 0; n < 3; ++n)
+		{
+			Require(leaf.size[n] == steps[owner][n] &&
+				(leaf.lo[n] - origins[owner][n]) % steps[owner][n] == 0,
+				"CartesianSubgrid: structured leaf shape or alignment mismatch");
+			point[n] = unsigned((leaf.lo[n] - origins[owner][n]) / steps[owner][n]);
+		}
+		addresses.push_back({static_cast<std::uint32_t>(owner),
+			static_cast<std::uint32_t>(Regular::Offset(blocks[owner].cells, point))});
+	}
+	m_CurlOperator.ConfigureBlocks(std::move(blocks), std::move(addresses), m_Edges.size());
 }
 
 void CartesianSubgrid::MassBlock::Solve(std::vector<double> &values) const
@@ -786,11 +910,11 @@ double CartesianSubgrid::FactorMass(const std::map<std::pair<std::size_t, std::s
 
 void CartesianSubgrid::Curl(const std::vector<double> &electric, std::vector<double> &magnetic) const
 {
-	m_CurlOperator.Apply(electric, magnetic);
+	m_CurlOperator.Apply(electric, magnetic, CurlMetrics());
 }
 void CartesianSubgrid::CurlTranspose(const std::vector<double> &magnetic, std::vector<double> &electric) const
 {
-	m_CurlOperator.ApplyTranspose(magnetic, electric);
+	m_CurlOperator.ApplyTranspose(magnetic, electric, CurlMetrics());
 }
 
 void CartesianSubgrid::SolveMass(std::vector<double> &values)
@@ -1746,7 +1870,7 @@ CartesianSubgridDeviceData CartesianSubgrid::DeviceData() const
 			data.curlLow.push_back(scalar(value - double(high)));
 			quantity = "curl coefficient";
 			++data.transposeStart[edge + 1];
-		});
+		}, CurlMetrics());
 		data.curlStart.push_back(index(data.curlColumn.size()));
 	}
 	for (std::size_t edge = 0; edge < m_Electric.size(); ++edge)
@@ -1837,6 +1961,9 @@ CartesianSubgridDeviceData CartesianSubgrid::DeviceData() const
 	}
 	quantity = "ledger state";
 	data.ledger = {scalar(m_ResistorLoss), 0, scalar(m_SourceWork), 0};
+	const CartesianSubgridDeviceGeometry spatial(m_CurlOperator.Regular(), CurlMetrics());
+	data.curlGeometry = spatial.geometry;
+	data.curlMetrics = spatial.metrics;
 	return data;
 }
 

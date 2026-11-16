@@ -29,6 +29,9 @@ struct GPU_CartesianSubgridFields
  */
 struct CartesianSubgridDeviceData
 {
+	//! Optional single-device spatial curl. Expanded arrays remain the independent oracle.
+	std::vector<std::uint32_t> curlGeometry;
+	std::vector<float> curlMetrics;
 	std::vector<float> electric, magnetic, curlWeight, transposeWeight, curlLow, transposeLow, lower;
 	std::vector<std::uint32_t> curlStart{0}, curlColumn, transposeStart, transposeColumn;
 	std::vector<std::uint32_t> blockStart{0}, blockEdge, bandwidth, lowerStart{0};
@@ -60,7 +63,10 @@ class GPU_CartesianSubgridRecurrence
 	virtual void CheckObservation() const = 0;
 	virtual std::array<double, 2> ReadLedger() = 0;
 	//! Surface Ohmic loss and instantaneous stored constitutive energy.
-	virtual std::array<double, 2> ReadSurfaceLedger() { return {0, 0}; }
+	virtual std::array<double, 2> ReadSurfaceLedger()
+	{
+		return {0, 0};
+	}
 	virtual std::size_t StorageBytes() const = 0;
 };
 
@@ -77,6 +83,10 @@ class GPU_CartesianSubgrid
 	virtual void Step(double timestep, double sourceAmplitude) = 0;
 	virtual void ReadFields(CartesianSubgrid &grid) = 0;
 	virtual std::size_t StorageBytes() const = 0;
+	virtual std::size_t StructuredRows() const
+	{
+		return 0;
+	}
 	//! Paired device extensions require ordered half steps and a fixed recurrence step.
 	virtual void UpdateElectric(double, double)
 	{

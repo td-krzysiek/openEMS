@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include "gpu_cartesiansubgrid.h"
 #include "subgrid_device_curl.h"
+#include "subgrid_device_geometry.h"
 #include "gpu_backend.h"
 #include "cartesian_subgrid.h"
 #include "cartesian_subgrid_domains.h"
@@ -66,17 +67,65 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 		}
 		m_BlockCount = data.bandwidth.size();
 		m_SourceCount = data.sourceEdge.size();
-		const CartesianSubgridDeviceCurl transpose(data.transposeStart, data.transposeColumn,
+		CartesianSubgridDeviceCurl transpose(data.transposeStart, data.transposeColumn,
 			data.transposeWeight, data.transposeLow, data.magnetic.size(), domain);
-		const CartesianSubgridDeviceCurl curl(data.curlStart, data.curlColumn,
+		CartesianSubgridDeviceCurl curl(data.curlStart, data.curlColumn,
 			data.curlWeight, data.curlLow, data.electric.size(), domain);
+		const auto spatialRows = domain ? 0 : CartesianSubgridDeviceGeometry::Validate(
+			data.curlGeometry, data.curlMetrics, data.electric.size(), data.magnetic.size());
+		if (spatialRows)
+		{
+			CartesianSubgridDeviceGeometry::ValidateRows(data);
+			std::vector<std::uint32_t> start{0}, columns;
+			std::vector<float> high, low;
+			for (std::size_t row = 0; row < data.magnetic.size(); ++row)
+			{
+				if (!subgrid_geometry_regular(data.curlGeometry.data(), std::uint32_t(row)))
+				{
+					for (std::size_t k = data.curlStart[row]; k < data.curlStart[row + 1]; ++k)
+					{
+						columns.push_back(data.curlColumn[k]);
+						high.push_back(data.curlWeight[k]);
+						low.push_back(data.curlLow[k]);
+					}
+					start.push_back(static_cast<std::uint32_t>(columns.size()));
+				}
+			}
+			CartesianSubgridDeviceCurl packedCurl(start, columns, high, low, data.electric.size());
+			high = data.transposeWeight;
+			low = data.transposeLow;
+			for (std::size_t k = 0; k < data.transposeColumn.size(); ++k)
+			{
+				if (subgrid_geometry_regular(data.curlGeometry.data(), data.transposeColumn[k]))
+				{
+					high[k] = low[k] = 0;
+				}
+			}
+			CartesianSubgridDeviceCurl packedTranspose(data.transposeStart, data.transposeColumn,
+				high, low, data.magnetic.size());
+			const std::size_t oldBytes = curl.DeviceBytes() + transpose.DeviceBytes();
+			const std::size_t packedBytes = packedCurl.DeviceBytes() + packedTranspose.DeviceBytes() +
+				data.curlGeometry.size() * sizeof(std::uint32_t) + data.curlMetrics.size() * sizeof(float);
+			// A simple uniform grid may already have smaller translated patterns.
+			if (packedBytes < oldBytes)
+			{
+				curl = std::move(packedCurl);
+				transpose = std::move(packedTranspose);
+				m_SpatialRows = spatialRows;
+				m_Geometry = Upload(data.curlGeometry);
+				m_Metrics = Upload(data.curlMetrics);
+				std::cout << "CartesianSubgrid spatial device curl: rows=" << spatialRows
+					<< " metadata_bytes=" << packedBytes << " legacy_bytes=" << oldBytes << std::endl;
+			}
+		}
+
 		auto *electric = Upload(data.electric), *magnetic = Upload(data.magnetic);
 		auto *increment = Upload(std::vector<float>(m_OwnedElectric, 0));
 		m_Transpose = {Upload(transpose.start), Upload(transpose.offset), Upload(transpose.base),
 			Upload(transpose.pattern), Upload(transpose.weight), Upload(transpose.residual),
-			magnetic, increment, 1, 0, 0};
+			magnetic, increment, 1, 0, 0, m_Geometry, m_Metrics, 1};
 		m_Curl = {Upload(curl.start), Upload(curl.offset), Upload(curl.base), Upload(curl.pattern),
-			Upload(curl.weight), Upload(curl.residual), electric, magnetic, 0, 0, 1};
+			Upload(curl.weight), Upload(curl.residual), electric, magnetic, 0, 0, 1, m_Geometry, m_Metrics, 0};
 		m_Mass = {Upload(data.blockStart), Upload(data.blockEdge), Upload(data.bandwidth),
 			Upload(data.lowerStart), Upload(data.lower), increment};
 		m_Update = {electric, increment, 0, 0};
@@ -256,6 +305,11 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 		return {m_Ledger[0], m_Ledger[2]};
 	}
 
+	std::size_t StructuredRows() const override
+	{
+		return m_SpatialRows;
+	}
+
 	std::size_t StorageBytes() const override
 	{
 		return m_StorageBytes + (m_Recurrence ? m_Recurrence->StorageBytes() : 0);
@@ -294,6 +348,9 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 		return static_cast<T *>(buffer);
 	}
 
+	std::uint32_t *m_Geometry = nullptr;
+	float *m_Metrics = nullptr;
+	std::size_t m_SpatialRows = 0;
 	GPU_Backend &m_Backend;
 	std::unique_ptr<GPU_CartesianSubgridRecurrence> m_Recurrence;
 	std::size_t m_StorageBytes = 0, m_BlockCount = 0, m_SourceCount = 0, m_PortCount = 0;

@@ -7,28 +7,10 @@
 #include <cmath>
 #endif
 
-//! Compensated sum of split-coefficient products, using only device FP32.
-/*! Explicit FMA recovers product rounding; it does not enable contraction of
- *  unrelated physics. Neumaier accumulation also retains low residuals when
- *  subsequent, much larger terms cancel. Keep Metal safe-math enabled.
- */
-CM_FN void subgrid_curl_add(CM_PRIVATE float &sum, CM_PRIVATE float &correction, float term)
-{
-	const float total = sum + term;
-	const float magnitude = sum < 0 ? -sum : sum;
-	const float other = term < 0 ? -term : term;
-	correction += magnitude >= other ? (sum - total) + term : (term - total) + sum;
-	sum = total;
-}
-
-CM_FN float subgrid_curl_product_error(float coefficient, float field, float product)
-{
-#if defined(__METAL_VERSION__) || defined(__HIPCC__) || defined(__CUDACC__)
-	return fma(coefficient, field, -product);
-#else
-	return std::fma(coefficient, field, -product);
+#if !defined(__METAL_VERSION__)
+#include "subgrid_arithmetic.h"
+#include "subgrid_geometry.h"
 #endif
-}
 
 //! Preserve the supplied timestep and the final state addition in FP32 arithmetic.
 CM_FN float subgrid_field_increment(float previous, float high, float low, float increment)
@@ -54,18 +36,57 @@ struct Op_SubgridCurl
 	CM_GLOBAL float *output;
 	float scale, scaleLow;
 	uint32_t additive;
+	CM_GLOBAL const uint32_t *geometry;
+	CM_GLOBAL const float *metrics;
+	uint32_t transposed;
 
 	CM_FN void operator()(uint64_t row) const
 	{
-		const uint32_t p = pattern[row], origin = base[row];
 		float value = 0, correction = 0;
-		for (uint32_t k = start[p]; k < start[p + 1]; ++k)
+		if (geometry && !transposed && subgrid_geometry_regular(geometry, uint32_t(row)))
 		{
-			const float field = input[origin + column[k]];
-			const float product = weight[k] * field;
-			const float residual = subgrid_curl_product_error(weight[k], field, product) + low[k] * field;
-			subgrid_curl_add(value, correction, product);
-			subgrid_curl_add(value, correction, residual);
+			uint32_t edges[4];
+			SubgridMetricPair coefficients[4];
+			for (uint32_t term = 0; term < 4; ++term)
+			{
+				edges[term] = subgrid_geometry_edge(geometry, metrics, uint32_t(row), term, coefficients[term]);
+			}
+			// Preserve the canonical E order and compensated accumulation of the oracle.
+			for (uint32_t term = 1; term < 4; ++term)
+			{
+				uint32_t at = term;
+				while (at && edges[at] < edges[at - 1])
+				{
+					const uint32_t edge = edges[at];
+					edges[at] = edges[at - 1];
+					edges[at - 1] = edge;
+					const SubgridMetricPair coefficient = coefficients[at];
+					coefficients[at] = coefficients[at - 1];
+					coefficients[at - 1] = coefficient;
+					--at;
+				}
+			}
+			for (uint32_t term = 0; term < 4; ++term)
+			{
+				Accumulate(value, correction, coefficients[term].high, coefficients[term].low, input[edges[term]]);
+			}
+		}
+		else
+		{
+			const uint32_t address = geometry && !transposed ? subgrid_geometry_exception(geometry, uint32_t(row)) : uint32_t(row);
+			const uint32_t p = pattern[address], origin = base[address];
+			for (uint32_t k = start[p]; k < start[p + 1]; ++k)
+			{
+				const uint32_t edge = origin + column[k];
+				float high = weight[k], residual = low[k];
+				if (geometry && transposed && subgrid_geometry_regular(geometry, edge))
+				{
+					const SubgridMetricPair coefficient = subgrid_geometry_coefficient(geometry, metrics, edge, uint32_t(row));
+					high = coefficient.high;
+					residual = coefficient.low;
+				}
+				Accumulate(value, correction, high, residual, input[edge]);
+			}
 		}
 		value += correction;
 		if (additive)
@@ -76,6 +97,14 @@ struct Op_SubgridCurl
 		{
 			output[row] = value;
 		}
+	}
+	CM_FN void Accumulate(CM_PRIVATE float &value, CM_PRIVATE float &correction,
+		float high, float lowPart, float field) const
+	{
+		const float product = high * field;
+		const float residual = subgrid_curl_product_error(high, field, product) + lowPart * field;
+		subgrid_curl_add(value, correction, product);
+		subgrid_curl_add(value, correction, residual);
 	}
 };
 

@@ -21,6 +21,11 @@ and representative PCB qualification remain open.
 [Implementation and qualification checklist](CARTESIAN_SUBGRID_CHECKLIST.md)
 tracks the completed controls and remaining feature/engine milestones in PR #29.
 
+The [spatial-curl block increment](CARTESIAN_SUBGRID_BLOCKS.md) adds actual
+structured interior addressing on the existing device backends with exact shared
+coefficient pairs and sparse interface exceptions. Its full replay/scaling and
+representative antenna qualification remain separate from focused controls.
+
 The [native smooth-conductor/path-port candidate](CARTESIAN_SUBGRID_CONDUCTOR.md)
 adds scoped volume-box mapping. Its implementation and completed scoped r03 CPU/Metal/CUDA evidence
 are distinguished there; general PCB RF acceptance and

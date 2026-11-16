@@ -16,6 +16,12 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Added
 
+- Experimental Cartesian-subgrid GPU preparation uses spatial curl blocks with
+  exact coefficient pairs and sparse interface exceptions when device metadata
+  is smaller. Default CPU updates retain the old pattern loop. Rebuild callers
+  and backend plugins together; representative PCB/scaling qualification remains
+  open. See `CARTESIAN_SUBGRID_BLOCKS.md`.
+
 - Experimental Cartesian subgrids can map physical smooth-volume conductor
   boxes and same-metal unions to passive surface states. Native line-box
   resistors now preserve the ordinary per-cell R/N convention across complete

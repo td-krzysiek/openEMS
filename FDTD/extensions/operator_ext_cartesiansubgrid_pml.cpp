@@ -175,7 +175,7 @@ bool Operator_Ext_CartesianSubgrid_PML::BuildExtension()
 			const unsigned int axis = 3 - normal - tangent;
 			add(magnetic, row, axis, point[axis], edge, coefficient);
 			add(electric, edge, axis, g.EdgePosition(edge)[axis], row, coefficient);
-		});
+		}, g.CurlMetrics());
 	}
 	// Collar corrections cannot bypass the non-diagonal interface mass.
 	for (const auto &block : g.m_Blocks)

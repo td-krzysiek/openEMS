@@ -264,6 +264,17 @@ preserved and remains an expected-negative mesh control.
 Acceptance: do not infer production memory or speed gains from leaf counts.
 Record minimum timestep, interface overhead, field precision and build identity.
 
+Further partial C01/C03/U01–U03/U05: the
+[spatial-curl increment](CARTESIAN_SUBGRID_BLOCKS.md) adds exact host block
+admission, canonical E-slot maps and sparse exceptions. Default CPU retains its
+old pattern loop. Actual shared GPU interiors use exact prepared coefficient
+pairs shared by curl/transpose, with a byte gate retaining smaller old layouts.
+Focused reference/Metal and physical RTX4090/RTX3080 geometry controls pass;
+the aggregate native/CUDA replay and timing are in progress. Expanded upload,
+reference topology/field layout and production scaling remain open, so C01/C03
+remain unchecked. The host-only r02 matrix passes13 stages/CTest38/38/Python14/14
+with11,255 prior arrays unchanged; it does not qualify later device code.
+
 ## 6. One GPU through the existing backends
 
 - [ ] **U01** Define device-resident block fields, interface metadata and update
@@ -495,3 +506,5 @@ numerical change invalidates their prior qualification.
 | 2026-11-16 | Partial F02, retained F01/B02/U04/U05 | This PR, surface-state increment (parent `08e2274`) | [Equations, source/build identities and limits](CARTESIAN_SUBGRID_SURFACE.md). All30 local stages/all19 physical CUDA gates, CTest33/33/Python14/14;11,255 arrays unchanged. CPU/reference/Metal and RTX4090/RTX3080 scalar/path surface controls, disjoint PML, unchanged retained lossless pair controls in both orders. Native conductor geometry, RF line/array, distributed histories and scaling remain open. |
 
 | 2026-11-16 | Further partial F02/G01/P02/P05/U04/U05 | Native volume/path increment `c006caa` | [Contract, source/build identities and limits](CARTESIAN_SUBGRID_CONDUCTOR.md). Actual r03 source matches the published numerical/test files; all 34 local stages, CTest 37/37/Python 14/14, all 27 physical CUDA gates and CTest 37/37 pass. Native Cu18/Cu35 opaque volumes, same-metal unions/priority cuts and ordinary per-cell R/N paths run on CPU/reference/Metal and each RTX4090/RTX3080. Retained lossless pair controls pass both orders; 11,255 older arrays remain bit-identical. Actual older-CSXCAD build passes 35 solver tests with two explicit absent-feature skips. Point-port RF mesh changes remain unresolved; arbitrary CAD, scalable interiors/interfaces, distributed histories/DFT and antenna acceptance remain open. |
+
+| 2026-11-16 | Partial C01/C03/U01–U03/U05, focused spatial interiors | This PR, exact-pair spatial-curl increment (parent `d026d92`) | [Source contract, controls and limits](CARTESIAN_SUBGRID_BLOCKS.md). Host-only r02:13 stages/CTest38/38/Python14/14 and11,255 exact prior arrays. Later focused device geometry passes on reference/Metal and each physical RTX4090/RTX3080; aggregate native/CUDA replay and interleaved timing are in progress. Expanded upload/reference field organization, distributed histories, general scaling and antenna acceptance remain open. |

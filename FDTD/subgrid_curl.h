@@ -2,6 +2,7 @@
 #ifndef CARTESIAN_SUBGRID_CURL_H
 #define CARTESIAN_SUBGRID_CURL_H
 
+#include "subgrid_regular_curl.h"
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -28,19 +29,26 @@ class CartesianSubgridCurl
 	class Builder
 	{
 	  public:
-		Builder(CartesianSubgridCurl &target, std::size_t rows, std::size_t edges)
-			: m_Target(target), m_Expected(rows)
+		Builder(CartesianSubgridCurl &target, std::size_t rows, std::size_t edges,
+			const CartesianSubgridMetricView &metrics = {})
+			: m_Target(target), m_Expected(rows), m_Metrics(metrics)
 		{
 			if (edges > std::numeric_limits<std::uint32_t>::max() ||
 				rows > std::numeric_limits<std::uint32_t>::max())
 			{
 				throw std::invalid_argument("CartesianSubgrid: streamed curl exceeds 32-bit address guard");
 			}
+			if (target.m_Regular.BlockCount() &&
+				(!metrics.mass || !metrics.reluctance || metrics.edges != edges || metrics.faces != rows))
+			{
+				throw std::invalid_argument("CartesianSubgrid: structured curl build metrics disagree");
+			}
+			target.m_Regular.ResetRows(rows);
 			target.ClearPatterns();
 			target.m_Count = 0;
 			target.m_EdgeCount = edges;
-			target.m_Base.reserve(rows);
-			target.m_Pattern.reserve(rows);
+			target.m_Base.reserve(target.m_Regular.BlockCount() ? rows / 8 : rows);
+			target.m_Pattern.reserve(target.m_Regular.BlockCount() ? rows / 8 : rows);
 			target.m_Start.push_back(0);
 			m_Patterns.reserve(std::min<std::size_t>(rows, 65536));
 		}
@@ -50,6 +58,12 @@ class CartesianSubgridCurl
 			if (m_Target.m_Count >= m_Expected)
 			{
 				throw std::invalid_argument("CartesianSubgrid: too many streamed curl rows");
+			}
+			m_Target.m_Regular.BeginRow(m_Target.m_Count, m_Target.m_Base.size());
+			if (m_Target.m_Regular.Admit(m_Target.m_Count, first, last, m_Metrics))
+			{
+				++m_Target.m_Count;
+				return;
 			}
 			const std::size_t base = first == last ? 0 : first->first;
 			std::uint64_t hash = 14695981039346656037ULL;
@@ -119,6 +133,9 @@ class CartesianSubgridCurl
 			{
 				throw std::invalid_argument("CartesianSubgrid: incomplete streamed curl");
 			}
+			m_Target.m_Base.shrink_to_fit();
+			m_Target.m_Pattern.shrink_to_fit();
+			m_Target.m_Regular.Finish();
 			m_Target.m_Start.shrink_to_fit();
 			m_Target.m_Offset.shrink_to_fit();
 			m_Target.m_Weight.shrink_to_fit();
@@ -128,55 +145,99 @@ class CartesianSubgridCurl
 	  private:
 		CartesianSubgridCurl &m_Target;
 		std::size_t m_Expected;
+		CartesianSubgridMetricView m_Metrics;
 		std::unordered_multimap<std::uint64_t, std::uint32_t> m_Patterns;
 	};
 
-	void Apply(const std::vector<double> &electric, std::vector<double> &magnetic) const
+	void ConfigureBlocks(std::vector<CartesianSubgridRegularCurl::Block> blocks,
+		std::vector<CartesianSubgridRegularCurl::Address> addresses, std::size_t edges)
+	{
+		m_Regular.Configure(std::move(blocks), std::move(addresses), edges);
+	}
+	void Apply(const std::vector<double> &electric, std::vector<double> &magnetic,
+		const CartesianSubgridMetricView &metrics = {}) const
 	{
 		if (electric.size() != m_EdgeCount || magnetic.size() != m_Count)
 		{
 			throw std::invalid_argument("CartesianSubgrid: invalid curl field dimensions");
 		}
+		if (!m_Regular.RowCount())
+		{
+			for (std::size_t row = 0; row < m_Count; ++row)
+			{
+				const std::size_t pattern = m_Pattern[row], base = m_Base[row];
+				double value = 0;
+				for (std::size_t i = m_Start[pattern]; i < m_Start[pattern + 1]; ++i)
+				{
+					value += m_Weight[i] * electric[base + m_Offset[i]];
+				}
+				magnetic[row] = value;
+			}
+			return;
+		}
 		for (std::size_t row = 0; row < m_Count; ++row)
 		{
-			const std::size_t pattern = m_Pattern[row], base = m_Base[row];
 			double value = 0;
-			for (std::size_t i = m_Start[pattern]; i < m_Start[pattern + 1]; ++i)
-			{
-				value += m_Weight[i] * electric[base + m_Offset[i]];
-			}
+			ForEach(row, [&](std::size_t edge, double weight) { value += weight * electric[edge]; }, metrics);
 			magnetic[row] = value;
 		}
 	}
-
-	void ApplyTranspose(const std::vector<double> &magnetic, std::vector<double> &electric) const
+	void ApplyTranspose(const std::vector<double> &magnetic, std::vector<double> &electric,
+		const CartesianSubgridMetricView &metrics = {}) const
 	{
 		if (electric.size() != m_EdgeCount || magnetic.size() != m_Count)
 		{
 			throw std::invalid_argument("CartesianSubgrid: invalid transpose field dimensions");
 		}
 		std::fill(electric.begin(), electric.end(), 0);
+		if (!m_Regular.RowCount())
+		{
+			for (std::size_t row = 0; row < m_Count; ++row)
+			{
+				const std::size_t pattern = m_Pattern[row], base = m_Base[row];
+				for (std::size_t i = m_Start[pattern]; i < m_Start[pattern + 1]; ++i)
+				{
+					electric[base + m_Offset[i]] += m_Weight[i] * magnetic[row];
+				}
+			}
+			return;
+		}
 		for (std::size_t row = 0; row < m_Count; ++row)
 		{
-			const std::size_t pattern = m_Pattern[row], base = m_Base[row];
-			for (std::size_t i = m_Start[pattern]; i < m_Start[pattern + 1]; ++i)
-			{
-				electric[base + m_Offset[i]] += m_Weight[i] * magnetic[row];
-			}
+			ForEach(row, [&](std::size_t edge, double weight) { electric[edge] += weight * magnetic[row]; }, metrics);
 		}
 	}
-
-	template <class Callback> void ForEach(std::size_t row, Callback callback) const
+	template <class Callback> void ForEach(std::size_t row, Callback callback,
+		const CartesianSubgridMetricView &metrics = {}) const
 	{
 		if (row >= m_Count)
 		{
 			throw std::out_of_range("CartesianSubgrid: curl row is out of range");
 		}
-		const std::size_t pattern = m_Pattern[row], base = m_Base[row];
+		if (m_Regular.IsRegular(row))
+		{
+			m_Regular.ForEach(row, metrics, callback);
+			return;
+		}
+		const std::size_t exception = m_Regular.ExceptionRow(row);
+		const std::size_t pattern = m_Pattern[exception], base = m_Base[exception];
 		for (std::size_t i = m_Start[pattern]; i < m_Start[pattern + 1]; ++i)
 		{
 			callback(base + m_Offset[i], m_Weight[i]);
 		}
+	}
+	const CartesianSubgridRegularCurl &Regular() const
+	{
+		return m_Regular;
+	}
+
+	std::size_t RegularRowCount() const
+	{
+		return m_Regular.RowCount();
+	}
+	std::size_t RegularBlockCount() const
+	{
+		return m_Regular.BlockCount();
 	}
 
 	std::size_t RowCount() const
@@ -189,7 +250,7 @@ class CartesianSubgridCurl
 	}
 	std::size_t AllocationBytes() const
 	{
-		return PatternBytes();
+		return PatternBytes() + m_Regular.Bytes();
 	}
 
   private:
@@ -213,6 +274,7 @@ class CartesianSubgridCurl
 		std::vector<std::uint32_t>().swap(m_Offset);
 		std::vector<double>().swap(m_Weight);
 	}
+	CartesianSubgridRegularCurl m_Regular;
 	std::size_t m_Count = 0, m_EdgeCount = 0;
 	std::vector<std::uint32_t> m_Base, m_Pattern, m_Start, m_Offset;
 	std::vector<double> m_Weight;

@@ -976,7 +976,11 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 	m_Grid.reset(new CartesianSubgrid(
 		lines, GetBackgroundEpsR() * EPS0, GetBackgroundMueR() * MUE0, regions, false, sample,
 		hasMetal ? CartesianSubgrid::PECSelector(pec) : CartesianSubgrid::PECSelector(), boundaries,
-		hasSurfaceMetal ? CartesianSubgrid::OpaqueSelector(opaque) : CartesianSubgrid::OpaqueSelector()));
+		hasSurfaceMetal ? CartesianSubgrid::OpaqueSelector(opaque) : CartesianSubgrid::OpaqueSelector(),
+		m_EngineType == Engine::GPU ? CartesianSubgrid::CurlLayout::SpatialBlocks : CartesianSubgrid::CurlLayout::Patterns));
+	const auto curlStorage = m_Grid->StructuredCurlStorage();
+	std::cout << "CartesianSubgrid curl storage: " << curlStorage.regularRows << " spatial rows, "
+		<< curlStorage.exceptionRows << " algebraic rows; " << curlStorage.bytes << " accounted bytes" << std::endl;
 	if (hasMetal && m_Grid->PECTraceCount() == 0)
 	{
 		throw std::invalid_argument(
