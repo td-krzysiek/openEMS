@@ -12,7 +12,6 @@
 Engine_Ext_CartesianSubgrid_Conductivity::Engine_Ext_CartesianSubgrid_Conductivity(
 	Operator_Ext_CartesianSubgrid_Conductivity *op)
 	: Engine_Ext_CartesianSubgrid_Advance(op), m_Conductivity(op), m_Grid(op->m_Compact->Grid()),
-	  m_OldElectric(m_Grid.EdgeCount()), m_SourceCurl(m_Grid.EdgeCount()),
 	  m_SurfaceState(op->m_SurfaceTrace.size(), 0)
 {
 	m_Conductivity->ValidatePreparedExtensions();
@@ -50,6 +49,11 @@ void Engine_Ext_CartesianSubgrid_Conductivity::UpdateElectric(double timestep, d
 		throw std::invalid_argument("CartesianSubgrid conductivity electric phase/drive is invalid");
 	}
 	m_Advanced = true;
+	// Kept empty for device-only execution; reference sweeps reuse the
+	// same capacities after their first call. No material history moves.
+	m_OldElectric.resize(g.EdgeCount());
+	m_SourceCurl.resize(g.EdgeCount());
+	g.m_Increment.resize(g.EdgeCount());
 	std::copy(g.m_Electric.begin(), g.m_Electric.end(), m_OldElectric.begin());
 	g.CurlTranspose(g.m_Magnetic, g.m_Increment);
 	std::copy(g.m_Increment.begin(), g.m_Increment.end(), m_SourceCurl.begin());
@@ -141,6 +145,7 @@ void Engine_Ext_CartesianSubgrid_Conductivity::UpdateMagnetic(double timestep)
 	{
 		throw std::invalid_argument("CartesianSubgrid conductivity magnetic phase is invalid");
 	}
+	g.m_Curl.resize(g.FaceCount());
 	g.Curl(g.m_Electric, g.m_Curl);
 	for (std::size_t i = 0; i < g.FaceCount(); ++i)
 	{

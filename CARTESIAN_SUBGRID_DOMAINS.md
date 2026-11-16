@@ -157,6 +157,41 @@ logical-term accounting was repeated. Source/runtime numerics were unchanged.
 Evidence: separately frozen `domain-address-r21` study. Cell/interface guards,
 global reference fields/topology and magnetic quadratures remain unchanged.
 
+## Lazy serial reference workspace
+
+R22 keeps CPU-only curl/increment/source-copy work empty during cold device
+preparation. Serial E/H sweeps allocate the needed vectors on first use and
+reuse their capacities. The conductivity engine likewise defers its old-E
+and source-curl scratch; physical host mirror fields, surface/material history,
+operator coefficients, ownership and update kernels are unchanged.
+
+A focused control prepares device fields/operators and a cold domain plan
+without growing reference work, rejects invalid timesteps/phases without
+allocation, then verifies first-use allocation and stable capacity through100
+CPU steps, with and without ports. Twelve reference/Metal exact compressed
+metadata/field cases, native8/16-case TD/FD/U/I controls and fresh CTest47/47
+pass. The full source was fixed before compilation and rechecked afterward.
+Local core SHA256:
+`4404bf43382c6ee10504630b344a10d243adbc78efae50300d0bb6bda6ca5484`.
+Physical CUDA qualification is separately queued behind accepted R21 terminal
+results; the GPU-free build passes. No physical R22 acceptance is claimed.
+
+Three interleaved setup-only repetitions against actual frozen R21:
+
+| Case | R21 peak RSS | R22 peak RSS | Accounted cold grid |
+|---|---:|---:|---:|
+| Uniform491,520 leaves/three domains |498,040,832B|462,979,072B|218,385,216→183,337,536B|
+| Graded two-material61,440 leaves |172,392,448B|158,302,208B|41,560,188→37,221,372B|
+
+Cold accounted storage drops by exactly8bytes per owned E/H state in these
+lossless fixtures. Peak RSS drops7.04%/8.17%; whole setup changes−1.88%/−3.95%,
+while graded plan time increases5.88%. No FDTD throughput improvement is
+claimed. CPU execution still requires its scratch; it is deferred, not removed.
+The additional constitutive scratch savings are not measured by these lossless
+setup cases. A960k-leaf setup-only control has median peak RSS858,390,528B.
+Evidence: frozen `reference-work-r22` study. No cell/interface guard, production
+runtime, antenna input or RF qualification changes.
+
 ## Ownership, workers and transport
 
 `CartesianSubgridDomainPlan` assigns fixed ownership from one axis and a list

@@ -22,6 +22,7 @@ set(TESTS
   test_cartesian_subgrid_regular_curl
   test_cartesian_subgrid_edge_index
   test_cartesian_subgrid_domain_map
+  test_cartesian_subgrid_reference_work
   test_cartesian_subgrid_device
   test_cartesian_subgrid_device_ports
   test_cartesian_subgrid_device_pml

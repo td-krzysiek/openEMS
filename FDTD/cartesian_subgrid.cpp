@@ -632,8 +632,8 @@ void CartesianSubgrid::Build(const MediumSampler &medium, const PECSelector &pec
 	m_StableStep = 1.98 / bound;
 	m_Electric.assign(m_Edges.size(), 0);
 	m_Magnetic.assign(m_SqrtReluctance.size(), 0);
-	m_Increment.resize(m_Electric.size());
-	m_Curl.resize(m_Magnetic.size());
+	// CPU-only sweep work is allocated on first reference use. Device
+	// preparation and complete-batch field mirrors do not need it.
 }
 
 void CartesianSubgrid::ConfigureRegularCurl()
@@ -938,7 +938,6 @@ void CartesianSubgrid::CheckStep(double timestep) const
 void CartesianSubgrid::SetSources(const std::vector<std::pair<std::size_t, double>> &sources)
 {
 	m_Sources.clear();
-	m_SourceCurl.resize(m_PortVoltage.empty() ? 0 : m_Electric.size());
 	for (const auto &source : sources)
 	{
 		Require(source.first < m_Electric.size() && std::isfinite(source.second),
@@ -958,9 +957,11 @@ void CartesianSubgrid::UpdateElectric(double timestep, double sourceAmplitude)
 	CheckStep(timestep);
 	Require(m_PendingMagneticTimestep == 0, "CartesianSubgrid: complete the pending magnetic sweep first");
 	Require(std::isfinite(sourceAmplitude), "CartesianSubgrid: nonfinite drive");
+	m_Increment.resize(m_Electric.size());
 	CurlTranspose(m_Magnetic, m_Increment);
 	if (!m_PortVoltage.empty() && !m_Sources.empty())
 	{
+		m_SourceCurl.resize(m_Electric.size());
 		std::copy(m_Increment.begin(), m_Increment.end(), m_SourceCurl.begin());
 	}
 	SolveMass(m_Increment);
@@ -1003,6 +1004,7 @@ void CartesianSubgrid::UpdateMagnetic(double timestep)
 {
 	Require(timestep == m_PendingMagneticTimestep && timestep > 0,
 			"CartesianSubgrid: magnetic sweep must follow electric sweep at the same timestep");
+	m_Curl.resize(m_Magnetic.size());
 	Curl(m_Electric, m_Curl);
 	for (std::size_t i = 0; i < m_Magnetic.size(); ++i)
 	{
