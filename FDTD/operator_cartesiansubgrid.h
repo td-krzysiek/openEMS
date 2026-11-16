@@ -17,7 +17,13 @@ class Operator_CartesianSubgrid : public Operator
 												 const std::vector<CartesianSubgrid::Index> &ratios);
 	static void ValidateRegions(const std::vector<std::vector<double>> &boxes,
 								const std::vector<CartesianSubgrid::Index> &ratios);
+	~Operator_CartesianSubgrid() override;
 	void SetEngineType(Engine_Types::EngineType type) override;
+	//! Fixed execution placement, separate from physical geometry and XML.
+	void SetDomainExecution(unsigned int axis, std::vector<double> drawingCuts,
+		std::vector<std::unique_ptr<GPU_Backend>> backends);
+	const CartesianSubgrid &ObservationGrid() const;
+	void InvalidateObservations() const { m_ObservationsValid = false; }
 	bool SetGeometryCSX(ContinuousStructure *geometry) override;
 	void SetBoundaryCondition(int *conditions) override;
 	void AddExtension(Operator_Extension *extension) override;
@@ -45,6 +51,10 @@ class Operator_CartesianSubgrid : public Operator
 	std::vector<std::vector<double>> m_Boxes;
 	std::vector<CartesianSubgrid::Index> m_Ratios;
 	std::unique_ptr<CartesianSubgrid> m_Grid;
+	unsigned int m_DomainAxis = 0;
+	std::vector<double> m_DomainCuts;
+	std::vector<std::unique_ptr<GPU_Backend>> m_DomainBackends;
+	mutable bool m_ObservationsValid = true;
 	//! Non-owning handle; the operator extension list retains ownership.
 	Operator_Ext_CartesianSubgrid_Conductivity *m_NativeConductivity = nullptr;
 };

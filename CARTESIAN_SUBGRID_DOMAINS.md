@@ -360,3 +360,14 @@ runtime checks pass; the bounded container exits0 without OOM. This does not ena
 Local core: `5222750a352def4826d688f988f6f640ba73616370ea500d8eb3b1f0cc641f4b`.
 CUDA core: `cefb3f88291dadd7791e3854f048a55f221b7a69c0d2ea5bf09f4382b88a72dc`.
 No frozen/production runtime, antenna input or allocation guard changes.
+
+
+## Native local execution
+
+The r18 adapter now connects the checked cold domain plan to normal CLI and
+Python runs, including paired PML/loss diagnostics and complete-batch host
+processing. The [native runtime contract](CARTESIAN_SUBGRID_RUNTIME.md) records
+configuration, source/build identities, actual scripting/Metal/CLI/RF/NF2FF
+controls, the R02 `none` correction and pending physical CUDA qualification.
+This is local native execution; it does not add remote worker management,
+external collective pause or production/representative-array qualification.

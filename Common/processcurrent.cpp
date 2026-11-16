@@ -85,7 +85,7 @@ void ProcessCurrent::DefineStartStopCoord(double* dstart, double* dstop)
 		const auto contour = local->Grid().CurrentContour(m_normDir, lo, hi);
 		m_LocalIntegral = [local, contour]()
 		{
-			return local->Grid().Evaluate(contour);
+			return local->ObservationGrid().Evaluate(contour);
 		};
 		std::ostringstream description;
 		description << std::setprecision(17)

@@ -63,6 +63,7 @@ set(SOURCES
   ${CMAKE_CURRENT_SOURCE_DIR}/operator.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/cartesian_subgrid.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/cartesian_subgrid_domains.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/cartesian_subgrid_runtime.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/cartesian_subgrid_coordinator.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/gpu_cartesiansubgrid_domains.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/operator_cartesiansubgrid.cpp

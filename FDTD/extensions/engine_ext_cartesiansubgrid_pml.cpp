@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include "engine_ext_cartesiansubgrid_pml.h"
+#include "FDTD/gpu_cartesiansubgrid.h"
 #include "FDTD/operator_cartesiansubgrid.h"
 #include "engine_ext_cartesiansubgrid_conductivity.h"
 
@@ -194,9 +195,27 @@ std::unique_ptr<GPU_CartesianSubgridPML> Engine_Ext_CartesianSubgrid_PML::Create
 
 void Engine_Ext_CartesianSubgrid_PML::ReadDeviceDiagnostics(GPU_CartesianSubgridPML &device)
 {
-	if (!m_DeviceConfigured)
+	if (!m_DeviceConfigured || m_DomainConfigured)
 	{
-		throw std::invalid_argument("CartesianSubgrid: no paired device PML state");
+		throw std::invalid_argument("CartesianSubgrid: no paired single-device PML state");
+	}
+	m_WorkOut = device.ReadBoundaryWorkOut();
+}
+
+void Engine_Ext_CartesianSubgrid_PML::BindDomainDevice(
+	const Engine_Ext_CartesianSubgrid_Conductivity *advance)
+{
+	// Recheck cold/prepared partner state before the host becomes a mirror.
+	PrepareDomainData(advance);
+	m_DeviceConfigured = true;
+	m_DomainConfigured = true;
+}
+
+void Engine_Ext_CartesianSubgrid_PML::ReadDomainDiagnostics(GPU_CartesianSubgrid &device)
+{
+	if (!m_DomainConfigured)
+	{
+		throw std::invalid_argument("CartesianSubgrid: no paired domain PML state");
 	}
 	m_WorkOut = device.ReadBoundaryWorkOut();
 }

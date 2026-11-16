@@ -46,7 +46,16 @@ def run_native_device(fdtd, path, engine, physical='', **options):
     assert result in (None, 0), (path.name, result, text[-2000:])
     if engine in ('gpu', 'gpu-reference'):
         expected = 'reference (' if engine == 'gpu-reference' else ('Metal (' if physical == 'metal' else 'HIP (')
-        assert 'CartesianSubgrid device: ' + expected in text, ('wrong native device backend', path.name, text[-2000:])
+        if 'subgrid_domain_workers' in options:
+            workers = options['subgrid_domain_workers'].split(',')
+            selected = re.findall(r'^CartesianSubgrid native domain (\d+): (.+)$', text, re.MULTILINE)
+            assert len(selected) == len(workers), ('missing native workers', path.name, selected)
+            for index, ((owner, backend), worker) in enumerate(zip(selected, workers)):
+                required = 'reference (' if worker == 'reference' else expected
+                assert int(owner) == index and backend.startswith(required), (path.name, owner, backend, worker)
+            assert 'host mirror at complete processing batches' in text
+        else:
+            assert 'CartesianSubgrid device: ' + expected in text, ('wrong native device backend', path.name, text[-2000:])
         if engine == 'gpu' and physical == 'cuda':
             assert re.search(r'^\s*0: .+ \(hip-nvidia, ', text, re.MULTILINE), (
                 'CUDA requested but selected device0 is not the NVIDIA HIP plugin', path.name, text[-2000:])

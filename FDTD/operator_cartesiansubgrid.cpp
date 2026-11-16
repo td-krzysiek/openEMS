@@ -16,6 +16,8 @@
 #endif
 #include "engine.h"
 #include "gpu_backend.h"
+#include "cartesian_subgrid_domains.h"
+#include "extensions/engine_ext_cartesiansubgrid_conductivity.h"
 #include "extensions/operator_ext_excitation.h"
 #include "extensions/operator_ext_tfsf.h"
 #include "extensions/operator_ext_lumpedRLC.h"
@@ -227,8 +229,10 @@ class Engine_CartesianSubgrid : public Engine
 {
   public:
 	explicit Engine_CartesianSubgrid(const Operator_CartesianSubgrid *op,
-									 std::unique_ptr<GPU_Backend> backend = {})
-		: Engine(op), m_Operator(op), m_Backend(std::move(backend))
+									 std::unique_ptr<GPU_Backend> backend = {},
+									 std::vector<std::unique_ptr<GPU_Backend>> domains = {},
+									 unsigned int axis = 0, std::vector<double> cuts = {})
+		: Engine(op), m_Operator(op), m_Backend(std::move(backend)), m_DomainBackends(std::move(domains))
 	{
 		std::size_t requested = 0;
 		for (std::size_t i = 0; i < op->GetNumberOfExtentions(); ++i)
@@ -256,7 +260,65 @@ class Engine_CartesianSubgrid : public Engine
 		{
 			throw std::invalid_argument("CartesianSubgrid: paired compact advance provider is missing");
 		}
-		if (m_Backend)
+		if (!m_DomainBackends.empty())
+		{
+			if (m_Backend)
+			{
+				throw std::invalid_argument("CartesianSubgrid: select single or domain execution, not both");
+			}
+			auto *loss = dynamic_cast<Engine_Ext_CartesianSubgrid_Conductivity *>(m_Advance);
+			if (m_Advance && !loss)
+			{
+				throw std::invalid_argument("CartesianSubgrid: unprepared native domain advance");
+			}
+			for (auto *extension : m_Eng_exts)
+			{
+				if (extension == m_Advance)
+				{
+					continue;
+				}
+				auto *pml = dynamic_cast<Engine_Ext_CartesianSubgrid_PML *>(extension);
+				if (!pml || m_DomainPML)
+				{
+					throw std::invalid_argument("CartesianSubgrid: unmapped native domain extension");
+				}
+				m_DomainPML = pml;
+			}
+			std::shared_ptr<CartesianSubgridDomainPlan> plan;
+			if (loss && m_DomainPML)
+			{
+				plan = std::make_shared<CartesianSubgridDomainPlan>(*loss, *m_DomainPML, axis, cuts);
+			}
+			else if (loss)
+			{
+				plan = std::make_shared<CartesianSubgridDomainPlan>(*loss, axis, cuts);
+			}
+			else if (m_DomainPML)
+			{
+				plan = std::make_shared<CartesianSubgridDomainPlan>(*m_DomainPML, axis, cuts);
+			}
+			else
+			{
+				plan = std::make_shared<CartesianSubgridDomainPlan>(op->Grid(), axis, cuts);
+			}
+			std::vector<GPU_Backend *> workers;
+			for (std::size_t k = 0; k < m_DomainBackends.size(); ++k)
+			{
+				auto &backend = m_DomainBackends[k];
+				std::cout << "CartesianSubgrid native domain " << k << ": " << backend->GetName() << std::endl;
+				workers.push_back(backend.get());
+			}
+			m_Device = CreateCartesianSubgridDomains(plan, workers);
+			m_Device->RequireFixedTimestep(op->GetTimestep());
+			if (m_DomainPML)
+			{
+				m_DomainPML->BindDomainDevice(loss);
+			}
+			m_type = Engine::GPU;
+			std::cout << "CartesianSubgrid native domains: " << workers.size() << "; allocated "
+				<< m_Device->StorageBytes() << " bytes; host mirror at complete processing batches" << std::endl;
+		}
+		else if (m_Backend)
 		{
 			m_Device = m_Advance ? m_Advance->CreateDevice(*m_Backend) :
 				m_Backend->CreateCartesianSubgrid(op->Grid());
@@ -298,7 +360,8 @@ class Engine_CartesianSubgrid : public Engine
 		}
 		catch (...)
 		{
-			m_AdvanceFailed = m_Advance != nullptr;
+			m_AdvanceFailed = true;
+			m_Operator->InvalidateObservations();
 			throw;
 		}
 	}
@@ -384,6 +447,10 @@ class Engine_CartesianSubgrid : public Engine
 			{
 				pair.host->ReadDeviceDiagnostics(*pair.device);
 			}
+			if (m_DomainPML)
+			{
+				m_DomainPML->ReadDomainDiagnostics(*m_Device);
+			}
 		}
 		return true;
 	}
@@ -420,6 +487,7 @@ class Engine_CartesianSubgrid : public Engine
 	}
 	bool CalcFastEnergy(const unsigned int[3], double &electric, double &magnetic) const override
 	{
+		CheckAdvanceState();
 		// Engine_Interface_FDTD multiplies by vacuum epsilon/mu. Return the
 		// correctly integrated energy, not a count-dependent coarse sample sum.
 		electric = 2 * m_Operator->Grid().ElectricEnergy() / EPS0;
@@ -484,9 +552,11 @@ class Engine_CartesianSubgrid : public Engine
 	const Operator_CartesianSubgrid *m_Operator;
 	// Device execution is destroyed before its creating backend.
 	std::unique_ptr<GPU_Backend> m_Backend;
+	std::vector<std::unique_ptr<GPU_Backend>> m_DomainBackends;
 	std::unique_ptr<GPU_CartesianSubgrid> m_Device;
 	Engine_Ext_CartesianSubgrid_Advance *m_Advance = nullptr;
 	bool m_AdvanceFailed = false;
+	Engine_Ext_CartesianSubgrid_PML *m_DomainPML = nullptr;
 	struct DevicePair
 	{
 		Engine_Ext_CartesianSubgrid_PML *host;
@@ -1230,6 +1300,38 @@ void Operator_CartesianSubgrid::PrepareSources()
 	m_Grid->SetSources(sources);
 }
 
+Operator_CartesianSubgrid::~Operator_CartesianSubgrid() = default;
+
+const CartesianSubgrid &Operator_CartesianSubgrid::ObservationGrid() const
+{
+	if (!m_Grid || !m_ObservationsValid)
+	{
+		throw std::logic_error("CartesianSubgrid: failed native advance has no valid field observation");
+	}
+	return *m_Grid;
+}
+
+void Operator_CartesianSubgrid::SetDomainExecution(unsigned int axis,
+	std::vector<double> drawingCuts, std::vector<std::unique_ptr<GPU_Backend>> backends)
+{
+	if (m_Engine || m_EngineType != Engine::GPU || axis > 2 || backends.empty() ||
+		backends.size() > 64 || backends.size() != drawingCuts.size() + 1 ||
+		std::any_of(backends.begin(), backends.end(), [](const auto &backend) { return !backend; }))
+	{
+		throw std::invalid_argument("CartesianSubgrid: invalid native domain configuration");
+	}
+	for (std::size_t k = 0; k < drawingCuts.size(); ++k)
+	{
+		if (!std::isfinite(drawingCuts[k]) || (k && drawingCuts[k] <= drawingCuts[k - 1]))
+		{
+			throw std::invalid_argument("CartesianSubgrid: invalid native drawing-coordinate cuts");
+		}
+	}
+	m_DomainAxis = axis;
+	m_DomainCuts = std::move(drawingCuts);
+	m_DomainBackends = std::move(backends);
+}
+
 Engine *Operator_CartesianSubgrid::CreateEngine()
 {
 	if (!m_Grid)
@@ -1244,11 +1346,17 @@ Engine *Operator_CartesianSubgrid::CreateEngine()
 		}
 	}
 	std::unique_ptr<GPU_Backend> backend(m_EngineType == Engine::GPU ? TakeGPUBackend() : nullptr);
-	if (m_EngineType == Engine::GPU && !backend)
+	if (m_EngineType == Engine::GPU && !backend && m_DomainBackends.empty())
 	{
 		throw std::invalid_argument("CartesianSubgrid: GPU execution requires an explicit usable backend");
 	}
-	m_Engine = new Engine_CartesianSubgrid(this, std::move(backend));
+	std::vector<double> cuts;
+	for (double drawing : m_DomainCuts)
+	{
+		cuts.push_back((drawing - discLines[m_DomainAxis][0]) * gridDelta);
+	}
+	m_Engine = new Engine_CartesianSubgrid(this, std::move(backend),
+		std::move(m_DomainBackends), m_DomainAxis, std::move(cuts));
 	return m_Engine;
 }
 

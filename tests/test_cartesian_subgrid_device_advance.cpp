@@ -332,6 +332,12 @@ static void Guards(const SubgridDeviceTarget &target)
 		Reject([&] { engine->IterateTS(1); });
 		Reject([&] { engine->GetVolt(0, 2, 2, 2); });
 		Reject([&] { engine->GetCurr(0, 2, 2, 2); });
+		Reject([&]
+		{
+			const unsigned int stride[3] = {1, 1, 1};
+			double electric = 0, magnetic = 0;
+			engine->CalcFastEnergy(stride, electric, magnetic);
+		});
 	}
 	Fixture unavailable(true, target, {Mode::UnsupportedDevice});
 	Reject([&] { std::unique_ptr<Engine> engine(unavailable.op->CreateEngine()); });

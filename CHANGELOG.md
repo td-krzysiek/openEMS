@@ -14,18 +14,14 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ## Unreleased
 
-### Fixed
-
-- Experimental compact-subgrid PML now selects its owning GPU before allocation,
-  update hooks and diagnostics, so interleaving different devices does not use
-  another device's stream. See the scoped domain qualification.
-
-- Experimental Cartesian-subgrid smooth metal no longer rejects a fully
-  internal opaque face merely because its neighbour is locally subdivided.
-  Every intersecting tile must be opaque; partially exposed coarse/fine faces
-  and unresolved electric traces still reject. See the conductor qualification.
-
 ### Added
+
+- Experimental native Cartesian-subgrid runs can select fixed local domains
+  through CLI/Python options, with explicit device/reference workers and
+  complete-batch host processing. Use `none` for a one-worker cut list.
+  Scoped reference/Metal controls pass; physical native CUDA, collective
+  external pause and production scaling remain pending. Rebuild callers
+  against matching headers; see `CARTESIAN_SUBGRID_RUNTIME.md`.
 
 - Experimental C++ Cartesian-subgrid workers can compose cold target-owned
   convolution-PML histories with a checked disjoint bulk/surface-loss pair.
@@ -201,6 +197,18 @@ to what a user notices, in a few lines; the details belong in the commit.
   now, and openEMS prints how long it took.
 
 ### Fixed
+
+- Experimental compact-subgrid native energy and physical-path U/I reads now
+  reject a failed advance, instead of allowing stale energy observations.
+
+- Experimental compact-subgrid PML now selects its owning GPU before allocation,
+  update hooks and diagnostics, so interleaving different devices does not use
+  another device's stream. See the scoped domain qualification.
+
+- Experimental Cartesian-subgrid smooth metal no longer rejects a fully
+  internal opaque face merely because its neighbour is locally subdivided.
+  Every intersecting tile must be opaque; partially exposed coarse/fine faces
+  and unresolved electric traces still reject. See the conductor qualification.
 
 - Experimental Cartesian-subgrid smooth-volume contours accept one repeated
   final closing vertex without changing the supplied CAD. Further repeated,

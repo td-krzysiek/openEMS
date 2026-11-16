@@ -25,6 +25,7 @@
 #include "FDTD/operator_cylinder.h"
 #include "FDTD/operator_cylindermultigrid.h"
 #include "FDTD/operator_cartesiansubgrid.h"
+#include "FDTD/cartesian_subgrid_runtime.h"
 #include <cmath>
 #include "FDTD/engine_sse.h"
 #include "FDTD/extensions/operator_ext_excitation.h"
@@ -369,6 +370,7 @@ void openEMS::collectCommandLineArguments()
 	// see commands in tools/global.h
 	g_settings.clearOptionDesc();
 	g_settings.appendOptionDesc(optdesc);
+	g_settings.appendOptionDesc(CartesianSubgridRuntime::Options());
 	g_settings.appendOptionDesc(g_settings.optionDesc());
 }
 
@@ -1032,8 +1034,18 @@ bool openEMS::SetupOperator()
 	{
 		throw std::invalid_argument("CartesianSubgrid: axis ratios require a refinement box");
 	}
+	const auto domains = CartesianSubgridRuntime::ReadOptions();
+	if (domains && (!gpu || (m_CartesianSubgridBox.empty() && m_CartesianSubgridBoxes.empty())))
+	{
+		throw std::invalid_argument("CartesianSubgrid: native domains require subgrids and engine=gpu or gpu-reference");
+	}
+	std::vector<std::unique_ptr<GPU_Backend>> domainBackends;
+	if (domains)
+	{
+		domainBackends = domains->CreateBackends(m_engine == EngineType_GPU_Reference);
+	}
 	GPU_Backend* gpu_backend = NULL;
-	if (gpu)
+	if (gpu && !domains)
 	{
 		try
 		{
@@ -1084,8 +1096,19 @@ bool openEMS::SetupOperator()
 		FDTD_Op = Operator::New(m_engine_numThreads);
 	}
 	FDTD_Op->SetEngineType(type);
-	if (gpu)
+	if (domains)
+	{
+		auto *compact = dynamic_cast<Operator_CartesianSubgrid *>(FDTD_Op);
+		if (!compact)
+		{
+			throw std::invalid_argument("CartesianSubgrid: domain options require a compact Cartesian operator");
+		}
+		compact->SetDomainExecution(domains->axis, domains->drawingCuts, std::move(domainBackends));
+	}
+	else if (gpu)
+	{
 		FDTD_Op->SetGPUBackend(gpu_backend);
+	}
 	return true;
 }
 

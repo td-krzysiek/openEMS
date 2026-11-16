@@ -505,6 +505,16 @@ negligible, but spatial/conductor accuracy is not yet accepted. Physical
 CUDA/Metal agreement on the same local copper input is separately verified.
 No F02 or representative-antenna item is completed by these controls.
 
+Further partial D01/D04/D05/P05/B04/U05: the [native local-domain adapter](CARTESIAN_SUBGRID_RUNTIME.md)
+connects normal CLI/Python runs to cold loss/PML domains and complete-batch
+host TD/FD/physical U/I processing. R18-r01 passes20 local stages, CTest44,
+Python14 and11,255 exact arrays. R02's explicit one-worker `none` sentinel
+passes its own CTest44 and native reference/Metal/CLI/Python/mixed controls.
+A scoped public dipole has native logical-Metal-domain NF2FF evidence; physical
+CUDA native matrices remain pending, not inferred from the earlier low-level
+pair. No representative array, device DFT, external collective pause or
+production scaling is qualified; the D/A/U items remain incomplete.
+
 ## Milestone decisions
 
 | Milestone | Completion condition | Status |
@@ -587,3 +597,4 @@ numerical change invalidates their prior qualification.
 | 2026-11-16 | Further partial G01/G04/F02: internal opaque refinement faces | This PR, r14 (parent `daca3b6`) | [Internal-face qualification](CARTESIAN_SUBGRID_CONDUCTOR.md#internal-opaque-refinement-faces). Twelve positive/all-normal face controls plus retained partial-face rejection; the new test fails against the actual R13 parent after two controls. Local19 stages/CTest42/Python14 and11,255 identical prior arrays pass. Contained native Cu18 setup passes Metal and eight actual CUDA steps; full CUDA39-gate/CTest42 compatibility replay passes with58 constitutive comparisons. Finer curved RF remains in progress, not accepted. No geometry/trace/update-equation change or production adoption. |
 | 2026-11-16 | Further partial D01/D02/B02/U04: cold PML composition | This PR, r16 candidate (numerical parent `4663326`) | [Prepared PML domains](CARTESIAN_SUBGRID_DOMAINS.md#prepared-pml-domains). Six reference/seven Metal cases and local43/43 CTest pass; exact one-device FP32 fields, maximum double field error1.420e-5 and work/balance below4.387e-8. Full local20-stage replay passes with11,255 exact arrays; physical R16 replay reproduces the context failure corrected below. Native distributed scripting/DFT/pause, general PML parity, RF/antenna and scaling remain open. |
 | 2026-11-16 | Partial D/B/U; compact PML owner context | R17 follow-up to `daa8596` | Reproduced R16 physical-pair failure; [own-device fix](CARTESIAN_SUBGRID_DOMAINS.md#compact-pml-owning-device-correction),20 local stages/Ctest43/Python14/11,255 exact arrays and both five-case physical PML pair orders. Physical43-gate/CTest43 replay passes, including24 PML and58 constitutive comparisons; no native distributed/antenna adoption. |
+| 2026-11-16 | Further partial D/P/B/U: native fixed local domains | R18 adapter and R02 sentinel follow-up | [Native runtime contract](CARTESIAN_SUBGRID_RUNTIME.md): actual CLI/Python, reference/Metal, PML/loss, TD/FD/U/I and scoped dipole NF2FF; R01 full20-stage/CTest44/Python14/11,255 exact replay, R02 focused CTest44/native controls. Physical native CUDA matrices remain pending; no representative-array/scaling or external collective-pause qualification. |

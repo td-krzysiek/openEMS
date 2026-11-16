@@ -1595,3 +1595,12 @@ build/tests/test_cartesian_subgrid_device_waveforms --metal
 # Use a separately built HIP/NVIDIA runtime:
 build/tests/test_cartesian_subgrid_device_waveforms --cuda
 ```
+
+
+## Native fixed local domains
+
+The [native runtime contract](CARTESIAN_SUBGRID_RUNTIME.md) documents the
+experimental CLI/Python fixed-domain selector, cold PML/loss composition,
+complete-batch host observations, scoped reference/Metal evidence and pending
+physical native CUDA qualification. It keeps execution placement outside the
+physical XML and does not qualify production scaling or the project antenna.

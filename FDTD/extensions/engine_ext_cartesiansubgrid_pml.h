@@ -24,6 +24,8 @@ class Engine_Ext_CartesianSubgrid_PML : public Engine_Extension
 	std::unique_ptr<GPU_CartesianSubgridPML> CreateDevice(
 		GPU_Backend &backend, const GPU_CartesianSubgridFields &fields);
 	void ReadDeviceDiagnostics(GPU_CartesianSubgridPML &device);
+	void BindDomainDevice(const Engine_Ext_CartesianSubgrid_Conductivity *advance);
+	void ReadDomainDiagnostics(GPU_CartesianSubgrid &device);
 	//! Cold tables only; no running convolution history is migrated.
 	CartesianSubgridPMLData PrepareDomainData(
 		const Engine_Ext_CartesianSubgrid_Conductivity *advance = nullptr) const;
@@ -46,6 +48,6 @@ class Engine_Ext_CartesianSubgrid_PML : public Engine_Extension
 	Operator_Ext_CartesianSubgrid_PML *m_PML;
 	State m_Electric, m_Magnetic;
 	double m_WorkOut = 0;
-	bool m_DeviceConfigured = false, m_HostAdvanced = false;
+	bool m_DeviceConfigured = false, m_HostAdvanced = false, m_DomainConfigured = false;
 };
 #endif

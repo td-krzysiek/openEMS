@@ -44,7 +44,7 @@ void ProcessVoltage::DefineStartStopCoord(double* dstart, double* dstop)
 		const auto path = local->Grid().VoltagePath(local->DrawingPoint(dstart), local->DrawingPoint(dstop));
 		m_LocalIntegral = [local, path]()
 		{
-			return local->Grid().Evaluate(path);
+			return local->ObservationGrid().Evaluate(path);
 		};
 		std::ostringstream description;
 		description << std::setprecision(17)
