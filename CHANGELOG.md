@@ -14,6 +14,13 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ## Unreleased
 
+### Fixed
+
+- Experimental Cartesian-subgrid smooth metal no longer rejects a fully
+  internal opaque face merely because its neighbour is locally subdivided.
+  Every intersecting tile must be opaque; partially exposed coarse/fine faces
+  and unresolved electric traces still reject. See the conductor qualification.
+
 ### Added
 
 - Experimental C++ Cartesian-subgrid domains can prepare cold bulk and surface

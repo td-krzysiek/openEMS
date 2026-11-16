@@ -1118,6 +1118,7 @@ std::vector<CartesianSubgrid::SurfaceFace> CartesianSubgrid::OpaqueBoundaryFaces
 				Require(point[normal] != face, "CartesianSubgrid: conductor face neighbour is not representable");
 				const auto neighbour = FindLeaf(point);
 				const auto otherLo = LeafStart(neighbour), otherLength = LeafLengths(neighbour);
+				bool coversFace = true;
 				for (unsigned int n = 0; n < 3; ++n)
 				{
 					if (n == normal)
@@ -1125,9 +1126,35 @@ std::vector<CartesianSubgrid::SurfaceFace> CartesianSubgrid::OpaqueBoundaryFaces
 						continue;
 					}
 					const double hi = lo[n] + length[n], otherHi = otherLo[n] + otherLength[n];
-					Require((otherLo[n] <= lo[n] || SameBoundaryCoordinate(otherLo[n], lo[n], length[n])) &&
-						(otherHi >= hi || SameBoundaryCoordinate(otherHi, hi, length[n])),
-						"CartesianSubgrid: coarse/fine conductor face subdivision is not implemented");
+					coversFace = coversFace &&
+						(otherLo[n] <= lo[n] || SameBoundaryCoordinate(otherLo[n], lo[n], length[n])) &&
+						(otherHi >= hi || SameBoundaryCoordinate(otherHi, hi, length[n]));
+				}
+				if (!coversFace)
+				{
+					// A coarse opaque face can meet several finer opaque leaves.
+					// It is internal only when EVERY intersecting neighbour is
+					// opaque; the centre alone cannot prove this. Finest-lattice
+					// tiles cover every possible leaf subdivision exactly.
+					const auto &leaf = m_Leaves[cell];
+					const unsigned int a = (normal + 1) % 3, b = (normal + 2) % 3;
+					bool internal = true;
+					for (int i = 0; i < leaf.size[a] && internal; ++i)
+					{
+						for (int j = 0; j < leaf.size[b]; ++j)
+						{
+							auto probe = point;
+							probe[a] = Coordinate(a, leaf.lo[a] + i + .5);
+							probe[b] = Coordinate(b, leaf.lo[b] + j + .5);
+							if (!LeafIsOpaque(FindLeaf(probe)))
+							{
+								internal = false;
+								break;
+							}
+						}
+					}
+					Require(internal, "CartesianSubgrid: coarse/fine conductor face subdivision is not implemented");
+					continue;
 				}
 				if (!LeafIsOpaque(neighbour))
 				{

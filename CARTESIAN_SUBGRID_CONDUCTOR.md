@@ -210,3 +210,38 @@ The row boxes are numerical diagnostics, never fabrication geometry or a
 replacement for the continuous copper master. No production antenna runtime,
 geometry or qualification is changed. The representative-array and scaling
 acceptance requirements remain incomplete.
+
+## Internal opaque refinement faces
+
+A flat continuous opaque slab reproduced a separate surface-extraction
+admission defect: coarse/uniform controls passed, but a local region rejected
+an internal opaque/opaque face before checking its complete material coverage.
+The r14 correction inspects every finest-lattice tile when the centre
+neighbour does not cover the whole face. It omits that face only if every
+intersecting neighbour is opaque. A centre-only shortcut would lose an exposed
+corner; that negative case retains the original rejection.
+
+`test_cartesian_subgrid_opaque_faces` covers all three normals, unequal 2/4
+tangential ratios, coarse/uniform/local grids and two separate regions with
+different ratios. Twelve positive cases check physical surface area, unique
+faces and the 256-step invariant (maximum relative drift 2.670e-15). The new
+regression fails on both the frozen R09 core and the actual R13 parent after
+its coarse/uniform controls pass.
+The partial-face negative remains rejected. No CAD, occupancy, PEC trace guard,
+surface fit or update equation changes.
+
+The composed local qualification passes 19 stages, CTest42/42 and Python14/14,
+including 15 Metal constitutive cases and 11,255 identical prior arrays.
+Physical CUDA compatibility replay is pending. Separately, a contained native
+Cu18 U-line with 961,584 leaves, 153,504 exposed faces and 614,016 traces now
+prepares on Metal and completes eight actual CUDA steps on an RTX4090, without
+host half-step fallback. Eight steps qualify allocation/dispatch only, not RF
+accuracy or throughput. The CLI `--no-simulation` control intentionally returns
+1 before engine creation and is retained as host preprocessing evidence only.
+
+Local core: `d2de3973bfdbd81d616c7d211606054ec9fd09de807c9cadd522ef178624c791`;
+CUDA core: `80f62648b4667c956e75aa0a34cab3d25c64edfa91d274190f15adad0cfed83a`.
+General exposed partial-face subdivision and unresolved PEC interface traces
+remain unsupported. Finer curved-line RF, scaling and representative antenna
+qualification remain open; the new RF comparison uses a separately identified
+graded ordinary reference with an unchanged outer/PML collar.
