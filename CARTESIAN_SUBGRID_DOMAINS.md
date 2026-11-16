@@ -353,8 +353,9 @@ The strengthened regression intentionally selects another worker before every
 single-device PML operation. Equations, order and thresholds are unchanged.
 All20 local stages, CTest43/Python14 and11,255 exact prior arrays pass. Five
 physical RTX4090/RTX3080 PML controls pass in each device order, including
-losses, sources and ports; full43-gate CUDA replay is still pending terminal
-review. This does not enable native distributed scripting or DFT/pause.
+losses, sources and ports. Full physical CUDA replay passes43 gates and
+CTest43/43, including24 PML and58 constitutive comparisons. Terminal source/
+runtime checks pass; the bounded container exits0 without OOM. This does not enable native distributed scripting or DFT/pause.
 
 Local core: `5222750a352def4826d688f988f6f640ba73616370ea500d8eb3b1f0cc641f4b`.
 CUDA core: `cefb3f88291dadd7791e3854f048a55f221b7a69c0d2ea5bf09f4382b88a72dc`.
