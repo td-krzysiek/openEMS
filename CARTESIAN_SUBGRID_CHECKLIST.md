@@ -401,6 +401,13 @@ composed CPU/Metal 15-stage/CTest40/Python14 plus physical CUDA 35-gate/CTest40
 replay pass; 11,255 prior arrays remain identical. This completes the scoped
 closed-ring admission fix only, not curved RF, distributed histories or F02.
 
+Further F02/A02/A03 diagnosis: the coarse U-line copper discrepancy is largely
+reproduced by the different edge/opaque-cell boundary classifications. An
+actual native mask check and high-conductivity PEC-limit control separate this
+from the much smaller constitutive correction. See [boundary diagnosis](CARTESIAN_SUBGRID_CONDUCTOR.md#curved-line-boundary-diagnosis).
+This is a retained accuracy gap requiring finer boundaries/ports, not curved
+RF, representative-antenna or production qualification.
+
 ## 8. Representative antenna qualification
 
 - [ ] **A01** Freeze a regular-grid PEC antenna reference, geometry/material/
@@ -529,3 +536,4 @@ numerical change invalidates their prior qualification.
 | 2026-11-16 | Partial C01/C03/C05/U01–U03/U05; no guard increase | This PR, exact order and streamed preparation | R06 CUDA33 gates/CTest39; composed r07 local14 stages/CTest39/Python14 and11,255 unchanged arrays. Bounded491,520-leaf peak RSS−23.60%, setup+3.34%; r07 CUDA33 gates/CTest39 pass with immutable runtime/source and terminal exit0/no OOM. See [block evidence](CARTESIAN_SUBGRID_BLOCKS.md#exact-ordering-and-streamed-preparation). Local r07 core `4af61e6916978ba5d017b802e1bc64355cd6b3ce133d3753568e4dde896ece1f`.|
 | 2026-11-16 | Further partial F02/G01/G04/G06/U04/U05, native shaped conductors | This PR, r08 (parent `549bf55`) | [Mapping, evidence and limits](CARTESIAN_SUBGRID_CONDUCTOR.md#native-shaped-conductors). CPU/Metal15 stages/CTest40/Python14; physical CUDA35 gates/CTest40;11,255 prior arrays unchanged. Exact occupied-box decomposition, hollow-bore and positive loss/energy controls; six scoped older-dependency tests with three explicit skips. Local core `5e9b2a6d385ecb7d98c8ba306dd63e2fe139475c1f79685716dd2c2dbe7e2203`; CUDA `69b8fa61dead03bf134f3aaf815dffcd997084bbabdd8529d42faafade2386a5`. Conformal/curved RF, distributed histories and antenna acceptance remain open. |
 | 2026-11-16 | Further partial F02/G01/U05: native closed-ring admission | This PR, r09 (parent `56be081`) | [Conductor contract](CARTESIAN_SUBGRID_CONDUCTOR.md#native-shaped-conductors). Eight positive/six negative shapes; CPU/Metal15 stages/CTest40/Python14; physical CUDA35 gates/CTest40;11,255 arrays unchanged. Local core `e7f9501ef239d13f657e869fd9a04e6dade05cb9b40a5f47a03b936a3d995955`; CUDA `5f273237e245d42dcde5340fc6be837b6b4cb1ad36fa4c43c1dd09358f4f60bd`. Existing CAD retained; RF/antenna/distributed qualification stays open. |
+| 2026-11-16 | Diagnostic only; F02/A02/A03 remain open | Unchanged qualified r09 runtime | [Coarse curved-boundary diagnosis](CARTESIAN_SUBGRID_CONDUCTOR.md#curved-line-boundary-diagnosis). Native reconstruction checks126,390 leaves with zero mask mismatches. High conductivity approaches matching PEC mask within1.52e-5 complex S11/0.00335° S21; boundary classification reproduces12.627°. Consistent incremental Cu transmission differs0.02953°/0.00258dB. One coarse fixture only; no curved convergence, upstream-defect or antenna acceptance claim. |

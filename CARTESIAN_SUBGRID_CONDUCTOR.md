@@ -173,10 +173,40 @@ not qualification supplied by this admission fix. The first completed U-line
 ratio4 pair has band S21 phase differences of 0.095° for PEC and 12.7° for
 smooth copper, with complex-S11 differences of 0.00024 and 0.149 respectively. Matched
 native CAD/probes are checked. This unresolved experimental discrepancy is
-retained; finer-grid and constitutive/boundary controls are pending. It is not
-an established ordinary upstream solver defect or evidence that geometric
-sidewall-area bias alone causes the RF error.
+retained. The boundary follow-up below explains its dominant contribution;
+finer-grid and antenna acceptance remain open. It is not an established
+ordinary upstream solver defect or proof that sidewall area alone determines
+the RF error.
 
 Further acceptance requires spatial/time convergence, broad conductor CAD and
 ports, scalable field/interface representation, distributed loss/PML/DFT state
 and representative antenna comparisons. F02 remains incomplete.
+
+## Curved-line boundary diagnosis
+
+The first coarse U-line RF pilot is not accepted as a curved-conductor
+reference. Its matched continuous-CAD PEC pair agrees within 0.00024 in
+complex S11 and 0.095° in S21 phase, but nominal smooth copper differs by
+0.149 and 12.7°. A follow-up separates constitutive response from geometry
+classification without changing any frozen runtime or RF input.
+
+A synthetic PEC row-box control represents the exact opaque-cell mask.
+Independent native preparation from the original XML checks all 126,390 leaves:
+zero mismatches, including 10,008 opaque cells and 792 strip cells. Increasing
+conductivity from 5.8e7 to 5.8e11 S/m approaches this matching PEC limit within
+1.52e-5 in complex S11 and 0.00335° in S21 phase. Changing only the discrete PEC
+boundary reproduces a 12.627° shift. With consistent PEC boundaries, the local
+and ordinary incremental copper corrections differ by at most 0.02953° and
+0.00258 dB in transmission.
+
+For this fixture the dominant discrepancy is therefore geometric sampling:
+native PEC classifies edges, while smooth-volume metal classifies occupied
+cells and their exposed faces. Identical continuous CAD and probe planes do
+not imply identical discrete conductor boundaries. This does not establish
+an ordinary upstream defect, a general conductor-loss guarantee or converged
+curved RF. Finer and selectively refined boundary/port controls remain open.
+
+The row boxes are numerical diagnostics, never fabrication geometry or a
+replacement for the continuous copper master. No production antenna runtime,
+geometry or qualification is changed. The representative-array and scaling
+acceptance requirements remain incomplete.
