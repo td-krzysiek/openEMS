@@ -119,6 +119,11 @@ public:
 
 	virtual ~GPU_Backend() {}
 
+	//! Select this backend's device on the calling thread before a batch of operations.
+	//! Compact multi-device callers use this boundary; it adds no device wait.
+	//! Backends with explicit device handles need no ambient selection.
+	virtual void Activate() {}
+
 	//! Compact Cartesian execution through this backend's shared point operations.
 	//! Used before regular Init(): owns separate local fields, no rectangular lattice.
 	std::unique_ptr<GPU_CartesianSubgrid> CreateCartesianSubgrid(const CartesianSubgrid &grid);

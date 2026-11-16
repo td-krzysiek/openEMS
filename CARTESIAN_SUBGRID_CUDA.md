@@ -6,6 +6,11 @@ Physical Metal controls and the separately pinned single-RTX3080 lane below
 have scoped evidence. Merely preparing CUDA code/host harness tests does not
 qualify another source revision, NVIDIA device or multi-device subgridding.
 
+A later bounded physical RTX4090/RTX3080 C++ domain campaign is separately
+recorded in [Physical mixed-device contexts](CARTESIAN_SUBGRID_DOMAINS.md#physical-mixed-device-contexts).
+Its field/port acceptance does not qualify native distributed PML, losses,
+processing or a complete antenna.
+
 ## Same HIP backend, NVIDIA compiler/runtime
 
 Use the existing HIP backend and shared portable point operations. With

@@ -5,6 +5,10 @@ This is a scoped C++ core interface. The
 from physical backend, processing and representative-antenna qualification.
 The native XML/Python/Matlab engine selector remains single-device.
 
+The bounded C++ lane additionally has physical RTX4090/RTX3080 pair evidence
+in [Physical mixed-device contexts](#physical-mixed-device-contexts). This does
+not extend its supported physics or qualify native distributed execution.
+
 ## Ownership, workers and transport
 
 `CartesianSubgridDomainPlan` assigns fixed ownership from one axis and a list
@@ -155,3 +159,60 @@ remain under `experiments/openems-cartesian-local-subgrid-20261112/domain-ports/
 in the project study. This does not qualify native domain selectors, distributed
 PML/loss/DFT, physical heterogeneous devices, broader sources/modal ports,
 production scaling or representative antenna accuracy.
+
+## Physical mixed-device contexts
+
+Configure-time parent `458e612`. Inspection and a four-byte physical diagnostic
+showed a missing context boundary in this experimental adapter: after creating
+two HIP backends on one host thread, an allocation through backend 0 belonged
+to device 1. This is not a defect claim against upstream's single-device
+execution contract. The frozen failing library and input are preserved.
+
+`GPU_Backend::Activate()` selects the backend's device before a host batch.
+The compact executor uses it for setup, E/H updates and observations; the local
+worker uses it for halo reads/uploads and owned-field observations. HIP calls
+`hipSetDevice` without adding an explicit synchronization. Reference and Metal
+need no ambient selection. HIP cleanup selects the owning device too. This
+adds no device-specific logic to the coordinator or transport, changes no
+shared numerical operations and leaves ordinary engine loops unchanged.
+Callers using the raw backend API across devices must select the matching
+backend before each batch too. This is not a thread-safety guarantee for
+concurrent use of one backend. Rebuild plugins and C++ clients with matching
+headers/build identities.
+
+The actual physical pair is one RTX4090 and one RTX3080, through the existing
+HIP/NVIDIA backend, nvcc, SM86/SM89 and retained safe arithmetic. The diagnostic
+now verifies allocation ownership and distinct readback on both devices.
+The domain controls also include a deterministic ambient-context guard that
+runs without a GPU. Both physical device orders pass nine field/domain and
+six coupled-port cases each; a retained single-device lane passes the same
+cases. Uneven cuts, XYZ, separate anisotropic regions, PEC, CPU/GPU mixtures,
+source-only workers, warm ledgers, strong DC and stale/poisoned exchange guards
+are retained. Fields equal the single-device control exactly, maximum double
+error is 1.94051e-5, and maximum balance error is 1.70516e-6 (gates 2e-4).
+CUDA CTest 24/24 and existing fields/ports/DC controls also pass, with final
+source/runtime checks and container exit 0/no OOM.
+
+All 20 local CPU/reference/Metal compatibility stages pass, including CTest
+24/24, Python 14/14, native fields/ports/PML/dipole/polygons and ordinary
+engines. Fifteen older core/NF2FF prefixes are unchanged, and 11,255 arrays
+equal the frozen coupled-domain-port build exactly. The separate ASan/UBSan
+domain-source test passes; the linked grid/library is not instrumented and
+LeakSanitizer is not claimed.
+
+A separate warmed host-only microbenchmark reports median 0.0692 microseconds
+for selecting the same device and 0.0804 microseconds for alternating devices
+(five rounds of 20,000 calls). It measures neither kernel execution nor
+end-to-end FDTD overhead. Tests shared the hardware with an active simulation;
+there is no throughput or scaling claim.
+
+- CUDA core SHA256: `a00cf838a52f600069f1f1c9a79b3775ab40deb39760bfcc23fe581bfeb8578f`.
+- Frozen local prefix: `output/openems-subgrid-physical-two-20261116/install`.
+- Local core SHA256: `bc4ba82aad1f3821fbf94f68dee1983cc014a69f20df71075c1becf0959bdb29`.
+- Local NF2FF SHA256: `72d50787ac38006375363a333cfae19d14ad27d2bb8772017aa1ab16aaa4d553`.
+- Isolated source/build and compact evidence:
+  `experiments/openems-cartesian-local-subgrid-20261112/physical-two/` in the
+  project study, including the preserved failing diagnostic and terminal gates.
+- Native selectors, domain PML/material histories/conductors/DFT/NF2FF,
+  collective pause/resume, proportional setup memory and representative antenna
+  qualification remain open. No active/frozen antenna runtime is replaced.

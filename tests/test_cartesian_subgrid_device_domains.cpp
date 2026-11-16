@@ -42,6 +42,7 @@ class CountingBackend : public GPU_Backend
 {
   public:
 	explicit CountingBackend(GPU_Backend &backend) : real(backend) {}
+	void Activate() override { real.Activate(); }
 	std::string GetName() const override { return real.GetName(); }
 	bool Init(const Operator *op, const GPU_CellModel &model) override { return real.Init(op, model); }
 	void *DeviceAlloc(std::size_t bytes, const void *host = nullptr) override
@@ -72,6 +73,49 @@ class CountingBackend : public GPU_Backend
 	void Synchronize() override { real.Synchronize(); }
 	std::size_t allocated = 0, downloaded = 0, uploaded = 0, largestDownload = 0;
 	GPU_Backend &real;
+};
+
+//! Deterministic guard for ambient device state even on a CPU-only test host.
+class ContextBackend : public CountingBackend
+{
+  public:
+	ContextBackend(GPU_Backend &backend, std::size_t &active, std::size_t identity)
+		: CountingBackend(backend), m_Active(active), m_Identity(identity)
+	{
+		m_Active = identity;
+	}
+	void Activate() override
+	{
+		m_Active = m_Identity;
+		real.Activate();
+	}
+	void *DeviceAlloc(std::size_t bytes, const void *host = nullptr) override
+	{
+		Check();
+		return CountingBackend::DeviceAlloc(bytes, host);
+	}
+	void DeviceDownload(void *host, const void *device, std::size_t bytes) override
+	{
+		Check();
+		CountingBackend::DeviceDownload(host, device, bytes);
+	}
+	void DeviceUpload(void *device, const void *host, std::size_t bytes) override
+	{
+		Check();
+		CountingBackend::DeviceUpload(device, host, bytes);
+	}
+	void RunPoints(GPU_PointOp kind, const void *op, uint64_t first, uint64_t stop, bool serial) override
+	{
+		Check();
+		CountingBackend::RunPoints(kind, op, first, stop, serial);
+	}
+  private:
+	void Check() const
+	{
+		Require(m_Active == m_Identity, "domain used another backend's ambient context");
+	}
+	std::size_t &m_Active;
+	std::size_t m_Identity;
 };
 
 //! A rebuilt external backend may still lack the optional upload capability.
@@ -135,7 +179,7 @@ static double Error(const std::vector<float> &a, const std::vector<float> &b)
 }
 
 static void Control(const SubgridDeviceTarget &target, unsigned int axis, unsigned int count,
-	bool multiple, bool pec, unsigned int steps, bool mixed = false)
+	bool multiple, bool pec, unsigned int steps, bool mixed = false, bool context = false)
 {
 	auto original = Fixture(multiple, pec), observed = Fixture(multiple, pec), precise = Fixture(multiple, pec);
 	const auto &lines = original.BaseLines()[axis];
@@ -148,18 +192,28 @@ static void Control(const SubgridDeviceTarget &target, unsigned int axis, unsign
 	std::vector<std::unique_ptr<GPU_Backend>> backends;
 	std::vector<std::unique_ptr<CountingBackend>> counted;
 	std::vector<std::unique_ptr<CartesianSubgridDomainWorker>> workers;
+	std::size_t activeContext = 0;
 	for (const auto &domain : plan->Domains())
 	{
+		target.SelectDomain(backends.size());
 		const bool cpuWorker = mixed && backends.size() % 2;
 		backends.emplace_back(GPU_Backend::New(cpuWorker ? "reference" : target.backend));
 		Require(bool(backends.back()), "selected domain backend unavailable");
 		(cpuWorker ? SubgridDeviceTarget{} : target).Verify(*backends.back());
-		counted.push_back(std::make_unique<CountingBackend>(*backends.back()));
+		if (context)
+		{
+			counted.push_back(std::make_unique<ContextBackend>(*backends.back(), activeContext, backends.size()));
+		}
+		else
+		{
+			counted.push_back(std::make_unique<CountingBackend>(*backends.back()));
+		}
 		workers.push_back(CreateCartesianSubgridWorker(*counted.back(), domain));
 	}
 	auto transport = CreateCartesianSubgridHostTransport(plan, workers);
 	auto *metrics = transport.get();
 	auto execution = CreateCartesianSubgridCoordinator(plan, std::move(workers), std::move(transport));
+	target.SelectDomain(0);
 	std::unique_ptr<GPU_Backend> one(GPU_Backend::New(target.backend));
 	Require(bool(one), "selected one-domain backend unavailable");
 	target.Verify(*one);
@@ -211,7 +265,7 @@ static void Control(const SubgridDeviceTarget &target, unsigned int axis, unsign
 	Require(std::abs(observed.Energy(dt) / original.Energy(dt) - 1) < 2e-6,
 		"owned-state energy reconstruction differs");
 	std::cout << "axis=" << axis << " domains=" << count << " multiple=" << multiple << " PEC=" << pec
-		<< " mixed=" << mixed << " steps=" << steps << " single_error=" << singleError << " double_error=" << doubleError
+		<< " mixed=" << mixed << " context=" << context << " steps=" << steps << " single_error=" << singleError << " double_error=" << doubleError
 		<< " halo_bytes=" << traffic << " largest_download=" << largestRead
 		<< " storage=" << execution->StorageBytes() << std::endl;
 }
@@ -243,6 +297,7 @@ static void LostExchange(const SubgridDeviceTarget &target)
 	std::vector<std::unique_ptr<CartesianSubgridDomainWorker>> workers;
 	for (const auto &domain : plan->Domains())
 	{
+		target.SelectDomain(backends.size());
 		backends.emplace_back(GPU_Backend::New(target.backend));
 		Require(bool(backends.back()), "selected lost-exchange backend unavailable");
 		target.Verify(*backends.back());
@@ -320,8 +375,8 @@ int main(int argc, char **argv)
 	try
 	{
 		SetThreadLimit(1);
-		Require(argc <= 2, "usage: test_cartesian_subgrid_device_domains [--metal|--cuda]");
-		const SubgridDeviceTarget target = argc == 2 ? SubgridDeviceTarget::FromFlag(argv[1]) : SubgridDeviceTarget{};
+		Require(argc <= 2, "usage: test_cartesian_subgrid_device_domains [--metal|--cuda|--cuda-two|--cuda-two-reverse]");
+		const SubgridDeviceTarget target = argc == 2 ? SubgridDeviceTarget::FromDomainFlag(argv[1]) : SubgridDeviceTarget{};
 		Control(target, 0, 1, false, false, 1500);
 		for (unsigned int axis = 0; axis < 3; ++axis)
 		{
@@ -332,9 +387,10 @@ int main(int argc, char **argv)
 		{
 			Control(target, 0, 2, false, false, 1500, true);
 		}
+		Control(target, 2, 3, true, true, 128, false, true);
 		Guards(target);
 		LostExchange(target);
-		std::cout << "PASS: coordinator/local logical domains and boundary-only transport; no physical multi-GPU qualification" << std::endl;
+		std::cout << "PASS: coordinator/local domains and boundary-only transport" << std::endl;
 	}
 	catch (const std::exception &error)
 	{

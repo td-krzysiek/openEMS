@@ -29,6 +29,27 @@ struct SubgridDeviceTarget
 		throw std::invalid_argument("expected --metal or --cuda");
 	}
 
+	//! Only the explicit domain tests distribute workers over these devices.
+	unsigned int physicalDevices = 1, firstDevice = 0;
+	static SubgridDeviceTarget FromDomainFlag(const std::string &flag)
+	{
+		if (flag == "--cuda-two" || flag == "--cuda-two-reverse")
+		{
+			auto target = FromFlag("--cuda");
+			target.physicalDevices = 2;
+			target.firstDevice = flag == "--cuda-two-reverse" ? 1 : 0;
+			return target;
+		}
+		return FromFlag(flag);
+	}
+	void SelectDomain(std::size_t owner) const
+	{
+		if (physicalDevices > 1)
+		{
+			g_settings.SetGPUDevice(static_cast<int>((owner + firstDevice) % physicalDevices));
+		}
+	}
+
 	void Verify(const GPU_Backend &selected) const
 	{
 		if (selected.GetName().find(expectedPrefix) != 0)

@@ -48,6 +48,7 @@ public:
 	//! This backend and its devices, built into libopenEMS or as a plugin (see FDTD/gpu_plugin.h)
 	static const GPU_Plugin* Plugin();
 	virtual ~GPU_Backend_HIP();
+	void Activate() override;
 
 	virtual std::string GetName() const;
 	virtual size_t CacheBytes(std::string& source) const;

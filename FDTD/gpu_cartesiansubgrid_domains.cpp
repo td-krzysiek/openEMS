@@ -41,6 +41,7 @@ const CartesianSubgridDomainData &ValidateWorkerDomain(GPU_Backend &backend, con
 		}
 	}
 	// Fail before allocating fields if this backend cannot update ghost storage.
+	backend.Activate();
 	backend.DeviceUpload(nullptr, nullptr, 0);
 	return domain;
 }
@@ -90,6 +91,7 @@ class LocalWorker : public CartesianSubgridDomainWorker
 		Require(count == Exports(field) && (!count || values), "CartesianSubgrid: invalid export buffer");
 		if (count)
 		{
+			m_Backend.Activate();
 			auto &gather = m_Gather[Slot(field)];
 			m_Backend.RunPoints(GPU_OP_SUBGRID_GATHER, &gather, 0, count, false);
 			m_Backend.DeviceDownload(values, gather.curl, count * sizeof(float));
@@ -105,6 +107,7 @@ class LocalWorker : public CartesianSubgridDomainWorker
 				"CartesianSubgrid: nonfinite ghost packet");
 			const auto fields = m_Execution->Fields();
 			auto *base = field == Field::Electric ? fields.electric : fields.magnetic;
+			m_Backend.Activate();
 			m_Backend.DeviceUpload(base + Owned(field), values, count * sizeof(float));
 		}
 		m_Execution->AcknowledgeGhosts(field == Field::Electric, epoch);
@@ -116,6 +119,7 @@ class LocalWorker : public CartesianSubgridDomainWorker
 		Require(electricCount == Owned(Field::Electric) && magneticCount == Owned(Field::Magnetic) &&
 			electric && magnetic, "CartesianSubgrid: invalid owned observation buffers");
 		const auto fields = m_Execution->Fields();
+		m_Backend.Activate();
 		m_Backend.DeviceDownload(electric, fields.electric, electricCount * sizeof(float));
 		m_Backend.DeviceDownload(magnetic, fields.magnetic, magneticCount * sizeof(float));
 	}

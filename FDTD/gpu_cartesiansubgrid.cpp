@@ -33,6 +33,7 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 		  m_OwnedElectric(domain ? ownedElectric : data.electric.size()),
 		  m_OwnedMagnetic(domain ? ownedMagnetic : data.magnetic.size())
 	{
+		m_Backend.Activate();
 		if (data.factorTails.terms)
 		{
 			std::ostringstream message;
@@ -150,6 +151,7 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 		m_PortSolve.timestep = dt;
 		m_PortSolve.amplitude = amplitude;
 		m_PortApply.timestep = dt;
+		m_Backend.Activate();
 		m_Backend.RunPoints(GPU_OP_SUBGRID_CURL, &m_Transpose, 0, m_OwnedElectric, false);
 		if (m_TrackSourceWork && m_SourceCount)
 		{
@@ -183,6 +185,7 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 		{
 			throw std::invalid_argument("CartesianSubgrid: stale electric ghost epoch");
 		}
+		m_Backend.Activate();
 		m_Backend.RunPoints(GPU_OP_SUBGRID_CURL, &m_Curl, 0, m_OwnedMagnetic, false);
 		m_PendingStep = 0;
 		++m_Epoch;
@@ -208,6 +211,7 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 		{
 			throw std::invalid_argument("CartesianSubgrid: device observation requires a complete timestep");
 		}
+		m_Backend.Activate();
 		m_Backend.DeviceDownload(m_Electric.data(), m_Update.electric, m_Electric.size() * sizeof(float));
 		m_Backend.DeviceDownload(m_Magnetic.data(), m_Curl.output, m_Magnetic.size() * sizeof(float));
 		grid.ImportDeviceFields(m_Electric.data(), m_Electric.size(), m_Magnetic.data(), m_Magnetic.size());
@@ -223,6 +227,7 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 		{
 			throw std::invalid_argument("CartesianSubgrid: ledger requires a complete timestep");
 		}
+		m_Backend.Activate();
 		m_Backend.DeviceDownload(m_Ledger.data(), m_LedgerDevice, sizeof(m_Ledger));
 		return {m_Ledger[0], m_Ledger[2]};
 	}

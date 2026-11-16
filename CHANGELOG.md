@@ -16,6 +16,10 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Added
 
+- Experimental compact Cartesian domains can select the owning device before
+  work and observation batches, with bounded RTX4090/RTX3080 pair controls.
+  This does not enable native distributed PML, losses or processing; matching
+  rebuilt backend plugins and C++ callers are required.
 - Experimental C++ Cartesian-subgrid domain planning, workers and host-staged
   boundary exchange through the existing reference/GPU backends. The initial
   lane supports lossless/PEC fields, soft sources and scoped coupled resistor

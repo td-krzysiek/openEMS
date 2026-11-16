@@ -121,6 +121,7 @@ static void Control(const SubgridDeviceTarget &target, unsigned int axis, bool d
 		const auto &domain = plan->Domains()[k];
 		portWorkers += !domain.fields.rootConductance.empty();
 		sourceOnlyWorkers += domain.fields.rootConductance.empty() && !domain.fields.sourceEdge.empty();
+		target.SelectDomain(k);
 		backends.emplace_back(GPU_Backend::New(mixed && k % 2 ? "reference" : target.backend));
 		Require(bool(backends.back()), "requested backend unavailable");
 		(mixed && k % 2 ? SubgridDeviceTarget{} : target).Verify(*backends.back());
@@ -128,6 +129,7 @@ static void Control(const SubgridDeviceTarget &target, unsigned int axis, bool d
 	}
 	Require(portWorkers == 1 && (!soft || sourceOnlyWorkers > 0), "port/source ownership control missing");
 	auto domains = CreateCartesianSubgridDomains(plan, pointers);
+	target.SelectDomain(0);
 	std::unique_ptr<GPU_Backend> single(GPU_Backend::New(target.backend));
 	Require(bool(single), "one-device control unavailable");
 	target.Verify(*single);
@@ -188,8 +190,8 @@ int main(int argc, char **argv)
 	try
 	{
 		SetThreadLimit(1);
-		Require(argc <= 2, "usage: test_cartesian_subgrid_device_domain_ports [--metal|--cuda]");
-		const auto target = argc == 2 ? SubgridDeviceTarget::FromFlag(argv[1]) : SubgridDeviceTarget{};
+		Require(argc <= 2, "usage: test_cartesian_subgrid_device_domain_ports [--metal|--cuda|--cuda-two|--cuda-two-reverse]");
+		const auto target = argc == 2 ? SubgridDeviceTarget::FromDomainFlag(argv[1]) : SubgridDeviceTarget{};
 		Control(target, 0, false, false, false, false, 4000);
 		Control(target, 0, true, false, false, false, 4000);
 		Control(target, 1, false, true, false, false, 4000);
