@@ -89,11 +89,11 @@ static Grid Fixture(bool multiple)
 	{
 		return std::cos(933 * p[0] - 1731 * p[1] + 411 * p[2] + n) / 376.730313668;
 	});
-	grid.SetSources({{grid.EdgeCount() / 2, .1}, {grid.EdgeCount() / 3, -.03}});
 	grid.SetResistors({{{axes[0][1], axes[1][4], axes[2][4]},
 		{axes[0][1], axes[1][4], axes[2][5]}, 50, .001},
 		{{axes[0][10], axes[1][6], axes[2][6]},
 		{axes[0][10], axes[1][6], axes[2][7]}, 75, 0}}, .8 * grid.StableTimestep());
+	grid.SetSources({{grid.EdgeCount() / 2, .1}, {grid.EdgeCount() / 3, -.03}});
 	return grid;
 }
 

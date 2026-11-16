@@ -27,8 +27,16 @@ local metadata, halo transfers and256-step fields exactly against that oracle.
 Reference and physical Metal pass, as do actual native Python TD/FD/U/I
 controls (8 reference/16 Metal cases) and all45 CTest cases. The local core is
 `560fa47d714b125f0f9417f06692969422e64745da0eef732055033bef8d7fbb`.
-Physical CUDA qualification of this increment is queued separately; the
-earlier R18 matrix does not qualify changed preparation code automatically.
+The original R19 CUDA test stops before backend creation because its test
+fixture configures resistors after soft sources. That is a fixture error, not
+an engine failure. An audit also found that the local R19 test binary preceded
+the final port-fixture edit; its claimed match to that final test source is
+superseded. The corrected test, compiled from a fixed source snapshot against
+the unchanged R19 core, separately passes six reference/six Metal metadata and
+field cases with ports. The retained native Python port controls are independent
+evidence. The original CTest replay is not a fresh execution of this corrected
+fixture. Physical R19 acceptance remains open; the earlier R18 matrix does not
+qualify changed preparation code automatically.
 
 Three interleaved setup-only repetitions on the same Mac compare491,520
 leaves and three domains against the actual frozen R18-r02 runtime

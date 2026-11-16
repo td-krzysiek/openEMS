@@ -513,7 +513,8 @@ passes its own CTest44 and native reference/Metal/CLI/Python/mixed controls.
 A scoped public dipole has native logical-Metal-domain NF2FF evidence. R18-r01
 also passes48 physical CUDA gates/CTest44, including both pair orders and16
 actual native Python cases, with terminal source/runtime rechecks. R02's
-parser-only physical follow-up remains pending. No representative array,
+parser-only physical follow-up passes seven gates/CTest44, native Python and
+the actual one-worker CLI control. No representative array,
 device DFT, external collective pause or production scaling is qualified;
 the D/A/U items remain incomplete.
 
@@ -523,7 +524,10 @@ uploads, metadata/order and update kernels. Six exact metadata/256-step field
 cases per reference/Metal backend, native8/16-case TD/FD/port controls and
 CTest45/45 pass. Against the actual frozen R18-r02 runtime, three interleaved
 491,520-leaf setup measurements reduce peak RSS23.68%, with10.07% longer whole
-setup. Physical R19 CUDA is queued separately. Local expanded uploads, hash
+setup. The original R19 CUDA fixture fails before backend creation; the corrected
+test separately passes reference/Metal on the unchanged core. Its local
+source/binary scope correction is documented with the domain evidence.
+Physical qualification remains open. Local expanded uploads, hash
 maps, host fields and general interfaces remain scaling work; no C/D/U/A item
 or allocation guard is completed/raised by this scoped result.
 
@@ -610,6 +614,8 @@ numerical change invalidates their prior qualification.
 | 2026-11-16 | Further partial G01/G04/F02: internal opaque refinement faces | This PR, r14 (parent `daca3b6`) | [Internal-face qualification](CARTESIAN_SUBGRID_CONDUCTOR.md#internal-opaque-refinement-faces). Twelve positive/all-normal face controls plus retained partial-face rejection; the new test fails against the actual R13 parent after two controls. Local19 stages/CTest42/Python14 and11,255 identical prior arrays pass. Contained native Cu18 setup passes Metal and eight actual CUDA steps; full CUDA39-gate/CTest42 compatibility replay passes with58 constitutive comparisons. Finer curved RF remains in progress, not accepted. No geometry/trace/update-equation change or production adoption. |
 | 2026-11-16 | Further partial D01/D02/B02/U04: cold PML composition | This PR, r16 candidate (numerical parent `4663326`) | [Prepared PML domains](CARTESIAN_SUBGRID_DOMAINS.md#prepared-pml-domains). Six reference/seven Metal cases and local43/43 CTest pass; exact one-device FP32 fields, maximum double field error1.420e-5 and work/balance below4.387e-8. Full local20-stage replay passes with11,255 exact arrays; physical R16 replay reproduces the context failure corrected below. Native distributed scripting/DFT/pause, general PML parity, RF/antenna and scaling remain open. |
 | 2026-11-16 | Partial D/B/U; compact PML owner context | R17 follow-up to `daa8596` | Reproduced R16 physical-pair failure; [own-device fix](CARTESIAN_SUBGRID_DOMAINS.md#compact-pml-owning-device-correction),20 local stages/Ctest43/Python14/11,255 exact arrays and both five-case physical PML pair orders. Physical43-gate/CTest43 replay passes, including24 PML and58 constitutive comparisons; no native distributed/antenna adoption. |
-| 2026-11-16 | Further partial D/P/B/U: native fixed local domains | R18 adapter and R02 sentinel follow-up | [Native runtime contract](CARTESIAN_SUBGRID_RUNTIME.md): actual CLI/Python, reference/Metal, PML/loss, TD/FD/U/I and scoped dipole NF2FF; R01 full20-stage/CTest44/Python14/11,255 exact replay, R02 focused CTest44/native controls. R18-r01 physical48-gate/CTest44 and16-case native Python matrix passes; parser-only R02 follow-up remains pending. No representative-array/scaling or external collective-pause qualification. |
+| 2026-11-16 | Further partial D/P/B/U: native fixed local domains | R18 adapter and R02 sentinel follow-up | [Native runtime contract](CARTESIAN_SUBGRID_RUNTIME.md): actual CLI/Python, reference/Metal, PML/loss, TD/FD/U/I and scoped dipole NF2FF; R01 full20-stage/CTest44/Python14/11,255 exact replay, R02 focused CTest44/native controls. R18-r01 physical48-gate/CTest44 and16-case native Python matrix passes; parser-only R02 physical follow-up passes7 gates/CTest44 and actual CLI/native Python controls. No representative-array/scaling or external collective-pause qualification. |
 
 | 2026-11-16 | Further partial C01/C03/C05/D01/D05: global domain row stream | R19 over `389d372` | [Setup contract and measurements](CARTESIAN_SUBGRID_DOMAINS.md#streamed-global-domain-preparation). Reference/Metal12 exact metadata/field cases, native8/16 TD/FD/port cases and CTest45/45 pass. Actual frozen-parent491,520-leaf peak RSS−23.68%, whole setup+10.07%; local core `560fa47d714b125f0f9417f06692969422e64745da0eef732055033bef8d7fbb`. Physical CUDA pending; local uploads/topology/scaling and antenna acceptance remain open. |
+
+| 2026-11-16 | Qualification audit and test-fixture correction | R19 fixed test over `ef5a17b` | The original local test binary lacks the late port edit; the original CUDA fixture rejects resistor-after-source setup before backend creation. Preserve both records. A corrected separately compiled fixture passes6 reference/6 Metal cases against unchanged core `560fa47d...`; this does not accept the failed CUDA run or qualify an antenna. |

@@ -117,8 +117,9 @@ RTX4090/RTX3080 pair, including native C++ domains in both device orders and
 16 actual Python TD/FD/U/I cases. Its terminal exit is0, without OOM; source
 and runtime identities are rechecked. CUDA core SHA256:
 `8cc678373160b2433b178f6827771f712ce96ef596612f2920b1e38b08c0f6a3`.
-The separately built parser-only R02 focused follow-up is running; it is not
-yet accepted CUDA evidence for that source. Earlier low-level physical-domain
+The parser-only R02 follow-up also passes seven physical CUDA gates and
+CTest44/44, including both pair orders,16 native Python cases and actual
+one-worker CLI sentinel validation. Earlier low-level physical-domain
 evidence does not substitute for native processing tests. Two logical Metal
 workers are not two physical GPUs.
 
