@@ -16,6 +16,12 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Added
 
+- Experimental Cartesian-subgrid smooth-volume conductors accept simple
+  untransformed extruded polygons and axial cylinders/hollow shells. Physical
+  height and continuous CAD are retained; malformed contours and unresolved
+  contacts reject. Scoped CPU/Metal/CUDA controls do not qualify conformal
+  surfaces, curved-line RF or distributed conductor histories.
+
 - Experimental Cartesian-subgrid GPU preparation uses spatial curl blocks with
   exact coefficient pairs and sparse interface exceptions when device metadata
   is smaller. Default CPU updates retain the old pattern loop. Rebuild callers

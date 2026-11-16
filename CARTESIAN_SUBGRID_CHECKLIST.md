@@ -383,6 +383,18 @@ stages, CTest 37/37/Python 14/14, all 27 physical CUDA gates and CTest 37/37 pas
 point-port fixture is not yet spatially converged. Broad CAD/ports, scaling and
 antenna acceptance remain open; F02 is unchecked.
 
+Further partial F02/G01/G04/G06/U04/U05: the
+[native shaped increment](CARTESIAN_SUBGRID_CONDUCTOR.md#native-shaped-conductors)
+adds simple extruded smooth-volume contours and axial cylinders/shells with
+independent occupancy, unchanged coordinates, exact occupied-box decomposition,
+hollow-bore, fields/passive energy and malformed-shape controls. Composed r08:
+15 local stages, CTest40/40/Python14/14,35 physical CUDA gates/CTest40 and11,255
+unchanged arrays. A separate actual older-CSXCAD build passes3 scoped native
+controls with3 explicit missing-feature skips. This is centre-classified CAD,
+not conformal or curved-line RF qualification. Sidewall-area bias and required
+RF convergence remain explicit; F02/G01 and representative-antenna items remain
+incomplete. No production adoption or allocation-guard increase follows.
+
 ## 8. Representative antenna qualification
 
 - [ ] **A01** Freeze a regular-grid PEC antenna reference, geometry/material/
@@ -525,3 +537,5 @@ numerical change invalidates their prior qualification.
 | 2026-11-16 | Partial C01/C03/U01–U03/U05, focused spatial interiors | This PR, exact-pair spatial-curl increment (parent `d026d92`) | [Source contract, controls and limits](CARTESIAN_SUBGRID_BLOCKS.md). Host-only r02:13 stages/CTest38/38/Python14/14 and11,255 exact prior arrays. Later focused device geometry passes on reference/Metal and each physical RTX4090/RTX3080; composed local replay passes14 stages/CTest39/39/Python14/14 with11,255 exact prior arrays. Full CUDA replay passes33 gates and CTest39/39 on the actual RTX4090/RTX3080 pair. Interleaved Metal layout timing is1.28–1.40x slower; no speedup is claimed. Expanded upload/reference field organization, distributed histories, general scaling and antenna acceptance remain open. |
 
 | 2026-11-16 | Partial C01/C03/C05/U01–U03/U05; no guard increase | This PR, exact order and streamed preparation | R06 CUDA33 gates/CTest39; composed r07 local14 stages/CTest39/Python14 and11,255 unchanged arrays. Bounded491,520-leaf peak RSS−23.60%, setup+3.34%; r07 CUDA33 gates/CTest39 pass with immutable runtime/source and terminal exit0/no OOM. See [block evidence](CARTESIAN_SUBGRID_BLOCKS.md#exact-ordering-and-streamed-preparation). Local r07 core `4af61e6916978ba5d017b802e1bc64355cd6b3ce133d3753568e4dde896ece1f`.|
+
+| 2026-11-16 | Further partial F02/G01/G04/G06/U04/U05, native shaped conductors | This PR, r08 (parent `549bf55`) | [Mapping, evidence and limits](CARTESIAN_SUBGRID_CONDUCTOR.md#native-shaped-conductors). CPU/Metal15 stages/CTest40/Python14; physical CUDA35 gates/CTest40;11,255 prior arrays unchanged. Exact occupied-box decomposition, hollow-bore and positive loss/energy controls; six scoped older-dependency tests with three explicit skips. Local core `5e9b2a6d385ecb7d98c8ba306dd63e2fe139475c1f79685716dd2c2dbe7e2203`; CUDA `69b8fa61dead03bf134f3aaf815dffcd997084bbabdd8529d42faafade2386a5`. Conformal/curved RF, distributed histories and antenna acceptance remain open. |

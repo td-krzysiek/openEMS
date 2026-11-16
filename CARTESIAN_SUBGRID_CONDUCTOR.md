@@ -8,7 +8,8 @@ production PCB antennas, arbitrary CAD or distributed lossy execution.
 
 With a compatible CSXCAD `CSPropLossyMetal` API, untransformed positive-volume
 boxes with finite positive conductivity and Rq=0 can be mapped to opaque local
-cells. Physical height remains geometric: 18/35 µm is not substituted by a
+cells. The separately qualified shaped increment below extends this to simple
+linearly extruded polygons and axial cylinders/hollow shells. Physical height remains geometric: 18/35 µm is not substituted by a
 zero-height sheet. Interior E/H, curl and mass contributions are excluded;
 exposed top/bottom and sidewall faces supply the surface quadrature.
 
@@ -42,8 +43,8 @@ contour observations must be matched before comparing impedances.
 ## Dependency compatibility
 
 CSXCAD is independently versioned. Builds without the optional volume-
-LossyMetal header retain supported material/PEC/port behavior. Only its two
-native volume-metal feature tests return 77 and are marked skipped. A header
+LossyMetal header retain supported material/PEC/port behavior. Its native volume-metal feature tests return77 and are marked skipped
+(three tests in the current inventory). A header
 without the required conductivity/Rq/roughness metadata is not qualification.
 Native conductor use requires the matching API; there is no PEC fallback.
 
@@ -105,8 +106,58 @@ alpha/beta differences are below0.825%/0.562%. Ratio8 uses5fs, versus10fs at
 ratio2/4, so this is combined spatial/time evidence. Five fixed voltage paths
 avoid the changing point-current normalization, but the finite-ground,
 point-line launch and single-mode fit remain diagnostic, not modal-port,
-physical attenuation or antenna acceptance. A larger refined-air-collar setup
-is prepared separately; setup alone is not an RF result.
+physical attenuation or antenna acceptance. A separately frozen r04 enlarged-air-collar diagnostic completes both
+PEC/copper cases; changing only that collar shifts fitted beta by less than
+0.001rad/m. It does not resolve the finite-fixture/modal-port qualification gap.
+
+## Native shaped conductors
+
+The r08 adapter accepts untransformed simple linearly extruded polygons and
+axis-aligned cylinders/hollow shells with physical volume. It reuses native
+CSXCAD membership and priorities, centre-classified opaque leaves, exposed
+Cartesian faces and the existing passive surface advance. The supplied CAD
+coordinates are unchanged. Invalid/self-crossing/backtracking contours,
+zero-height smooth sheets, transforms and unsupported axial contacts reject.
+There is no new fit, numerical backend, reference-plane shift or roughness model.
+The current r08 guard requires omission of a repeated final closing vertex; a
+reproduced equivalent closed-ring rejection is an experimental-adapter
+restriction under follow-up, not an ordinary upstream solver defect.
+Direct C++ callers must update CSXCAD before operator setup, as native XML/
+Python setup already does. Holes need supported shell/priority geometry or
+simple decompositions, not self-touching polygon bridges.
+
+`tests/test_cartesian_subgrid_shaped_surface.cpp` compares concave and rounded
+contours, solid/hollow Z cylinders, polygon normals X/Y/Z, Cu18/Cu35, reversed
+extrusion/winding, substrate loss and alternative units/origin. Every native
+mask matches an independent analytic centre classifier; native coordinates
+remain exact. CPU fields, loss and occupied volume match independent occupied-
+box decompositions exactly. All hollow-bore, passive-energy and five invalid-
+input controls pass. Maximum normalized shaped-field errors are
+9.71489e-07 on physical Metal and 9.71489e-07 across physical RTX4090/RTX3080,
+within the unchanged 2e-4 gate.
+
+The composed r08 replay passes 15 local stages, CTest40/40, Python14/14 and
+11,255 unchanged prior numerical arrays. Physical CUDA passes 35 gates and
+CTest40/40, including each device and retained lossless pair controls in both
+orders; terminal state is exit0/no OOM with source/runtime rechecked. A separate
+build against the actual older CSXCAD library passes three scoped native
+controls and explicitly skips the three missing-volume-feature tests. This
+six-test control is not a full old-dependency or old-Python-ABI replay.
+
+This is Cartesian sampling, **not conformal curved-surface qualification**.
+A local isolated rounded-cap diagnostic improves footprint area error from
+about 8.5% at 50–100µm to 0.68% at 12.5µm. Its stair sidewall perimeter nevertheless
+remains about 24% above the smooth contour. Purely geometric surface area is
+not RF loss: field distribution and quadrature also matter. Do not infer
+conductor-loss/phase accuracy from footprint convergence; a matched curved-
+line RF comparison is required before antenna adoption. Native conductor/PML
+composition remains scoped by the retained disjoint controls; distributed
+conductor histories are not implemented by this increment.
+
+Actual r08 local core SHA256:
+`5e9b2a6d385ecb7d98c8ba306dd63e2fe139475c1f79685716dd2c2dbe7e2203`.
+Actual r08 CUDA core SHA256:
+`69b8fa61dead03bf134f3aaf815dffcd997084bbabdd8529d42faafade2386a5`.
 
 Further acceptance requires spatial/time convergence, broad conductor CAD and
 ports, scalable field/interface representation, distributed loss/PML/DFT state

@@ -40,6 +40,7 @@ set(TESTS
   test_cartesian_subgrid_integral_roundoff
   test_cartesian_subgrid_opaque
   test_cartesian_subgrid_native_surface
+  test_cartesian_subgrid_shaped_surface
   test_cartesian_subgrid_conductor_union
   test_cartesian_subgrid_native_path_ports
 )
@@ -57,7 +58,7 @@ foreach(test ${TESTS})
     target_compile_definitions(${test} PRIVATE OPENEMS_SUBGRID_TEST_CUDA=1)
   endif()
   add_test(NAME ${test} COMMAND ${test})
-  if(test STREQUAL "test_cartesian_subgrid_native_surface" OR test STREQUAL "test_cartesian_subgrid_conductor_union")
+  if(test STREQUAL "test_cartesian_subgrid_native_surface" OR test STREQUAL "test_cartesian_subgrid_conductor_union" OR test STREQUAL "test_cartesian_subgrid_shaped_surface")
     # Volume LossyMetal is optional in the independently versioned CSXCAD API.
     set_tests_properties(${test} PROPERTIES SKIP_RETURN_CODE 77)
   endif()

@@ -80,6 +80,91 @@ double SurfaceConductivity(CSProperties *property)
 #endif
 	throw std::invalid_argument("CartesianSubgrid: native surface metal is unavailable in this CSXCAD build");
 }
+//! Reject ambiguous/self-crossing conductor contours before centre sampling.
+//! Coordinates are normalized only for this check; native CAD is never altered.
+void ValidateSurfaceContour(CSPrimPolygon &polygon)
+{
+	using Point = std::array<long double, 2>;
+	const auto count = polygon.GetQtyCoords();
+	if (count < 3 || count > std::size_t(std::numeric_limits<int>::max() / 2))
+	{
+		throw std::invalid_argument("CartesianSubgrid: surface polygon needs at least three vertices");
+	}
+	std::vector<Point> points;
+	Point lo{std::numeric_limits<long double>::infinity(), std::numeric_limits<long double>::infinity()};
+	Point hi{-lo[0], -lo[1]};
+	for (std::size_t i = 0; i < count; ++i)
+	{
+		Point point{polygon.GetCoord(int(2 * i)), polygon.GetCoord(int(2 * i + 1))};
+		for (unsigned int n = 0; n < 2; ++n)
+		{
+			if (!std::isfinite(point[n]))
+			{
+				throw std::invalid_argument("CartesianSubgrid: finite surface polygon vertices required");
+			}
+			lo[n] = std::min(lo[n], point[n]);
+			hi[n] = std::max(hi[n], point[n]);
+		}
+		points.push_back(point);
+	}
+	for (unsigned int n = 0; n < 2; ++n)
+	{
+		if (!(hi[n] > lo[n]) || !std::isfinite(hi[n] - lo[n]))
+		{
+			throw std::invalid_argument("CartesianSubgrid: surface polygon has zero or unrepresentable area");
+		}
+		for (auto &point : points)
+		{
+			point[n] = (point[n] - lo[n]) / (hi[n] - lo[n]);
+		}
+	}
+	const auto orientation = [](const Point &a, const Point &b, const Point &c)
+	{
+		return (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]);
+	};
+	const auto contains = [](const Point &a, const Point &b, const Point &p)
+	{
+		return p[0] >= std::min(a[0], b[0]) && p[0] <= std::max(a[0], b[0]) &&
+			p[1] >= std::min(a[1], b[1]) && p[1] <= std::max(a[1], b[1]);
+	};
+	long double area = 0;
+	for (std::size_t i = 0; i < count; ++i)
+	{
+		const auto &a = points[i], &b = points[(i + 1) % count], &previous = points[(i + count - 1) % count];
+		if (a == b || (orientation(previous, a, b) == 0 &&
+			(previous[0] - a[0]) * (b[0] - a[0]) +
+			(previous[1] - a[1]) * (b[1] - a[1]) > 0))
+		{
+			throw std::invalid_argument("CartesianSubgrid: surface polygon repeats or backtracks an edge");
+		}
+		area += a[0] * b[1] - a[1] * b[0];
+		for (std::size_t j = i + 1; j < count; ++j)
+		{
+			if (j == i + 1 || (i == 0 && j + 1 == count))
+			{
+				continue;
+			}
+			const auto &c = points[j], &d = points[(j + 1) % count];
+			const auto abC = orientation(a, b, c), abD = orientation(a, b, d);
+			const auto cdA = orientation(c, d, a), cdB = orientation(c, d, b);
+			if (((abC < 0 && abD > 0) || (abC > 0 && abD < 0)) &&
+				((cdA < 0 && cdB > 0) || (cdA > 0 && cdB < 0)))
+			{
+				throw std::invalid_argument("CartesianSubgrid: self-intersecting surface polygon");
+			}
+			if ((abC == 0 && contains(a, b, c)) || (abD == 0 && contains(a, b, d)) ||
+				(cdA == 0 && contains(c, d, a)) || (cdB == 0 && contains(c, d, b)))
+			{
+				throw std::invalid_argument("CartesianSubgrid: touching or overlapping surface polygon edges");
+			}
+		}
+	}
+	if (area == 0)
+	{
+		throw std::invalid_argument("CartesianSubgrid: surface polygon has zero signed area");
+	}
+}
+
 bool UnitWeight(const std::string &term)
 {
 	// CSXCAD stores a numeric weight without a term. Its value is checked
@@ -635,24 +720,21 @@ void Operator_CartesianSubgrid::ValidateProperties() const
 		{
 			if (type == SurfaceMetalType)
 			{
-				double bounds[6];
-				if (!dynamic_cast<CSPrimBox *>(primitive) || primitive->HasTransform() || !primitive->GetBoundBox(bounds))
+				if (!dynamic_cast<CSPrimBox *>(primitive) && !dynamic_cast<CSPrimLinPoly *>(primitive) &&
+					!dynamic_cast<CSPrimCylinder *>(primitive))
 				{
-					throw std::invalid_argument("CartesianSubgrid: native surface metal currently requires untransformed volume boxes");
+					throw std::invalid_argument("CartesianSubgrid: surface metal requires physical volume boxes, linear polygons or axial cylinders/shells");
 				}
-				for (unsigned int n = 0; n < 3; ++n)
+				if (auto *polygon = dynamic_cast<CSPrimLinPoly *>(primitive))
 				{
-					if (!(bounds[2 * n + 1] > bounds[2 * n]))
-					{
-						throw std::invalid_argument("CartesianSubgrid: native surface boxes require positive physical volume");
-					}
+					ValidateSurfaceContour(*polygon);
 				}
 			}
 			if (type == CSProperties::LUMPED_ELEMENT && !dynamic_cast<CSPrimBox *>(primitive))
 			{
 				throw std::invalid_argument("CartesianSubgrid: resistors must use a line box");
 			}
-			if (type == CSProperties::METAL)
+			if (type == CSProperties::METAL || type == SurfaceMetalType)
 			{
 				auto *cylinder = dynamic_cast<CSPrimCylinder *>(primitive);
 				auto *polygon = dynamic_cast<CSPrimPolygon *>(primitive);
@@ -749,14 +831,14 @@ void Operator_CartesianSubgrid::ValidateProperties() const
 				throw std::invalid_argument(
 					"CartesianSubgrid: untransformed finite primitive bounds required");
 			}
-			if (type == CSProperties::MATERIAL)
+			if (type == CSProperties::MATERIAL || type == SurfaceMetalType)
 			{
 				for (unsigned int n = 0; n < 3; ++n)
 				{
 					if (!(box[2 * n] < box[2 * n + 1]))
 					{
 						throw std::invalid_argument(
-							"CartesianSubgrid: material boxes must have positive volume");
+							"CartesianSubgrid: material/surface objects must have positive physical volume");
 					}
 				}
 			}
