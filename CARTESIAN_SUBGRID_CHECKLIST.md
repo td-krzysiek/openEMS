@@ -553,8 +553,10 @@ the independent expanded oracle remain. Sanitized map/negative controls,
 CTest46/46 pass. Interleaved comparison against frozen R20-r03 reduces
 491,520-leaf peak RSS24.72% and whole setup9.78%; the graded61,440-leaf
 reduction is9.78% RAM/7.47% setup. A960k-leaf setup-only control remains below
-1.5GiB. Physical CUDA is running, not yet accepted. This is preparation-only
-memory work; reference fields/topology, interfaces and actual antenna
+1.5GiB. Physical CUDA passes14 gates/CTest46,24 exact metadata/field cases,
+13 package guards, both physical pair orders and16 native Python cases,
+with terminal source/runtime rechecks. This is preparation-only memory
+work; reference fields/topology, interfaces and actual antenna
 convergence/scaling remain open. No guard increase or production adoption.
 
 Further partial C03/C05/U04/D05: [lazy serial reference workspace](CARTESIAN_SUBGRID_DOMAINS.md#lazy-serial-reference-workspace)
@@ -564,7 +566,7 @@ controls,12 reference/Metal exact cases, native8/16 and CTest47/47 pass.
 Interleaved comparison against actual frozen R21 reduces491,520-leaf peak
 RSS7.04%, with exactly35,047,680B lower accounted cold grid storage. The graded
 control reduces RSS8.17%; no update speedup is claimed. GPU-free CUDA build
-passes; physical R22 waits behind accepted R21 terminal qualification. No
+passes; physical R22 is now running after reviewed R21 acceptance. No
 allocation-guard increase, antenna adoption or large-scale acceptance follows.
 
 ## Milestone decisions
@@ -658,6 +660,6 @@ numerical change invalidates their prior qualification.
 
 | 2026-11-16 | Further partial C01/C03/C05/D01/D05: exact local row packages | R20-r03 over `21eff5b` | [Local package and measurements](CARTESIAN_SUBGRID_DOMAINS.md#streamed-local-domain-preparation). Fresh source-before-build reference/Metal and native8/16-case controls; CTest45/45 and13 rejection guards. Actual R19 comparison: peak RSS−30.37%, whole setup+7.93%; graded benefit2.88%.960k setup-only control passes. Local core `65309099920fd3f93e5e039ffde808ed77fb520910d9f1c17d672f1ce7de39c7`; physical CUDA pending, no antenna acceptance. |
 
-| 2026-11-17 | Further partial C03/C05/D01/D05: shared owned-state domain addresses | R21, parent `648683d` | [Address/storage evidence](CARTESIAN_SUBGRID_DOMAINS.md#shared-owned-state-domain-addresses): focused sanitized map oracle, exact reference/Metal metadata/fields, native8/16 and CTest46 pass. Interleaved RSS/setup gains only; physical CUDA running. No guard increase, antenna or production qualification. |
+| 2026-11-17 | Further partial C03/C05/D01/D05: shared owned-state domain addresses | R21, parent `648683d` | [Address/storage evidence](CARTESIAN_SUBGRID_DOMAINS.md#shared-owned-state-domain-addresses): focused sanitized map oracle, exact reference/Metal metadata/fields, native8/16 and CTest46 pass. Interleaved RSS/setup gains only; physical14-gate/CTest46 replay passes on4090/3080 in both orders, with native observations. No guard increase, antenna or production qualification. |
 
-| 2026-11-17 | Further partial C03/C05/U04/D05: lazy CPU reference workspace | R22, parent `ef323a2` | [Workspace evidence](CARTESIAN_SUBGRID_DOMAINS.md#lazy-serial-reference-workspace): first-use/negative/capacity controls, reference/Metal exact metadata/fields, native8/16 and CTest47 pass. Interleaved cold-storage/RSS reductions only; physical CUDA queued. No guard increase or production/antenna qualification. |
+| 2026-11-17 | Further partial C03/C05/U04/D05: lazy CPU reference workspace | R22, parent `ef323a2` | [Workspace evidence](CARTESIAN_SUBGRID_DOMAINS.md#lazy-serial-reference-workspace): first-use/negative/capacity controls, reference/Metal exact metadata/fields, native8/16 and CTest47 pass. Interleaved cold-storage/RSS reductions only; physical CUDA running after reviewed R21 acceptance. No guard increase or production/antenna qualification. |

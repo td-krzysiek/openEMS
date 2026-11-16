@@ -136,8 +136,11 @@ Metal exact compressed-metadata/256-step port-field cases, native8/16-case
 TD/FD/U/I controls and fresh CTest46/46 pass on a complete source snapshot
 fixed before compilation. Local core SHA256:
 `368bd107b338abe898716849052def0785ac80eb501882842022b3b4567f4367`.
-Physical CUDA qualification is running separately on the actual4090/3080 pair;
-its terminal result is not yet accepted.
+Physical CUDA qualification passes14 gates/CTest46,24 exact metadata/field
+cases,13 malformed-package guards, both4090/3080 orders and16 actual native
+Python TD/FD/U/I cases. Terminal source/runtime identities are rechecked.
+CUDA core SHA256:
+`17fc5908b93bf032b0219ceb5c7acb7e1b26cf3b6c723dc5acbc71758e64f8f0`.
 
 Three interleaved setup-only repetitions against the actual frozen R20-r03
 library preserve owned/ghost counts, logical term counts and timestep:
@@ -173,8 +176,9 @@ metadata/field cases, native8/16-case TD/FD/U/I controls and fresh CTest47/47
 pass. The full source was fixed before compilation and rechecked afterward.
 Local core SHA256:
 `4404bf43382c6ee10504630b344a10d243adbc78efae50300d0bb6bda6ca5484`.
-Physical CUDA qualification is separately queued behind accepted R21 terminal
-results; the GPU-free build passes. No physical R22 acceptance is claimed.
+The GPU-free CUDA build passes. Physical R22 qualification starts only after
+reviewed R21 terminal acceptance and is now running on the authorized pair.
+No physical R22 acceptance is claimed yet.
 
 Three interleaved setup-only repetitions against actual frozen R21:
 
