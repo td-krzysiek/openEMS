@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include "cartesian_subgrid_domains.h"
 #include "cartesian_subgrid.h"
+#include "extensions/engine_ext_cartesiansubgrid_conductivity.h"
 #include <algorithm>
 #include <cmath>
 #include <set>
@@ -40,6 +41,19 @@ void Rows(const std::vector<Index> &owned, const std::vector<Index> &starts,
 
 CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(const CartesianSubgrid &grid,
 	unsigned int axis, const std::vector<double> &cuts)
+	: CartesianSubgridDomainPlan(grid, axis, cuts, {grid.DeviceData(), {}})
+{
+}
+
+CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(
+	const Engine_Ext_CartesianSubgrid_Conductivity &advance, unsigned int axis,
+	const std::vector<double> &cuts)
+	: CartesianSubgridDomainPlan(advance.Grid(), axis, cuts, advance.PrepareDomainData())
+{
+}
+
+CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(const CartesianSubgrid &grid,
+	unsigned int axis, const std::vector<double> &cuts, CartesianSubgridConductivityPrepared prepared)
 {
 	Require(axis < 3 && cuts.size() < 64, "CartesianSubgrid: invalid domain cuts");
 	const auto &lines = grid.BaseLines()[axis];
@@ -50,11 +64,14 @@ CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(const CartesianSubgrid &g
 			"CartesianSubgrid: domain cuts must be finite, increasing and internal");
 		previous = cut;
 	}
-	const auto data = grid.DeviceData();
+	const auto &data = prepared.fields;
 	Require(!data.rootConductance.empty() || data.ledger == std::vector<float>({0, 0, 0, 0}),
 		"CartesianSubgrid: a non-port accumulated ledger has no qualified ownership");
 	m_StableStep = data.stableTimestep;
 	m_PortStep = data.rootConductance.empty() ? 0 : data.portTimestep;
+	m_RecurrenceStep = prepared.loss ? prepared.loss->timestep : 0;
+	Require(!prepared.loss || (m_RecurrenceStep > 0 && m_RecurrenceStep <= m_StableStep),
+		"CartesianSubgrid: invalid domain recurrence timestep");
 	m_FactorTails = data.factorTails;
 	m_StateTails = data.stateTails;
 	m_ElectricCount = data.electric.size();
@@ -147,7 +164,7 @@ CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(const CartesianSubgrid &g
 		auto &domain = m_Domains[worker];
 		auto &local = domain.fields;
 		local.stableTimestep = m_StableStep;
-		local.trackSourceWork = !data.rootConductance.empty();
+		local.trackSourceWork = data.trackSourceWork || !data.rootConductance.empty();
 		for (Index i = 0; i < m_ElectricCount; ++i)
 		{
 			if (eOwner[i] == worker)
@@ -261,6 +278,64 @@ CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(const CartesianSubgrid &g
 			}
 			// Attribute the existing accumulated work once, never per worker.
 			local.ledger = data.ledger;
+		}
+		if (prepared.loss)
+		{
+			const auto &source = *prepared.loss;
+			domain.loss.emplace();
+			auto &loss = *domain.loss;
+			loss.timestep = source.timestep;
+			for (Index row : ownedH)
+			{
+				loss.magneticRate.push_back(source.magneticRate.at(row));
+			}
+			const auto ownedRows = [&](const CartesianSubgridConductivityData::Rows &input,
+				const std::vector<Index> &rows, const Map &columns, CartesianSubgridConductivityData::Rows &output)
+			{
+				Rows(rows, input.start, input.edge, input.weight, input.low,
+					columns, output.start, output.edge, output.weight, output.low);
+			};
+			// Every conductance and surface trace must stay within one complete
+			// electric mass component. Ghost fields are for curls, never histories.
+			Map ownedMap;
+			for (Index k = 0; k < ownedE.size(); ++k)
+			{
+				ownedMap.emplace(ownedE[k], k);
+			}
+			ownedRows(source.conductance, ownedE, ownedMap, loss.conductance);
+			const auto select = [&](const CartesianSubgridConductivityData::Rows &rows)
+			{
+				std::vector<Index> selected;
+				for (Index row = 0; row + 1 < rows.start.size(); ++row)
+				{
+					const Index first = rows.start[row], stop = rows.start[row + 1];
+					Require(first < stop, "CartesianSubgrid: empty constitutive trace");
+					const Index assigned = eOwner.at(rows.edge.at(first));
+					for (Index k = first; k < stop; ++k)
+					{
+						Require(eOwner.at(rows.edge.at(k)) == assigned,
+							"CartesianSubgrid: constitutive trace crosses ownership");
+					}
+					if (assigned == worker)
+					{
+						selected.push_back(row);
+					}
+				}
+				return selected;
+			};
+			ownedRows(source.trace, select(source.trace), ownedMap, loss.trace);
+			const auto poles = select(source.surfaceTrace);
+			if (!poles.empty())
+			{
+				Map poleMap;
+				for (Index k = 0; k < poles.size(); ++k)
+				{
+					poleMap.emplace(poles[k], k);
+					loss.surfaceRate.push_back(source.surfaceRate.at(poles[k]));
+				}
+				ownedRows(source.surfaceTrace, poles, ownedMap, loss.surfaceTrace);
+				ownedRows(source.surfaceHistory, ownedE, poleMap, loss.surfaceHistory);
+			}
 		}
 	}
 	for (bool electric : {true, false})

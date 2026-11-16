@@ -467,6 +467,17 @@ All 20 local compatibility stages pass, with CTest 24/24, Python 14/14,
 remain partial because histories, native distributed processing and scaling
 are still open.
 
+Further partial D01/D02/F01/F02: [prepared conductivity domains](CARTESIAN_SUBGRID_DOMAINS.md#prepared-conductivity-domains)
+retain owned bulk/surface histories and complete-epoch loss/stored-energy
+observations. Fourteen reference and fifteen Metal constitutive controls pass;
+the composed local19-stage/CTest41/Python14 replay retains11,255 exact arrays.
+Physical CUDA39-gate/CTest41 qualification passes, including58 constitutive
+comparisons across each GPU and both physical pair orders. FP32 fields equal
+one-device results exactly; maximum double field error5.830e-6 and balance
+2.638e-7 retain the2e-4 gates. Native distributed
+selectors, absorber/DFT/pause histories, RF accuracy and production scaling
+remain open; no D or antenna milestone is completed by this increment.
+
 ## Milestone decisions
 
 | Milestone | Completion condition | Status |
@@ -537,3 +548,4 @@ numerical change invalidates their prior qualification.
 | 2026-11-16 | Further partial F02/G01/G04/G06/U04/U05, native shaped conductors | This PR, r08 (parent `549bf55`) | [Mapping, evidence and limits](CARTESIAN_SUBGRID_CONDUCTOR.md#native-shaped-conductors). CPU/Metal15 stages/CTest40/Python14; physical CUDA35 gates/CTest40;11,255 prior arrays unchanged. Exact occupied-box decomposition, hollow-bore and positive loss/energy controls; six scoped older-dependency tests with three explicit skips. Local core `5e9b2a6d385ecb7d98c8ba306dd63e2fe139475c1f79685716dd2c2dbe7e2203`; CUDA `69b8fa61dead03bf134f3aaf815dffcd997084bbabdd8529d42faafade2386a5`. Conformal/curved RF, distributed histories and antenna acceptance remain open. |
 | 2026-11-16 | Further partial F02/G01/U05: native closed-ring admission | This PR, r09 (parent `56be081`) | [Conductor contract](CARTESIAN_SUBGRID_CONDUCTOR.md#native-shaped-conductors). Eight positive/six negative shapes; CPU/Metal15 stages/CTest40/Python14; physical CUDA35 gates/CTest40;11,255 arrays unchanged. Local core `e7f9501ef239d13f657e869fd9a04e6dade05cb9b40a5f47a03b936a3d995955`; CUDA `5f273237e245d42dcde5340fc6be837b6b4cb1ad36fa4c43c1dd09358f4f60bd`. Existing CAD retained; RF/antenna/distributed qualification stays open. |
 | 2026-11-16 | Diagnostic only; F02/A02/A03 remain open | Unchanged qualified r09 runtime | [Coarse curved-boundary diagnosis](CARTESIAN_SUBGRID_CONDUCTOR.md#curved-line-boundary-diagnosis). Native reconstruction checks126,390 leaves with zero mask mismatches. High conductivity approaches matching PEC mask within1.52e-5 complex S11/0.00335° S21; boundary classification reproduces12.627°. Consistent incremental Cu transmission differs0.02953°/0.00258dB. One coarse fixture only; no curved convergence, upstream-defect or antenna acceptance claim. |
+| 2026-11-16 | Further partial D01/D02/F01/F02: cold C++ constitutive ownership | This PR, r13 (parent `9eb7291`) | [Prepared conductivity domains](CARTESIAN_SUBGRID_DOMAINS.md#prepared-conductivity-domains). Reference14/Metal15 constitutive cases; local19 stages/CTest41/Python14 and11,255 exact prior arrays. CUDA39 gates/CTest41, including58 constitutive cases on each physical RTX4090/RTX3080 and both pair orders. FP32 one-device fields are identical; maximum double field error5.830e-6 and balance2.638e-7. Local core `f355d86377b742520112925f8f38cd0dfeed66c3724510a477254b865f6bf880`; CUDA `21ab8476d5ba7845e6518bdc00743cbe3e947ffa57ea851872eb3cfc8a64c83f`. Native distributed PML/DFT/pause, RF/antenna and scaling remain open. |

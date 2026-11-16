@@ -109,10 +109,11 @@ qualify physical multi-GPU, domain ports/PML or native CAD CUDA paths.
 
 All existing total-cell, interface-factor and refinement-alignment guards
 remain. Unsupported imported non-port ledger history and malformed port
-metadata reject explicitly. PML, bulk losses/conductors, DFT/NF2FF, collective
-pause/resume and native processing are not implemented in this domain lane.
-Their one-device tests do not imply
-distributed support. No throughput, representative PCB accuracy or physical
+metadata reject explicitly. The original lane above did not implement PML, bulk losses/conductors,
+DFT/NF2FF, collective pause/resume or native processing. The later
+[prepared-conductivity increment](#prepared-conductivity-domains) extends only
+its explicitly tested cold C++ constitutive path. One-device tests do not imply
+broader distributed support. No throughput, representative PCB accuracy or physical
 multi-GPU claim follows from logical domains on one physical device.
 
 ## Coupled resistors and source ledgers
@@ -216,3 +217,83 @@ there is no throughput or scaling claim.
 - Native selectors, domain PML/material histories/conductors/DFT/NF2FF,
   collective pause/resume, proportional setup memory and representative antenna
   qualification remain open. No active/frozen antenna runtime is replaced.
+
+## Prepared conductivity domains
+
+The r13 increment extends the bounded **C++** lane through typed conductivity
+preparation. Its bounded reference/Metal and physical RTX4090/RTX3080
+controls pass; it does not enable native distributed scripting,
+absorber/DFT histories, collective runtime controls or antenna workflows.
+
+```mermaid
+flowchart LR
+    A[Conductivity operator: factors, port responses, G and RL tables] --> B[Cold-state domain plan]
+    B --> C[Worker: owned E/H and constitutive states]
+    B --> D[Worker: owned E/H and constitutive states]
+    C <-->|E/H halo values only| D
+    C --> E[Complete-epoch fields and loss/energy observations]
+    D --> E
+```
+
+The plan retains each complete implicit electric mass component on one owner.
+Every conductance/surface trace must have support within that ownership; an
+RL pole belongs to exactly one worker. Magnetic rates follow the six owned
+quadratures of each leaf. Local recurrence views exclude ghost entries, so
+constitutive operations cannot overwrite halo storage or overrun the owned RHS.
+Remapping preserves operand/branch ordering and prepared coefficient pairs.
+No constitutive state is exchanged or duplicated between workers.
+
+Single-device preparation still streams curls; domains retain the existing
+expanded setup representation. This changes neither the physical equations nor
+the surface fits and does not solve proportional setup memory or performance.
+Ports still retain their complete coupled solve on one owner. Source-only
+workers record their work using the original mass and unsolved curl.
+
+A plan may be constructed from an unadvanced
+`Engine_Ext_CartesianSubgrid_Conductivity` rather than a bare grid. Its typed
+package binds effective factors, resistor responses and constitutive tables
+from the same preparation. Warm CPU/device histories, pending host half-steps
+and additional unprepared extensions reject. This is cold initialization,
+not state migration or checkpoint restart. The recurrence timestep is checked
+by the coordinator before any exchange/submission, and workers must advertise
+the matching prepared capability.
+
+After a complete step, call `ReadFields(grid)` and then the paired extension's
+`ReadDeviceDiagnostics(device)`. Separate complete-epoch observations expose
+bulk electric/magnetic loss, surface Ohmic loss and instantaneous stored branch
+energy. Summation across owners is double precision; bit-identical ledger
+reduction is not promised. Partial-epoch reads reject. These new C++ layouts
+and worker virtual methods require matching rebuilt callers/plugins.
+
+[Constitutive-domain regression](tests/test_cartesian_subgrid_device_domain_loss.cpp)
+checks eleven two/three-domain controls over 768 steps: XYZ assignment cuts,
+zero/electric/magnetic/combined/surface-only losses, constrained traces, separate
+history owners, pure-inductor branches, repeated soft kicks, source-only workers
+and 50/75-ohm resistors. Three 512-step controls use native CSX copper volumes
+at 18/35 micrometres with and without a lossy dielectric. The reference backend
+matches one-device FP32 fields exactly; maximum double-reference field error
+is 5.830e-6, constitutive ledger error 7.389e-8 and energy-balance error 2.638e-7,
+within the retained 2e-4 CPU/physics gates. Full local CTest passes41/41.
+Wrong timesteps, partial epochs, malformed recurrence dimensions, ghost columns,
+warm preparation and unprepared absorbers reject.
+
+Candidate prefix: `output/openems-subgrid-distributed-loss-r13-20261116/`.
+Installed local core SHA256:
+`f355d86377b742520112925f8f38cd0dfeed66c3724510a477254b865f6bf880`.
+Source parent is `9eb7291`; the candidate's numerical source/build are locked
+while physical tests run. Compact evidence remains in
+`experiments/openems-cartesian-local-subgrid-20261112/lossy-materials/distributed-loss-r13/`.
+The composed local replay passes19 stages, CTest41/41 and Python14/14,
+with11,255 prior arrays unchanged. Fifteen Metal cases include mixed
+CPU-reference/Metal workers. The physical CUDA replay passes39 gates and
+CTest41/41: fifteen constitutive cases on each physical GPU and fourteen on
+the RTX4090/RTX3080 pair in each order. All58 CUDA constitutive comparisons
+retain identical one-device FP32 fields; maximum double field/ledger/balance
+errors match the bounds above. Terminal source/runtime checks pass and the
+bounded container exits0 without OOM. These are functional controls alongside
+an active antenna; no speedup, general scaling or peak-VRAM claim follows.
+
+CUDA core SHA256:
+`21ab8476d5ba7845e6518bdc00743cbe3e947ffa57ea851872eb3cfc8a64c83f`.
+Native distributed selectors, PML/Mur histories, DFT/NF2FF and collective
+pause remain open, as do RF convergence and representative antenna acceptance.

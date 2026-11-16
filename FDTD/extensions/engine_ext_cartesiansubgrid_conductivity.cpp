@@ -41,12 +41,14 @@ void Engine_Ext_CartesianSubgrid_Conductivity::UpdateElectric(double timestep, d
 	if (!c.m_HasLoss)
 	{
 		g.UpdateElectric(timestep, drive);
+		m_Advanced = true;
 		return;
 	}
 	if (g.m_PendingMagneticTimestep != 0 || !std::isfinite(drive))
 	{
 		throw std::invalid_argument("CartesianSubgrid conductivity electric phase/drive is invalid");
 	}
+	m_Advanced = true;
 	std::copy(g.m_Electric.begin(), g.m_Electric.end(), m_OldElectric.begin());
 	g.CurlTranspose(g.m_Magnetic, g.m_Increment);
 	std::copy(g.m_Increment.begin(), g.m_Increment.end(), m_SourceCurl.begin());
@@ -156,12 +158,29 @@ void Engine_Ext_CartesianSubgrid_Conductivity::UpdateMagnetic(double timestep)
 	g.m_PendingMagneticTimestep = 0;
 }
 
-std::unique_ptr<GPU_CartesianSubgrid> Engine_Ext_CartesianSubgrid_Conductivity::CreateDevice(GPU_Backend &backend)
+CartesianSubgridConductivityPrepared Engine_Ext_CartesianSubgrid_Conductivity::PrepareDomainData() const
 {
+	if (m_Advanced || m_UsingDevice || m_Grid.m_PendingMagneticTimestep != 0)
+	{
+		throw std::invalid_argument("CartesianSubgrid: distributed conductivity requires cold constitutive histories");
+	}
+	for (std::size_t k = 0; k < m_Conductivity->m_Compact->GetNumberOfExtentions(); ++k)
+	{
+		if (m_Conductivity->m_Compact->GetExtension(k) != m_Conductivity)
+		{
+			throw std::invalid_argument("CartesianSubgrid: other domain extension histories are not prepared");
+		}
+	}
+	m_Conductivity->ValidatePreparedExtensions();
 	if (!m_Conductivity->HasLoss())
 	{
-		return backend.CreateCartesianSubgrid(m_Grid);
+		return {m_Grid.DeviceData(), {}};
 	}
+	return PrepareDeviceData(true);
+}
+
+CartesianSubgridConductivityPrepared Engine_Ext_CartesianSubgrid_Conductivity::PrepareDeviceData(bool expanded) const
+{
 	const auto &c = *m_Conductivity;
 	const auto index = [](std::size_t value)
 	{
@@ -181,7 +200,7 @@ std::unique_ptr<GPU_CartesianSubgrid> Engine_Ext_CartesianSubgrid_Conductivity::
 		}
 		return result;
 	};
-	auto data = m_Grid.DeviceStateData();
+	auto data = expanded ? m_Grid.DeviceData() : m_Grid.DeviceStateData();
 	if (data.rootConductance.empty())
 	{
 		data.portTimestep = 0;
@@ -319,8 +338,22 @@ std::unique_ptr<GPU_CartesianSubgrid> Engine_Ext_CartesianSubgrid_Conductivity::
 		}
 		loss.surfaceRate = c.m_SurfaceRate;
 	}
-	auto device = GPU_CreateCartesianSubgridAdvanced(backend, m_Grid, std::move(data),
-		GPU_CreateCartesianSubgridConductivity(std::move(loss)), c.m_Timestep);
+	return {std::move(data), std::move(loss)};
+}
+
+std::unique_ptr<GPU_CartesianSubgrid> Engine_Ext_CartesianSubgrid_Conductivity::CreateDevice(GPU_Backend &backend)
+{
+	std::unique_ptr<GPU_CartesianSubgrid> device;
+	if (!m_Conductivity->HasLoss())
+	{
+		device = backend.CreateCartesianSubgrid(m_Grid);
+	}
+	else
+	{
+		auto prepared = PrepareDeviceData(false);
+		device = GPU_CreateCartesianSubgridAdvanced(backend, m_Grid, std::move(prepared.fields),
+			GPU_CreateCartesianSubgridConductivity(std::move(*prepared.loss)), m_Conductivity->m_Timestep);
+	}
 	m_UsingDevice = true;
 	return device;
 }
@@ -339,6 +372,7 @@ void Engine_Ext_CartesianSubgrid_Conductivity::ReadDeviceDiagnostics(GPU_Cartesi
 			m_DeviceSurfaceEnergy = surface[1];
 		}
 	}
+	m_UsingDevice = true;
 }
 
 double Engine_Ext_CartesianSubgrid_Conductivity::AdditionalStoredEnergy() const

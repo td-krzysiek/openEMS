@@ -33,6 +33,8 @@ void CheckWorkers(const CartesianSubgridDomainPlan &plan,
 	{
 		Require(bool(workers[k]), "CartesianSubgrid: missing domain worker");
 		const auto &d = plan.Domains()[k];
+		Require(workers[k]->RecurrenceTimestep() == (d.loss ? d.loss->timestep : 0),
+			"CartesianSubgrid: worker constitutive preparation differs from ownership plan");
 		Require(workers[k]->Owned(Field::Electric) == d.ownedElectric &&
 			workers[k]->Owned(Field::Magnetic) == d.ownedMagnetic &&
 			workers[k]->Ghosts(Field::Electric) == d.fields.electric.size() - d.ownedElectric &&
@@ -255,12 +257,48 @@ class Coordinator : public GPU_CartesianSubgrid
 		}
 		return bytes;
 	}
+	std::array<double, 2> ReadAdvanceLedger() override
+	{
+		return ReadConstitutiveLedger(false);
+	}
+	std::array<double, 2> ReadAdvanceSurfaceLedger() override
+	{
+		return ReadConstitutiveLedger(true);
+	}
 	GPU_CartesianSubgridFields Fields() const override
 	{
 		throw std::logic_error("CartesianSubgrid: domains have no single borrowed field buffer; use the coordinator");
 	}
 
   private:
+	std::array<double, 2> ReadConstitutiveLedger(bool surface)
+	{
+		Healthy();
+		Require(!m_Pending && m_Plan->RecurrenceTimestep() > 0,
+			"CartesianSubgrid: recurrence observation requires a complete lossy step");
+		std::array<double, 2> result{};
+		try
+		{
+			for (auto &worker : m_Workers)
+			{
+				const auto value = surface ? worker->ReadAdvanceSurfaceLedger(m_Epoch) :
+					worker->ReadAdvanceLedger(m_Epoch);
+				for (std::size_t k = 0; k < result.size(); ++k)
+				{
+					Require(value[k] >= 0 && std::isfinite(value[k]),
+						"CartesianSubgrid: invalid worker constitutive ledger");
+					result[k] += value[k];
+					Require(std::isfinite(result[k]), "CartesianSubgrid: constitutive ledger overflow");
+				}
+			}
+		}
+		catch (...)
+		{
+			m_Failed = true;
+			throw;
+		}
+		return result;
+	}
 	void Healthy() const { Require(!m_Failed, "CartesianSubgrid: failed coordinator cannot continue"); }
 	void CheckStep(double timestep, double amplitude) const
 	{
@@ -269,6 +307,7 @@ class Coordinator : public GPU_CartesianSubgrid
 			dt >= std::numeric_limits<float>::min() && std::isfinite(static_cast<float>(amplitude)) &&
 			(timestep == double(dt) || std::abs(low) >= std::numeric_limits<float>::min()) &&
 			(m_Plan->PortTimestep() == 0 || timestep == m_Plan->PortTimestep()) &&
+			(m_Plan->RecurrenceTimestep() == 0 || timestep == m_Plan->RecurrenceTimestep()) &&
 			(m_Fixed == 0 || m_Fixed == timestep), "CartesianSubgrid: invalid coordinator timestep/source");
 	}
 	std::shared_ptr<const CartesianSubgridDomainPlan> m_Plan;

@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include "gpu_cartesiansubgrid.h"
+#include "gpu_cartesiansubgrid_conductivity.h"
 #include "subgrid_device_curl.h"
 #include "subgrid_device_geometry.h"
 #include "gpu_backend.h"
@@ -192,7 +193,10 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 			Upload(data.responseWeight), portRHS, 0};
 		if (m_Recurrence)
 		{
-			m_Recurrence->Bind(m_Backend, Fields(), increment);
+			auto owned = Fields();
+			owned.electricCount = m_OwnedElectric;
+			owned.magneticCount = m_OwnedMagnetic;
+			m_Recurrence->Bind(m_Backend, owned, increment);
 		}
 	}
 
@@ -522,8 +526,22 @@ std::unique_ptr<GPU_CartesianSubgrid> CreateCartesianSubgridDomainExecution(
 	GPU_Backend &backend, const CartesianSubgridDomainData &domain)
 {
 	ValidateDomain(domain);
-	return std::make_unique<CartesianSubgridExecution>(backend, domain.fields,
-		domain.ownedElectric, domain.ownedMagnetic, true);
+	std::unique_ptr<GPU_CartesianSubgridRecurrence> recurrence;
+	if (domain.loss)
+	{
+		if (!(domain.loss->timestep > 0) || domain.loss->timestep > domain.fields.stableTimestep)
+		{
+			throw std::invalid_argument("CartesianSubgrid: invalid domain constitutive timestep");
+		}
+		recurrence = GPU_CreateCartesianSubgridConductivity(*domain.loss);
+	}
+	auto execution = std::make_unique<CartesianSubgridExecution>(backend, domain.fields,
+		domain.ownedElectric, domain.ownedMagnetic, true, std::move(recurrence));
+	if (domain.loss)
+	{
+		execution->RequireFixedTimestep(domain.loss->timestep);
+	}
+	return execution;
 }
 
 std::unique_ptr<GPU_CartesianSubgrid> GPU_CreateCartesianSubgridAdvanced(

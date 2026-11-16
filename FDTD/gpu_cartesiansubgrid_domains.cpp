@@ -53,6 +53,7 @@ class LocalWorker : public CartesianSubgridDomainWorker
 		: m_Backend(backend), m_Execution(CreateCartesianSubgridDomainExecution(backend, ValidateWorkerDomain(backend, domain))),
 		  m_TracksLedger(domain.fields.trackSourceWork || !domain.fields.rootConductance.empty())
 	{
+		m_RecurrenceStep = domain.loss ? domain.loss->timestep : 0;
 		m_Owned = {domain.ownedElectric, domain.ownedMagnetic};
 		const auto fields = m_Execution->Fields();
 		m_Total = {fields.electricCount, fields.magneticCount};
@@ -81,6 +82,7 @@ class LocalWorker : public CartesianSubgridDomainWorker
 		++m_Epoch;
 	}
 	void RequireFixedTimestep(double timestep) override { m_Execution->RequireFixedTimestep(timestep); }
+	double RecurrenceTimestep() const override { return m_RecurrenceStep; }
 	std::size_t Owned(Field field) const override { return m_Owned[Slot(field)]; }
 	std::size_t Exports(Field field) const override { return m_Exports[Slot(field)]; }
 	std::size_t Ghosts(Field field) const override { return m_Total[Slot(field)] - Owned(field); }
@@ -129,6 +131,16 @@ class LocalWorker : public CartesianSubgridDomainWorker
 		Require(!m_Pending && epoch == m_Epoch, "CartesianSubgrid: mixed worker ledger epoch");
 		return m_TracksLedger ? m_Execution->ReadLedger() : std::array<double, 2>{0, 0};
 	}
+	std::array<double, 2> ReadAdvanceLedger(std::size_t epoch) override
+	{
+		Require(!m_Pending && epoch == m_Epoch, "CartesianSubgrid: mixed worker recurrence epoch");
+		return m_Execution->ReadAdvanceLedger();
+	}
+	std::array<double, 2> ReadAdvanceSurfaceLedger(std::size_t epoch) override
+	{
+		Require(!m_Pending && epoch == m_Epoch, "CartesianSubgrid: mixed worker surface epoch");
+		return m_Execution->ReadAdvanceSurfaceLedger();
+	}
 
   private:
 	void CheckExchange(Field field, std::size_t epoch) const
@@ -153,7 +165,7 @@ class LocalWorker : public CartesianSubgridDomainWorker
 	std::array<std::size_t, 2> m_Owned{}, m_Total{}, m_Exports{};
 	std::array<Op_SubgridGather, 2> m_Gather{};
 	std::size_t m_Epoch = 0, m_StorageBytes = 0;
-	double m_Pending = 0;
+	double m_Pending = 0, m_RecurrenceStep = 0;
 	bool m_TracksLedger = false;
 };
 }

@@ -40,8 +40,10 @@ migration, restart and repeated attachment of warm state are not qualified.
 
 Surface/PML combination retains the prepared disjoint-support contract in
 [CARTESIAN_SUBGRID_CONDUCTIVITY.md](CARTESIAN_SUBGRID_CONDUCTIVITY.md#disjoint-conductivity-and-pml).
-Overlap, Mur and incomplete observations reject. This does not implement
-surface histories across multiple devices.
+Overlap, Mur and incomplete observations reject. The original component
+controls below do not qualify surface histories across devices; the later
+[cold C++ domain increment](CARTESIAN_SUBGRID_DOMAINS.md#prepared-conductivity-domains)
+records its own implementation and qualification status.
 
 ## Boundary-roundoff correction
 

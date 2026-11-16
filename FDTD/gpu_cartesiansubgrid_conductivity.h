@@ -2,6 +2,7 @@
 #ifndef GPU_CARTESIANSUBGRID_CONDUCTIVITY_H
 #define GPU_CARTESIANSUBGRID_CONDUCTIVITY_H
 #include "gpu_cartesiansubgrid.h"
+#include <optional>
 
 //! Setup-only SI-normalized tables. A factor preparation belongs to its operator.
 struct CartesianSubgridConductivityData
@@ -15,6 +16,13 @@ struct CartesianSubgridConductivityData
 	std::vector<double> surfaceRate;
 	std::vector<double> magneticRate;
 	double timestep = 0;
+};
+
+//! Factors, port responses and constitutive tables must be prepared together.
+struct CartesianSubgridConductivityPrepared
+{
+	CartesianSubgridDeviceData fields;
+	std::optional<CartesianSubgridConductivityData> loss;
 };
 std::unique_ptr<GPU_CartesianSubgridRecurrence> GPU_CreateCartesianSubgridConductivity(
 	CartesianSubgridConductivityData data);

@@ -7,6 +7,10 @@ conductor/skin or production antenna qualification. A separately qualified
 disjoint-support conductivity/PML combination is described below. Retain the
 allocation and geometry guards from `CARTESIAN_SUBGRID.md`.
 
+The later [cold C++ domain increment](CARTESIAN_SUBGRID_DOMAINS.md#prepared-conductivity-domains)
+has a separate implementation/qualification record; the original single-device
+evidence below does not qualify that path or native distributed processing.
+
 ## Numerical contract
 
 Use constant isotropic electric conductivity in S/m and magnetic conductivity

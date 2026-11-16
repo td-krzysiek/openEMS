@@ -16,6 +16,12 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Added
 
+- Experimental C++ Cartesian-subgrid domains can prepare cold bulk and surface
+  conductivity histories with owned field states and complete-step loss/energy
+  diagnostics. Native distributed scripting, absorber/DFT histories and antenna
+  qualification remain unavailable. Rebuild C++ callers/plugins together; see
+  `CARTESIAN_SUBGRID_DOMAINS.md` for the current qualification scope.
+
 - Experimental Cartesian-subgrid smooth-volume conductors accept simple
   untransformed extruded polygons and axial cylinders/hollow shells. Physical
   height and continuous CAD are retained; malformed contours and unresolved
