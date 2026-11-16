@@ -56,7 +56,8 @@ an established ordinary upstream solver defect.
   device changes automatically.
 - The composed r04 local replay passes14 terminal stages, CTest39/39 and
   Python14/14;11,255 prior arrays are bit-identical. The full physical CUDA
-  replay is separate and is not inferred from focused controls.
+  replay also passes33 gates and CTest39/39, with separate RTX4090/RTX3080
+  geometry/material controls and retained lossless pair controls in both orders.
 - Three interleaved same-build Metal repetitions compare equal duration and
   sampled final state. The spatial layout is slower: median1.28x at3,240 leaves
   and1.40x at25,920 leaves. It is a memory/addressing increment, not a throughput
@@ -76,6 +77,9 @@ build/tests/test_cartesian_subgrid_device_geometry --cuda
 
 Actual local r04 core SHA256:
 `0acee95bbe7172a425207568c10ec6698c08a42fa9d682c35cf83c3ddf8d2db3`.
+Actual r04 CUDA core SHA256:
+`1a6fed18794cc748e148b10beeecbc88d14f771696f4247e9e8eafc928c1f7fa`.
+
 Raw source/build manifests, negative attempts and numerical logs remain in the
 contributor's evidence archive. Build hashes identify tested binaries, not a
 claim that every caller/platform is qualified.
