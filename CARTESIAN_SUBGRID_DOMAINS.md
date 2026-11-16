@@ -297,3 +297,43 @@ CUDA core SHA256:
 `21ab8476d5ba7845e6518bdc00743cbe3e947ffa57ea851872eb3cfc8a64c83f`.
 Native distributed selectors, PML/Mur histories, DFT/NF2FF and collective
 pause remain open, as do RF convergence and representative antenna acceptance.
+
+## Prepared PML domains
+
+The r16 C++ candidate adds constructors from a cold paired PML engine, either
+alone or with its explicitly identified conductivity engine. Unknown companion
+extensions, unrelated grids, prior host advance (including zero fields), live
+device state and incompatible timesteps reject. The existing loss/PML support
+separation remains enforced; this is the prototype's classical convolution
+PML, not ordinary UPML/CFS parity or live history migration.
+
+Every complete same-target derivative group is assigned to its E or H owner.
+Required derivative inputs add field ghosts before transport construction.
+Convolution histories, corrections and signed-work states never become ghosts.
+The worker executes PRE/core/POST/APPLY before exporting each half field. The
+coordinator's complete-epoch `ReadBoundaryWorkOut()` sums signed work; it is
+neither nonnegative dissipation nor radiated power. Material/source/port ledgers
+remain separate. Worker capabilities and the exact recurrence timestep are
+checked against the plan before advancing.
+
+Use the worker/coordinator factories to compose PML hooks. The internal compact
+core-execution helper alone is not a complete PML/native engine. Native
+distributed XML/Python selection, processing/DFT/NF2FF and collective runtime
+control remain unimplemented. The changed C++ interfaces require callers and
+GPU plugins to be rebuilt together. No production/frozen runtime is replaced.
+
+The focused test passes6 reference and7 Metal cases, including deliberately
+mixed reference/Metal workers on one M5 Pro. It covers all partition axes,
+two-face and six-face/corner absorbers, two/three uneven domains, disjoint
+bulk/surface losses, ports and sources. Same-target history counts are retained;
+ghost-owned histories, half-step observations, a different-grid pairing and an
+already advanced zero-state PML reject. FP32 fields match one-device controls
+exactly; maximum double field error is1.420e-5 and normalized signed-work/energy
+balance error is below4.387e-8. All43 local CTest controls pass.
+
+Local core: `71bb756fcf84001a36eec6027e4c4f3a97cfc3cff337ad0d2262c2cb2f3ac3d6`.
+The broader20-stage local/array replay and43-gate physical CUDA matrix are
+still running, not accepted. Physical two-device PML, representative antenna
+accuracy and production memory/time savings are not qualified by these focused
+logical-domain results. The canonical checklist retains the larger D/B/F/U/A
+items open.

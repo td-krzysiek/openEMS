@@ -23,6 +23,12 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Added
 
+- Experimental C++ Cartesian-subgrid workers can compose cold target-owned
+  convolution-PML histories with a checked disjoint bulk/surface-loss pair.
+  Field ghosts carry no histories; signed boundary work is read at complete
+  epochs. Scoped CPU/Metal controls pass; broader CUDA replay and native
+  distributed scripting/DFT remain pending. Rebuild callers/plugins together.
+
 - Experimental C++ Cartesian-subgrid domains can prepare cold bulk and surface
   conductivity histories with owned field states and complete-step loss/energy
   diagnostics. Native distributed scripting, absorber/DFT histories and antenna

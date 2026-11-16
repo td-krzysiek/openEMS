@@ -136,6 +136,11 @@ class GPU_CartesianSubgrid
 	{
 		throw std::logic_error("CartesianSubgrid: surface diagnostics unavailable");
 	}
+	//! Signed absorber work at one complete epoch, not radiated power.
+	virtual double ReadBoundaryWorkOut()
+	{
+		throw std::logic_error("CartesianSubgrid: boundary diagnostics unavailable");
+	}
 };
 
 std::unique_ptr<GPU_CartesianSubgrid> GPU_CreateCartesianSubgridAdvanced(

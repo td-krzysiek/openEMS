@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include "engine_ext_cartesiansubgrid_pml.h"
 #include "FDTD/operator_cartesiansubgrid.h"
+#include "engine_ext_cartesiansubgrid_conductivity.h"
 
 #include <cmath>
 #include <limits>
@@ -70,6 +71,7 @@ void Engine_Ext_CartesianSubgrid_PML::Apply(
 
 void Engine_Ext_CartesianSubgrid_PML::DoPreVoltageUpdates()
 {
+	m_HostAdvanced = true;
 	const auto &g = m_PML->m_Compact->Grid();
 	Prepare(m_PML->m_Electric, m_Electric, g.m_Magnetic, g.m_Electric, 1);
 }
@@ -83,6 +85,7 @@ void Engine_Ext_CartesianSubgrid_PML::Apply2Voltages()
 }
 void Engine_Ext_CartesianSubgrid_PML::DoPreCurrentUpdates()
 {
+	m_HostAdvanced = true;
 	const auto &g = m_PML->m_Compact->Grid();
 	Prepare(m_PML->m_Magnetic, m_Magnetic, g.m_Electric, g.m_Magnetic, -1);
 }
@@ -95,10 +98,9 @@ void Engine_Ext_CartesianSubgrid_PML::Apply2Current()
 	Apply(m_PML->m_Magnetic, m_Magnetic, m_PML->m_Compact->Grid().m_Magnetic);
 }
 
-std::unique_ptr<GPU_CartesianSubgridPML> Engine_Ext_CartesianSubgrid_PML::CreateDevice(
-	GPU_Backend &backend, const GPU_CartesianSubgridFields &fields)
+CartesianSubgridPMLData Engine_Ext_CartesianSubgrid_PML::PrepareDeviceData() const
 {
-	if (m_DeviceConfigured || m_WorkOut != 0 ||
+	if (m_HostAdvanced || m_DeviceConfigured || m_WorkOut != 0 ||
 		std::any_of(m_Electric.history.begin(), m_Electric.history.end(), [](double value) { return value != 0; }) ||
 		std::any_of(m_Magnetic.history.begin(), m_Magnetic.history.end(), [](double value) { return value != 0; }))
 	{
@@ -152,7 +154,40 @@ std::unique_ptr<GPU_CartesianSubgridPML> Engine_Ext_CartesianSubgrid_PML::Create
 	};
 	rows(m_PML->m_Electric, data.electric);
 	rows(m_PML->m_Magnetic, data.magnetic);
-	auto device = GPU_CreateCartesianSubgridPML(backend, fields, data);
+	return data;
+}
+
+const CartesianSubgrid &Engine_Ext_CartesianSubgrid_PML::Grid() const
+{
+	return m_PML->m_Compact->Grid();
+}
+
+CartesianSubgridPMLData Engine_Ext_CartesianSubgrid_PML::PrepareDomainData(
+	const Engine_Ext_CartesianSubgrid_Conductivity *advance) const
+{
+	if (advance && &advance->Grid() != &Grid())
+	{
+		throw std::invalid_argument("CartesianSubgrid: PML and domain advance have different grids");
+	}
+	for (std::size_t k = 0; k < m_PML->m_Compact->GetNumberOfExtentions(); ++k)
+	{
+		const auto *extension = m_PML->m_Compact->GetExtension(k);
+		if (extension != m_PML && (!advance || extension != &advance->PreparedOperator()))
+		{
+			throw std::invalid_argument("CartesianSubgrid: other PML domain histories are not prepared");
+		}
+	}
+	if (advance)
+	{
+		advance->PreparedOperator().ValidatePreparedExtensions();
+	}
+	return PrepareDeviceData();
+}
+
+std::unique_ptr<GPU_CartesianSubgridPML> Engine_Ext_CartesianSubgrid_PML::CreateDevice(
+	GPU_Backend &backend, const GPU_CartesianSubgridFields &fields)
+{
+	auto device = GPU_CreateCartesianSubgridPML(backend, fields, PrepareDeviceData());
 	m_DeviceConfigured = true;
 	return device;
 }

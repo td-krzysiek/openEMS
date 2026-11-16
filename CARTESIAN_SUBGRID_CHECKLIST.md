@@ -512,6 +512,14 @@ controls; application compatibility still requires the material, port and
 boundary gates above. These are dependency gates, not a
 commitment that every master feature must precede the first useful PEC model.
 
+Further partial D01/D02/B02/U04: the [cold PML domain candidate](CARTESIAN_SUBGRID_DOMAINS.md#prepared-pml-domains)
+implements target-owned convolution histories with explicit disjoint loss
+composition, ordered field-only halos and complete-epoch signed boundary work.
+Implementation is present; focused6-reference/7-Metal controls and local43/43
+CTest pass. Broader20-stage local/array and43-gate physical CUDA qualification
+are running. Native distributed selection, processing/DFT/NF2FF and collective
+runtime control remain open; no full D/B/F/U/A item is completed here.
+
 ## Completion log
 
 Append one row per qualified increment. Link actual evidence and record the
@@ -560,3 +568,4 @@ numerical change invalidates their prior qualification.
 | 2026-11-16 | Diagnostic only; F02/A02/A03 remain open | Unchanged qualified r09 runtime | [Coarse curved-boundary diagnosis](CARTESIAN_SUBGRID_CONDUCTOR.md#curved-line-boundary-diagnosis). Native reconstruction checks126,390 leaves with zero mask mismatches. High conductivity approaches matching PEC mask within1.52e-5 complex S11/0.00335° S21; boundary classification reproduces12.627°. Consistent incremental Cu transmission differs0.02953°/0.00258dB. One coarse fixture only; no curved convergence, upstream-defect or antenna acceptance claim. |
 | 2026-11-16 | Further partial D01/D02/F01/F02: cold C++ constitutive ownership | This PR, r13 (parent `9eb7291`) | [Prepared conductivity domains](CARTESIAN_SUBGRID_DOMAINS.md#prepared-conductivity-domains). Reference14/Metal15 constitutive cases; local19 stages/CTest41/Python14 and11,255 exact prior arrays. CUDA39 gates/CTest41, including58 constitutive cases on each physical RTX4090/RTX3080 and both pair orders. FP32 one-device fields are identical; maximum double field error5.830e-6 and balance2.638e-7. Local core `f355d86377b742520112925f8f38cd0dfeed66c3724510a477254b865f6bf880`; CUDA `21ab8476d5ba7845e6518bdc00743cbe3e947ffa57ea851872eb3cfc8a64c83f`. Native distributed PML/DFT/pause, RF/antenna and scaling remain open. |
 | 2026-11-16 | Further partial G01/G04/F02: internal opaque refinement faces | This PR, r14 (parent `daca3b6`) | [Internal-face qualification](CARTESIAN_SUBGRID_CONDUCTOR.md#internal-opaque-refinement-faces). Twelve positive/all-normal face controls plus retained partial-face rejection; the new test fails against the actual R13 parent after two controls. Local19 stages/CTest42/Python14 and11,255 identical prior arrays pass. Contained native Cu18 setup passes Metal and eight actual CUDA steps; full CUDA39-gate/CTest42 compatibility replay passes with58 constitutive comparisons. Finer curved RF remains in progress, not accepted. No geometry/trace/update-equation change or production adoption. |
+| 2026-11-16 | Further partial D01/D02/B02/U04: cold PML composition | This PR, r16 candidate (numerical parent `4663326`) | [Prepared PML domains](CARTESIAN_SUBGRID_DOMAINS.md#prepared-pml-domains). Six reference/seven Metal cases and local43/43 CTest pass; exact one-device FP32 fields, maximum double field error1.420e-5 and work/balance below4.387e-8. Full local20-stage/array and physical43-gate replay remain in progress, not qualified. Native distributed scripting/DFT/pause, general PML parity, RF/antenna and scaling remain open. |

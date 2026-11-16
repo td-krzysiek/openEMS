@@ -2,12 +2,14 @@
 #include "cartesian_subgrid_domains.h"
 #include "cartesian_subgrid.h"
 #include "gpu_backend.h"
+#include "engine_plan.h"
 #include "kernels/subgrid_update.h"
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <stdexcept>
 #include <utility>
+#include <limits>
 
 namespace
 {
@@ -40,6 +42,20 @@ const CartesianSubgridDomainData &ValidateWorkerDomain(GPU_Backend &backend, con
 			seen[index] = true;
 		}
 	}
+	if (domain.pml)
+	{
+		Require(domain.pml->timestep > 0 && domain.pml->timestep <= domain.fields.stableTimestep &&
+			(!domain.loss || domain.loss->timestep == domain.pml->timestep) &&
+			(domain.fields.rootConductance.empty() || domain.fields.portTimestep == domain.pml->timestep),
+			"CartesianSubgrid: invalid worker PML timestep");
+		for (const auto &item : {std::make_pair(&domain.pml->electric, domain.ownedElectric),
+			std::make_pair(&domain.pml->magnetic, domain.ownedMagnetic)})
+		{
+			Require(std::all_of(item.first->target.begin(), item.first->target.end(),
+				[&](std::uint32_t target) { return target < item.second; }),
+				"CartesianSubgrid: a ghost cannot own PML history");
+		}
+	}
 	// Fail before allocating fields if this backend cannot update ghost storage.
 	backend.Activate();
 	backend.DeviceUpload(nullptr, nullptr, 0);
@@ -55,6 +71,12 @@ class LocalWorker : public CartesianSubgridDomainWorker
 	{
 		m_RecurrenceStep = domain.loss ? domain.loss->timestep : 0;
 		m_Owned = {domain.ownedElectric, domain.ownedMagnetic};
+		if (domain.pml)
+		{
+			m_PMLStep = domain.pml->timestep;
+			m_Execution->RequireFixedTimestep(m_PMLStep);
+			m_PML = GPU_CreateCartesianSubgridPML(backend, m_Execution->Fields(), *domain.pml);
+		}
 		const auto fields = m_Execution->Fields();
 		m_Total = {fields.electricCount, fields.magneticCount};
 		for (Field field : {Field::Electric, Field::Magnetic})
@@ -70,19 +92,28 @@ class LocalWorker : public CartesianSubgridDomainWorker
 	void Electric(double timestep, double amplitude, std::size_t targetEpoch) override
 	{
 		Require(!m_Pending && targetEpoch == m_Epoch + 1, "CartesianSubgrid: worker electric epoch mismatch");
+		Require(!m_PML || (timestep == m_PMLStep && std::isfinite(static_cast<float>(amplitude)) &&
+			m_Epoch < std::numeric_limits<unsigned int>::max()), "CartesianSubgrid: invalid worker PML step");
+		Hook(false, GPU_PRE);
 		m_Execution->UpdateElectric(timestep, amplitude);
+		Hook(false, GPU_POST);
+		Hook(false, GPU_APPLY);
 		m_Pending = timestep;
 	}
 	void Magnetic(double timestep, std::size_t targetEpoch) override
 	{
 		Require(m_Pending == timestep && m_Pending != 0 && targetEpoch == m_Epoch + 1,
 			"CartesianSubgrid: worker magnetic epoch mismatch");
+		Hook(true, GPU_PRE);
 		m_Execution->UpdateMagnetic(timestep);
+		Hook(true, GPU_POST);
+		Hook(true, GPU_APPLY);
 		m_Pending = 0;
 		++m_Epoch;
 	}
 	void RequireFixedTimestep(double timestep) override { m_Execution->RequireFixedTimestep(timestep); }
 	double RecurrenceTimestep() const override { return m_RecurrenceStep; }
+	double PMLTimestep() const override { return m_PMLStep; }
 	std::size_t Owned(Field field) const override { return m_Owned[Slot(field)]; }
 	std::size_t Exports(Field field) const override { return m_Exports[Slot(field)]; }
 	std::size_t Ghosts(Field field) const override { return m_Total[Slot(field)] - Owned(field); }
@@ -125,7 +156,16 @@ class LocalWorker : public CartesianSubgridDomainWorker
 		m_Backend.DeviceDownload(electric, fields.electric, electricCount * sizeof(float));
 		m_Backend.DeviceDownload(magnetic, fields.magnetic, magneticCount * sizeof(float));
 	}
-	std::size_t StorageBytes() const override { return m_StorageBytes + m_Execution->StorageBytes(); }
+	std::size_t StorageBytes() const override
+	{
+		return m_StorageBytes + m_Execution->StorageBytes() + (m_PML ? m_PML->StorageBytes() : 0);
+	}
+	double ReadBoundaryWorkOut(std::size_t epoch) override
+	{
+		Require(m_PML && !m_Pending && epoch == m_Epoch, "CartesianSubgrid: mixed worker PML epoch");
+		m_Backend.Activate();
+		return m_PML->ReadBoundaryWorkOut();
+	}
 	std::array<double, 2> ReadLedger(std::size_t epoch) override
 	{
 		Require(!m_Pending && epoch == m_Epoch, "CartesianSubgrid: mixed worker ledger epoch");
@@ -143,6 +183,14 @@ class LocalWorker : public CartesianSubgridDomainWorker
 	}
 
   private:
+	void Hook(bool magnetic, GPU_Hook phase)
+	{
+		if (m_PML)
+		{
+			m_Backend.Activate();
+			m_PML->Hook(magnetic, phase, Engine_Box{}, static_cast<unsigned int>(m_Epoch));
+		}
+	}
 	void CheckExchange(Field field, std::size_t epoch) const
 	{
 		Slot(field);
@@ -162,10 +210,11 @@ class LocalWorker : public CartesianSubgridDomainWorker
 	}
 	GPU_Backend &m_Backend;
 	std::unique_ptr<GPU_CartesianSubgrid> m_Execution;
+	std::unique_ptr<GPU_CartesianSubgridPML> m_PML;
 	std::array<std::size_t, 2> m_Owned{}, m_Total{}, m_Exports{};
 	std::array<Op_SubgridGather, 2> m_Gather{};
 	std::size_t m_Epoch = 0, m_StorageBytes = 0;
-	double m_Pending = 0, m_RecurrenceStep = 0;
+	double m_Pending = 0, m_RecurrenceStep = 0, m_PMLStep = 0;
 	bool m_TracksLedger = false;
 };
 }

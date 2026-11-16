@@ -35,6 +35,8 @@ void CheckWorkers(const CartesianSubgridDomainPlan &plan,
 		const auto &d = plan.Domains()[k];
 		Require(workers[k]->RecurrenceTimestep() == (d.loss ? d.loss->timestep : 0),
 			"CartesianSubgrid: worker constitutive preparation differs from ownership plan");
+		Require(workers[k]->PMLTimestep() == (d.pml ? d.pml->timestep : 0),
+			"CartesianSubgrid: worker PML preparation differs from ownership plan");
 		Require(workers[k]->Owned(Field::Electric) == d.ownedElectric &&
 			workers[k]->Owned(Field::Magnetic) == d.ownedMagnetic &&
 			workers[k]->Ghosts(Field::Electric) == d.fields.electric.size() - d.ownedElectric &&
@@ -265,6 +267,29 @@ class Coordinator : public GPU_CartesianSubgrid
 	{
 		return ReadConstitutiveLedger(true);
 	}
+	double ReadBoundaryWorkOut() override
+	{
+		Healthy();
+		Require(!m_Pending && m_Plan->PMLTimestep() > 0,
+			"CartesianSubgrid: boundary observation requires a complete PML step");
+		double result = 0;
+		try
+		{
+			for (auto &worker : m_Workers)
+			{
+				const double value = worker->ReadBoundaryWorkOut(m_Epoch);
+				Require(std::isfinite(value), "CartesianSubgrid: invalid worker PML work");
+				result += value;
+				Require(std::isfinite(result), "CartesianSubgrid: PML work overflow");
+			}
+		}
+		catch (...)
+		{
+			m_Failed = true;
+			throw;
+		}
+		return result;
+	}
 	GPU_CartesianSubgridFields Fields() const override
 	{
 		throw std::logic_error("CartesianSubgrid: domains have no single borrowed field buffer; use the coordinator");
@@ -308,6 +333,7 @@ class Coordinator : public GPU_CartesianSubgrid
 			(timestep == double(dt) || std::abs(low) >= std::numeric_limits<float>::min()) &&
 			(m_Plan->PortTimestep() == 0 || timestep == m_Plan->PortTimestep()) &&
 			(m_Plan->RecurrenceTimestep() == 0 || timestep == m_Plan->RecurrenceTimestep()) &&
+			(m_Plan->PMLTimestep() == 0 || timestep == m_Plan->PMLTimestep()) &&
 			(m_Fixed == 0 || m_Fixed == timestep), "CartesianSubgrid: invalid coordinator timestep/source");
 	}
 	std::shared_ptr<const CartesianSubgridDomainPlan> m_Plan;

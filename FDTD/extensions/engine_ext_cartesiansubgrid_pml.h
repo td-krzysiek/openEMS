@@ -6,6 +6,8 @@
 #include "operator_ext_cartesiansubgrid_pml.h"
 #include "FDTD/gpu_cartesiansubgrid_pml.h"
 
+class Engine_Ext_CartesianSubgrid_Conductivity;
+
 class Engine_Ext_CartesianSubgrid_PML : public Engine_Extension
 {
   public:
@@ -22,8 +24,14 @@ class Engine_Ext_CartesianSubgrid_PML : public Engine_Extension
 	std::unique_ptr<GPU_CartesianSubgridPML> CreateDevice(
 		GPU_Backend &backend, const GPU_CartesianSubgridFields &fields);
 	void ReadDeviceDiagnostics(GPU_CartesianSubgridPML &device);
+	//! Cold tables only; no running convolution history is migrated.
+	CartesianSubgridPMLData PrepareDomainData(
+		const Engine_Ext_CartesianSubgrid_Conductivity *advance = nullptr) const;
+	const CartesianSubgrid &Grid() const;
+	const Operator_Ext_CartesianSubgrid_PML &PreparedOperator() const { return *m_PML; }
 
   private:
+	CartesianSubgridPMLData PrepareDeviceData() const;
 	struct State
 	{
 		std::vector<double> history, correction, previous, target;
@@ -38,6 +46,6 @@ class Engine_Ext_CartesianSubgrid_PML : public Engine_Extension
 	Operator_Ext_CartesianSubgrid_PML *m_PML;
 	State m_Electric, m_Magnetic;
 	double m_WorkOut = 0;
-	bool m_DeviceConfigured = false;
+	bool m_DeviceConfigured = false, m_HostAdvanced = false;
 };
 #endif

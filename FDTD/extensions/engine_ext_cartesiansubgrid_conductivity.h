@@ -5,6 +5,8 @@
 #include "operator_ext_cartesiansubgrid_conductivity.h"
 #include "FDTD/gpu_cartesiansubgrid_conductivity.h"
 
+class Engine_Ext_CartesianSubgrid_PML;
+
 class Engine_Ext_CartesianSubgrid_Conductivity : public Engine_Ext_CartesianSubgrid_Advance
 {
   public:
@@ -18,7 +20,9 @@ class Engine_Ext_CartesianSubgrid_Conductivity : public Engine_Ext_CartesianSubg
 	double SurfaceLoss() const { return m_SurfaceLoss[0] + m_SurfaceLoss[1]; }
 	double AdditionalStoredEnergy() const override;
 	//! Cold-state C++ domain preparation; no live history migration is implied.
-	CartesianSubgridConductivityPrepared PrepareDomainData() const;
+	CartesianSubgridConductivityPrepared PrepareDomainData(
+		const Engine_Ext_CartesianSubgrid_PML *pml = nullptr) const;
+	const Operator_Ext_CartesianSubgrid_Conductivity &PreparedOperator() const { return *m_Conductivity; }
 	const CartesianSubgrid &Grid() const { return m_Grid; }
 
   private:

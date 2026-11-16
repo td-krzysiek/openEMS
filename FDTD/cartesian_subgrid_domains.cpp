@@ -2,6 +2,7 @@
 #include "cartesian_subgrid_domains.h"
 #include "cartesian_subgrid.h"
 #include "extensions/engine_ext_cartesiansubgrid_conductivity.h"
+#include "extensions/engine_ext_cartesiansubgrid_pml.h"
 #include <algorithm>
 #include <cmath>
 #include <set>
@@ -41,19 +42,33 @@ void Rows(const std::vector<Index> &owned, const std::vector<Index> &starts,
 
 CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(const CartesianSubgrid &grid,
 	unsigned int axis, const std::vector<double> &cuts)
-	: CartesianSubgridDomainPlan(grid, axis, cuts, {grid.DeviceData(), {}})
+	: CartesianSubgridDomainPlan(grid, axis, cuts, {{grid.DeviceData(), {}}, {}})
 {
 }
 
 CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(
 	const Engine_Ext_CartesianSubgrid_Conductivity &advance, unsigned int axis,
 	const std::vector<double> &cuts)
-	: CartesianSubgridDomainPlan(advance.Grid(), axis, cuts, advance.PrepareDomainData())
+	: CartesianSubgridDomainPlan(advance.Grid(), axis, cuts, {advance.PrepareDomainData(), {}})
+{
+}
+
+CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(const Engine_Ext_CartesianSubgrid_PML &pml,
+	unsigned int axis, const std::vector<double> &cuts)
+	: CartesianSubgridDomainPlan(pml.Grid(), axis, cuts, {{pml.Grid().DeviceData(), {}}, pml.PrepareDomainData()})
+{
+}
+
+CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(
+	const Engine_Ext_CartesianSubgrid_Conductivity &advance, const Engine_Ext_CartesianSubgrid_PML &pml,
+	unsigned int axis, const std::vector<double> &cuts)
+	: CartesianSubgridDomainPlan(advance.Grid(), axis, cuts,
+		{advance.PrepareDomainData(&pml), pml.PrepareDomainData(&advance)})
 {
 }
 
 CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(const CartesianSubgrid &grid,
-	unsigned int axis, const std::vector<double> &cuts, CartesianSubgridConductivityPrepared prepared)
+	unsigned int axis, const std::vector<double> &cuts, Prepared prepared)
 {
 	Require(axis < 3 && cuts.size() < 64, "CartesianSubgrid: invalid domain cuts");
 	const auto &lines = grid.BaseLines()[axis];
@@ -64,14 +79,18 @@ CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(const CartesianSubgrid &g
 			"CartesianSubgrid: domain cuts must be finite, increasing and internal");
 		previous = cut;
 	}
-	const auto &data = prepared.fields;
+	const auto &data = prepared.advance.fields;
 	Require(!data.rootConductance.empty() || data.ledger == std::vector<float>({0, 0, 0, 0}),
 		"CartesianSubgrid: a non-port accumulated ledger has no qualified ownership");
 	m_StableStep = data.stableTimestep;
 	m_PortStep = data.rootConductance.empty() ? 0 : data.portTimestep;
-	m_RecurrenceStep = prepared.loss ? prepared.loss->timestep : 0;
-	Require(!prepared.loss || (m_RecurrenceStep > 0 && m_RecurrenceStep <= m_StableStep),
+	m_RecurrenceStep = prepared.advance.loss ? prepared.advance.loss->timestep : 0;
+	Require(!prepared.advance.loss || (m_RecurrenceStep > 0 && m_RecurrenceStep <= m_StableStep),
 		"CartesianSubgrid: invalid domain recurrence timestep");
+	m_PMLStep = prepared.pml ? prepared.pml->timestep : 0;
+	Require(!prepared.pml || (m_PMLStep > 0 && m_PMLStep <= m_StableStep &&
+		(m_RecurrenceStep == 0 || m_PMLStep == m_RecurrenceStep) &&
+		(m_PortStep == 0 || m_PMLStep == m_PortStep)), "CartesianSubgrid: invalid domain PML timestep");
 	m_FactorTails = data.factorTails;
 	m_StateTails = data.stateTails;
 	m_ElectricCount = data.electric.size();
@@ -206,6 +225,31 @@ CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(const CartesianSubgrid &g
 				}
 			}
 		}
+		if (prepared.pml)
+		{
+			const auto dependencies = [&](const CartesianSubgridPMLData::Rows &rows,
+				const std::vector<Index> &targetOwners, const std::vector<Index> &sourceOwners,
+				std::set<Index> &ghosts)
+			{
+				for (Index row = 0; row < rows.target.size(); ++row)
+				{
+					if (targetOwners.at(rows.target[row]) != worker)
+					{
+						continue;
+					}
+					for (Index k = rows.start.at(row); k < rows.start.at(row + 1); ++k)
+					{
+						const Index source = rows.source.at(k);
+						if (sourceOwners.at(source) != worker)
+						{
+							ghosts.insert(source);
+						}
+					}
+				}
+			};
+			dependencies(prepared.pml->electric, eOwner, hOwner, ghostH);
+			dependencies(prepared.pml->magnetic, hOwner, eOwner, ghostE);
+		}
 		domain.globalElectric.insert(domain.globalElectric.end(), ghostE.begin(), ghostE.end());
 		domain.globalMagnetic.insert(domain.globalMagnetic.end(), ghostH.begin(), ghostH.end());
 		for (Index global : domain.globalElectric)
@@ -279,9 +323,44 @@ CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(const CartesianSubgrid &g
 			// Attribute the existing accumulated work once, never per worker.
 			local.ledger = data.ledger;
 		}
-		if (prepared.loss)
+		if (prepared.pml)
 		{
-			const auto &source = *prepared.loss;
+			domain.pml.emplace();
+			domain.pml->timestep = prepared.pml->timestep;
+			const auto select = [&](const CartesianSubgridPMLData::Rows &input,
+				const std::vector<Index> &owners, const Map &targets, const Map &sources,
+				CartesianSubgridPMLData::Rows &output)
+			{
+				for (Index group = 0; group + 1 < input.group.size(); ++group)
+				{
+					const Index first = input.group[group], stop = input.group[group + 1];
+					if (owners.at(input.target.at(first)) != worker)
+					{
+						continue;
+					}
+					for (Index row = first; row < stop; ++row)
+					{
+						Require(owners.at(input.target[row]) == worker, "CartesianSubgrid: split PML target group");
+						output.target.push_back(targets.at(input.target[row]));
+						output.decay.push_back(input.decay[row]);
+						output.change.push_back(input.change[row]);
+						for (Index k = input.start[row]; k < input.start[row + 1]; ++k)
+						{
+							output.source.push_back(sources.at(input.source[k]));
+							output.weight.push_back(input.weight[k]);
+							output.low.push_back(input.low[k]);
+						}
+						output.start.push_back(static_cast<Index>(output.source.size()));
+					}
+					output.group.push_back(static_cast<Index>(output.target.size()));
+				}
+			};
+			select(prepared.pml->electric, eOwner, eMaps[worker], hMaps[worker], domain.pml->electric);
+			select(prepared.pml->magnetic, hOwner, hMaps[worker], eMaps[worker], domain.pml->magnetic);
+		}
+		if (prepared.advance.loss)
+		{
+			const auto &source = *prepared.advance.loss;
 			domain.loss.emplace();
 			auto &loss = *domain.loss;
 			loss.timestep = source.timestep;

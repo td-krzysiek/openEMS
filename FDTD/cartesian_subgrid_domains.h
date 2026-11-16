@@ -4,6 +4,7 @@
 
 #include "gpu_cartesiansubgrid.h"
 #include "gpu_cartesiansubgrid_conductivity.h"
+#include "gpu_cartesiansubgrid_pml.h"
 #include <array>
 #include <cstddef>
 #include <cstdint>
@@ -14,12 +15,15 @@
 //! Compact ownership is independent of backend, process and host placement.
 enum class CartesianSubgridField { Electric, Magnetic };
 class Engine_Ext_CartesianSubgrid_Conductivity;
+class Engine_Ext_CartesianSubgrid_PML;
 
 struct CartesianSubgridDomainData
 {
 	CartesianSubgridDeviceData fields;
 	//! Owned constitutive rows/states only; ghosts never own histories.
 	std::optional<CartesianSubgridConductivityData> loss;
+	//! Target-owned convolution rows; source columns may reference field ghosts.
+	std::optional<CartesianSubgridPMLData> pml;
 	std::size_t ownedElectric = 0, ownedMagnetic = 0;
 	//! Owned entries first, then read-only ghosts, in each local field array.
 	std::vector<std::uint32_t> globalElectric, globalMagnetic;
@@ -40,6 +44,10 @@ class CartesianSubgridDomainPlan
 		const std::vector<double> &cuts);
 	CartesianSubgridDomainPlan(const Engine_Ext_CartesianSubgrid_Conductivity &advance,
 		unsigned int axis, const std::vector<double> &cuts);
+	CartesianSubgridDomainPlan(const Engine_Ext_CartesianSubgrid_PML &pml,
+		unsigned int axis, const std::vector<double> &cuts);
+	CartesianSubgridDomainPlan(const Engine_Ext_CartesianSubgrid_Conductivity &advance,
+		const Engine_Ext_CartesianSubgrid_PML &pml, unsigned int axis, const std::vector<double> &cuts);
 	const std::vector<CartesianSubgridDomainData> &Domains() const { return m_Domains; }
 	const std::vector<Transfer> &Transfers(CartesianSubgridField field) const
 	{
@@ -55,16 +63,22 @@ class CartesianSubgridDomainPlan
 	double StableTimestep() const { return m_StableStep; }
 	double PortTimestep() const { return m_PortStep; }
 	double RecurrenceTimestep() const { return m_RecurrenceStep; }
+	double PMLTimestep() const { return m_PMLStep; }
 	const CartesianSubgridFloat::TailInfo &FactorTails() const { return m_FactorTails; }
 	const CartesianSubgridFloat::TailInfo &StateTails() const { return m_StateTails; }
 
   private:
+	struct Prepared
+	{
+		CartesianSubgridConductivityPrepared advance;
+		std::optional<CartesianSubgridPMLData> pml;
+	};
 	CartesianSubgridDomainPlan(const CartesianSubgrid &grid, unsigned int axis,
-		const std::vector<double> &cuts, CartesianSubgridConductivityPrepared prepared);
+		const std::vector<double> &cuts, Prepared prepared);
 	std::vector<CartesianSubgridDomainData> m_Domains;
 	std::vector<Transfer> m_ElectricTransfers, m_MagneticTransfers;
 	std::size_t m_ElectricCount = 0, m_MagneticCount = 0, m_ReassignedElectric = 0;
-	double m_StableStep = 0, m_PortStep = 0, m_RecurrenceStep = 0;
+	double m_StableStep = 0, m_PortStep = 0, m_RecurrenceStep = 0, m_PMLStep = 0;
 	CartesianSubgridFloat::TailInfo m_FactorTails, m_StateTails;
 };
 
@@ -80,6 +94,7 @@ class CartesianSubgridDomainWorker
 	virtual void Magnetic(double timestep, std::size_t targetEpoch) = 0;
 	virtual void RequireFixedTimestep(double timestep) = 0;
 	virtual double RecurrenceTimestep() const { return 0; }
+	virtual double PMLTimestep() const { return 0; }
 	virtual std::size_t Owned(CartesianSubgridField field) const = 0;
 	virtual std::size_t Exports(CartesianSubgridField field) const = 0;
 	virtual std::size_t Ghosts(CartesianSubgridField field) const = 0;
@@ -95,6 +110,10 @@ class CartesianSubgridDomainWorker
 	virtual std::array<double, 2> ReadAdvanceSurfaceLedger(std::size_t)
 	{
 		throw std::logic_error("CartesianSubgrid: worker surface diagnostics unavailable");
+	}
+	virtual double ReadBoundaryWorkOut(std::size_t)
+	{
+		throw std::logic_error("CartesianSubgrid: worker PML diagnostics unavailable");
 	}
 	virtual std::size_t StorageBytes() const = 0;
 };

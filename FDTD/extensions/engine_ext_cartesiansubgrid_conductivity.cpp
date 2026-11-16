@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include "engine_ext_cartesiansubgrid_conductivity.h"
+#include "engine_ext_cartesiansubgrid_pml.h"
 #include "FDTD/operator_cartesiansubgrid.h"
 #include "FDTD/gpu_backend.h"
 #include "FDTD/gpu_cartesiansubgrid_conductivity.h"
@@ -158,15 +159,21 @@ void Engine_Ext_CartesianSubgrid_Conductivity::UpdateMagnetic(double timestep)
 	g.m_PendingMagneticTimestep = 0;
 }
 
-CartesianSubgridConductivityPrepared Engine_Ext_CartesianSubgrid_Conductivity::PrepareDomainData() const
+CartesianSubgridConductivityPrepared Engine_Ext_CartesianSubgrid_Conductivity::PrepareDomainData(
+	const Engine_Ext_CartesianSubgrid_PML *pml) const
 {
 	if (m_Advanced || m_UsingDevice || m_Grid.m_PendingMagneticTimestep != 0)
 	{
 		throw std::invalid_argument("CartesianSubgrid: distributed conductivity requires cold constitutive histories");
 	}
+	if (pml && &pml->Grid() != &m_Grid)
+	{
+		throw std::invalid_argument("CartesianSubgrid: conductivity and domain PML have different grids");
+	}
 	for (std::size_t k = 0; k < m_Conductivity->m_Compact->GetNumberOfExtentions(); ++k)
 	{
-		if (m_Conductivity->m_Compact->GetExtension(k) != m_Conductivity)
+		const auto *extension = m_Conductivity->m_Compact->GetExtension(k);
+		if (extension != m_Conductivity && (!pml || extension != &pml->PreparedOperator()))
 		{
 			throw std::invalid_argument("CartesianSubgrid: other domain extension histories are not prepared");
 		}
