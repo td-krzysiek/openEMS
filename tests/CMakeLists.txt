@@ -32,6 +32,7 @@ set(TESTS
   test_cartesian_subgrid_conductivity
   test_cartesian_subgrid_conductivity_guards
   test_cartesian_subgrid_native_conductivity
+  test_cartesian_subgrid_conductivity_pml
 )
 
 foreach(test ${TESTS})

@@ -3,7 +3,8 @@
 **Qualified scope:** constant native isotropic conductivity boxes and the
 paired single-device recurrence on CPU/reference/Metal and HIP/NVIDIA. The
 combined compatibility gates below pass. This is not distributed-loss,
-conductor/skin, PML/loss or production antenna qualification. Retain the
+conductor/skin or production antenna qualification. A separately qualified
+disjoint-support conductivity/PML combination is described below. Retain the
 allocation and geometry guards from `CARTESIAN_SUBGRID.md`.
 
 ## Numerical contract
@@ -46,7 +47,7 @@ factors. Twelve bounded cases cover zero/stiff loss, pure electric/magnetic
 loss, full XYZ refinement, noncommuting mass/conductance, real pulse/DC sources,
 source-only operation, coupled ports and repeated observations.
 [`test_cartesian_subgrid_conductivity_guards.cpp`](tests/test_cartesian_subgrid_conductivity_guards.cpp)
-checks invalid coefficients, construction, phases, rates and absorber rejection.
+checks invalid coefficients, construction, phases, rates and unsupported absorber combinations.
 
 The earlier isolated XYZ prototype passed 27/27 CTest checks and twelve physical cases
 on each of Metal, RTX4090 and RTX3080. The largest sampled FP32 field error
@@ -130,16 +131,57 @@ Frozen combined core SHA-256:
 - CPU/Metal: `51b9bd40dc81e3f50c9cdde47dd387a4ec60e02e8a52790ccde0ec1d051ed27e`.
 - HIP/NVIDIA: `951ad4afd0d82e6e70e8cc52bdf3282ad98b12e1664115f68b9b9d72e2bf017d`.
 
+## Disjoint conductivity and PML
+
+The joint increment permits loss only outside the actual prepared PML targets
+and protected collar/guard supports. Affected electric supports are closed over
+each coupled mass block. Magnetic supports use the actual corrected face set.
+A bounding-box test or extension insertion order is insufficient. Validation
+runs after all operators have prepared their tables and again before engine
+creation; direct construction with unprepared PML metadata also rejects.
+Mur, overlapping loss/PML and loss inside the protected homogeneous collar
+remain rejected. No field-update or PML kernel formula changes in this increment.
+
+The new `test_cartesian_subgrid_conductivity_pml` covers XYZ packets, reverse Y,
+both declaration orders and native mapping, exact zero-loss controls, a six-face
+corner, real built soft-Dirac sources, coupled 50/75-ohm ports, pure electric or
+magnetic loss, and actual-target/collar overlap guards. There are 24 ledger
+cases and eight CPU/device field comparisons per physical GPU. Native scripting
+also exercises separated loss with PML.
+
+- All 26 local compatibility stages pass, CTest 30/30 and Python 14/14.
+  Twenty-two previous runtime prefixes and 11,255 numerical arrays are unchanged.
+- All 15 physical CUDA gates pass, including CTest 30/30, the new cases on each
+  RTX4090 and RTX3080, and retained lossless two-card controls in both orders.
+  Joint conductivity/PML runs on **one device at a time**, not across domains.
+- Largest joint sampled CPU/device field error: `7.431e-7`; normalized balance
+  error: `1.805e-7`, both below the unchanged `2e-4` gate.
+- A single-mesh matched 8 mm lossy slab absorbs about 0.26108 of initial energy;
+  analytic attenuation predicts 0.26021, a relative difference below 0.338%.
+  This is a packet sanity check, not spatial convergence or broadband reflection
+  acceptance. Joint long-time/near-cutoff/antenna coverage remains open.
+
+Frozen joint core SHA-256:
+
+- CPU/Metal: `8d6011bece45f32582964b721d1b6dee8dadd8c81b9a9454b7001245d2fd62bf`.
+- HIP/NVIDIA: `da4e5f836e917f8a655bb0f82764c3eaf6948b49eaad95cf5d8fce9a0cb9ec08`.
+
+Contributor evidence: `lossy-materials/disjoint-pml/` qualification, CUDA,
+prior-array and source-publication receipts. Earlier failed source-amplitude,
+port-setup ordering and driven-energy-envelope fixtures are retained separately;
+corrected controls retain the numerical gates and record actual source/builds.
+
+```sh
+build/tests/test_cartesian_subgrid_conductivity_pml
+build/tests/test_cartesian_subgrid_conductivity_pml --metal
+# Separately built/qualified HIP/NVIDIA runtime:
+build/tests/test_cartesian_subgrid_conductivity_pml --cuda
+```
+
 ## Remaining admission gates
 
-Positive loss combined with PML or Mur is still rejected, including apparently
-separated supports. Both histories and work identities need a joint contract.
-The next limited admission must verify disjoint prepared correction targets and
-their coupled electric-mass components after all operators are prepared; a
-bounding-box assumption or extension declaration order is insufficient.
-
-Then qualify native damped-wave/cavity and short-line propagation against
-analytic and regular-Yee controls, including spatial/time sensitivity and power.
+Native damped-wave/cavity and short-line propagation need broader analytic and
+regular-Yee comparisons, including spatial/time sensitivity and power.
 Conducting sheets, physical conductor skin/ADE histories, distributed loss/PML,
 DFT/pause and representative lossy PCB/array behavior remain open. These scoped
 checks do not establish scalability, end-to-end speedup or antenna accuracy.

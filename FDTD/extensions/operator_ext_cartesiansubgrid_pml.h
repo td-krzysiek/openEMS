@@ -21,6 +21,13 @@ class Operator_Ext_CartesianSubgrid_PML : public Operator_Extension
 	std::string GetExtensionName() const override { return "Cartesian subgrid convolution PML"; }
 	std::size_t ElectricHistoryCount() const { return m_Electric.size(); }
 	std::size_t MagneticHistoryCount() const { return m_Magnetic.size(); }
+	//! Protected field supports: actual correction targets plus the required
+	//! homogeneous lossless collar/guard, reconstructed from prepared local cells.
+	struct Footprint
+	{
+		std::vector<std::size_t> electric, magnetic;
+	};
+	const Footprint &PreparedFootprint() const;
 
   private:
 	struct Term
@@ -37,5 +44,7 @@ class Operator_Ext_CartesianSubgrid_PML : public Operator_Extension
 	Operator_CartesianSubgrid *m_Compact;
 	std::array<unsigned int, 6> m_Cells;
 	std::vector<Derivative> m_Electric, m_Magnetic;
+	Footprint m_Footprint;
+	bool m_Prepared = false;
 };
 #endif

@@ -80,7 +80,12 @@ int main()
 		}
 		Reject([&] { Loss overflow(f.op.get(), Constant(0, 1e308)); overflow.BuildExtension(); });
 		f.op->AddExtension(new Operator_Ext_CartesianSubgrid_PML(f.op.get(), {0, 1, 0, 0, 0, 0}));
-		Reject([&] { Loss history(f.op.get(), Constant(.02, 0)); history.BuildExtension(); });
+		Reject([&]
+		{
+			Loss history(f.op.get(), Constant(.02, 0));
+			history.BuildExtension();
+			history.ValidatePreparedExtensions();
+		});
 		std::cout << "PASS: sampler/sign/finite/rate/absorber-combination guards" << std::endl;
 
 		Fixture valid;

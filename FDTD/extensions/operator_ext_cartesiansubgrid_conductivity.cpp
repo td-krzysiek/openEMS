@@ -105,13 +105,13 @@ bool Operator_Ext_CartesianSubgrid_Conductivity::BuildExtension()
 	{
 		return true;
 	}
-	// Histories need a joint derivation before these combinations are admitted.
+	// Mur remains outside the qualified joint recurrence. PML compatibility is
+	// checked after all operators have prepared their actual protected supports.
 	for (std::size_t i = 0; i < m_Compact->GetNumberOfExtentions(); ++i)
 	{
 		auto *extension = m_Compact->GetExtension(i);
-		Require(!dynamic_cast<Operator_Ext_CartesianSubgrid_PML *>(extension) &&
-			!dynamic_cast<Operator_Ext_CartesianSubgrid_Mur *>(extension),
-			"CartesianSubgrid conductivity with absorber histories is not yet qualified");
+		Require(!dynamic_cast<Operator_Ext_CartesianSubgrid_Mur *>(extension),
+			"CartesianSubgrid conductivity with Mur histories is not yet qualified");
 	}
 	Couplings mass;
 	for (const auto &term : g.m_MassOffDiagonal)
@@ -152,6 +152,53 @@ bool Operator_Ext_CartesianSubgrid_Conductivity::BuildExtension()
 	}
 	BuildPortResponses();
 	return true;
+}
+
+void Operator_Ext_CartesianSubgrid_Conductivity::ValidatePreparedExtensions() const
+{
+	if (!m_HasLoss)
+	{
+		return;
+	}
+	const auto &grid = m_Compact->Grid();
+	std::vector<bool> affected(grid.EdgeCount(), false);
+	for (std::size_t edge = 0; edge < affected.size(); ++edge)
+	{
+		affected[edge] = m_Diagonal[edge] != 0;
+	}
+	// Any nonzero G on a coupled mass block protects the entire block: an
+	// implicit solve can change every member even if its own G diagonal is zero.
+	for (const auto &block : grid.m_Blocks)
+	{
+		const bool coupled = std::any_of(block.edges.begin(), block.edges.end(),
+			[&](std::size_t edge) { return affected[edge]; });
+		if (coupled)
+		{
+			for (std::size_t edge : block.edges)
+			{
+				affected[edge] = true;
+			}
+		}
+	}
+	for (std::size_t i = 0; i < m_Compact->GetNumberOfExtentions(); ++i)
+	{
+		const auto *pml = dynamic_cast<Operator_Ext_CartesianSubgrid_PML *>(m_Compact->GetExtension(i));
+		if (!pml)
+		{
+			continue;
+		}
+		const auto &footprint = pml->PreparedFootprint();
+		for (std::size_t edge : footprint.electric)
+		{
+			Require(edge < affected.size() && !affected[edge],
+				"CartesianSubgrid: conductivity/PML electric mass support overlap");
+		}
+		for (std::size_t face : footprint.magnetic)
+		{
+			Require(face < m_MagneticRate.size() && m_MagneticRate[face] == 0,
+				"CartesianSubgrid: conductivity/PML magnetic support overlap");
+		}
+	}
 }
 
 void Operator_Ext_CartesianSubgrid_Conductivity::Factor(CartesianSubgrid::MassBlock &block)

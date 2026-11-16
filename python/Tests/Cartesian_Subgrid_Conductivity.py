@@ -1,7 +1,7 @@
 """Native SI conductivity mapping and scoped CPU/device parity.
 
-Closed-boundary isotropic constant boxes only. Conductivity+absorber histories
-are deliberately rejected; surface/conductor/ADE models remain unsupported.
+Constant isotropic boxes with a guarded lossless PML collar. Overlapping
+supports and Mur remain rejected; surface/conductor/ADE models are unsupported.
 """
 import hashlib
 import json
@@ -63,8 +63,8 @@ for name, electric, magnetic in [('electric', .04, 0), ('magnetic', 0, 120), ('b
         assert max(errors.values()) < 2e-4, (name, engine, errors)
         results[name+'-'+engine] = dict(errors=errors, loss_effect=change)
 
-# A real, otherwise valid PML setup must reach the explicit combined-physics
-# guard rather than failing from geometry, collar size or source placement.
+# A real, otherwise valid PML setup must reach the actual-support overlap guard
+# rather than failing from geometry, collar size or source placement.
 source = HERE / 'Cartesian_Subgrid_Device.py'
 other = {'__file__': str(source), '__name__': 'native_conductivity_pml_guard_fixture'}
 exec(compile(source.read_text().split('\nresults = {}', 1)[0], str(source), 'exec'), other)
@@ -76,11 +76,46 @@ try:
     try:
         run_native_device(fdtd, ROOT/'reject-pml-loss', 'basic', '', numThreads=1, setup_only=True)
     except (ValueError, RuntimeError) as error:
-        assert 'conductivity with absorber histories' in str(error), str(error)
+        assert 'conductivity/PML electric mass support overlap' in str(error), str(error)
     else:
         raise AssertionError('unsupported conductivity/PML histories were admitted')
 finally:
     os.chdir(previous)
+
+
+def pml_run(electric, magnetic, engine, label):
+    fdtd, csx = other['fixture'](steps=512, source_x=0)
+    fdtd.SetBoundaryCond(['PML_4']*6)
+    if electric or magnetic:
+        csx.AddMaterial('interior_loss', epsilon=1, kappa=electric, sigma=magnetic).AddBox([-2]*3, [2]*3)
+    path = ROOT/('disjoint-pml-'+label)
+    previous = os.getcwd()
+    try:
+        run_native_device(fdtd, path, engine, PHYSICAL, numThreads=1,
+                          exact_endcriteria=True)
+    finally:
+        os.chdir(previous)
+    values = {key: np.loadtxt(path/key, comments='%') for key in ['electric', 'magnetic']}
+    assert all(np.isfinite(value).all() and np.max(abs(value[:, 1:])) > 0 for value in values.values())
+    return values
+
+
+pml_zero = pml_run(0, 0, 'basic', 'zero')
+pml_expected = pml_run(.01, 120, 'basic', 'cpu')
+pml_change = max(float(np.max(abs(pml_expected[key][:, 1:]-pml_zero[key][:, 1:])) /
+                       np.max(abs(pml_zero[key][:, 1:]))) for key in pml_zero)
+assert pml_change > 1e-4, ('PML material did not affect the native trace', pml_change)
+pml_results = {}
+for engine in ['gpu-reference'] + (['gpu'] if PHYSICAL else []):
+    actual = pml_run(.01, 120, engine, engine)
+    errors = {}
+    for key in pml_expected:
+        assert pml_expected[key].shape == actual[key].shape
+        np.testing.assert_allclose(pml_expected[key][:, 0], actual[key][:, 0], rtol=1e-12, atol=0)
+        errors[key] = float(np.max(abs(pml_expected[key][:, 1:]-actual[key][:, 1:])) /
+                            np.max(abs(pml_expected[key][:, 1:])))
+    assert max(errors.values()) < 2e-4, (engine, errors)
+    pml_results[engine] = dict(errors=errors, loss_effect=pml_change)
 (ROOT/'metrics.json').write_text(json.dumps(dict(physical=PHYSICAL, cases=results,
-    scope='Native constant SI kappa/sigma only; no surface/conductor/antenna qualification.'), indent=2)+'\n')
-print('PASS: native constant conductivity mapping, physical field parity and absorber guard')
+    pml=pml_results, scope='Native SI kappa/sigma and separated lossless PML collar; no Mur/surface/conductor/antenna qualification.'), indent=2)+'\n')
+print('PASS: native constant conductivity mapping, disjoint PML fields and actual-support overlap guard')

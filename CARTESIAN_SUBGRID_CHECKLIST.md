@@ -328,8 +328,11 @@ priority/unit and scripting controls. The combined local 25-stage qualification,
 CTest 29/29, Python 14/14 and physical CUDA 13-gate/CTest 29/29 suite pass;
 21 older prefixes and 11,255 prior arrays are unchanged. A separate native closed-mode
 pilot shows second-order frequency convergence, with residual spatial waveform
-error explicitly recorded. Loss with PML/Mur, general lossy propagation, surface/
-ADE conductors and distributed histories remain open, so F01 is not checked off.
+error explicitly recorded. The later prepared-support increment qualifies separated
+conductivity/PML on CPU/Metal and each RTX4090/RTX3080: all26 local stages,
+all15 CUDA gates and CTest30/30 pass;22 older prefixes and11,255 arrays remain
+unchanged. Overlapping/Mur loss, broader propagation, surface/ADE conductors
+and distributed histories remain open, so F01 is not checked off.
 
 ## 8. Representative antenna qualification
 
@@ -463,3 +466,5 @@ numerical change invalidates their prior qualification.
 | 2026-11-16 | Further partial P01/U05: native source tails | This PR, waveform increment (parent b48e819) | [Contract and evidence](CARTESIAN_SUBGRID.md#native-source-waveform-tails). Step/custom sample-zero repair;21 local stages, CTest 26/26, Python 14/14 and17 older prefixes/11,255 arrays unchanged. Physical RTX4090/RTX3080 waveform/Step plus retained domain/port controls and CUDA CTest 26/26 pass. Native periodic/SSD, delayed/H/TFSF and antenna qualification remain open. |
 
 | 2026-11-16 | Partial F01 and native G01/U04/U05: constant conductivity | This PR, conductivity increment (configure-time parent b48e819 plus qualified waveform patch) | [Contract, hashes and evidence](CARTESIAN_SUBGRID_CONDUCTIVITY.md). Independent dense and native analytic/priority/unit controls; all 25 local stages, CTest 29/29/Python 14/14; physical RTX4090/RTX3080 single-device loss/native controls and retained pair fields/ports, CUDA 13-gates/CTest 29/29 pass. 21 older prefixes and 11,255 arrays unchanged. PML/loss, skin/surface/ADE, distributed histories, scalability and antenna qualification remain open. |
+
+| 2026-11-16 | Further partial F01/B02/B03/U04/U05: disjoint conductivity/PML | This PR, prepared-support increment (parent `ec73f8d`) | [Joint contract and build hashes](CARTESIAN_SUBGRID_CONDUCTIVITY.md#disjoint-conductivity-and-pml). All26 local stages, CTest30/30/Python14/14; all15 physical CUDA gates/CTest30/30. Twenty-four ledger cases/eight field comparisons per RTX4090/RTX3080, native scripting, zero-loss/order/overlap guards and retained lossless pair controls. Maximum joint field error7.431e-7 and balance1.805e-7. Twenty-two older prefixes/11,255 arrays unchanged. No overlapping/Mur loss, surface/ADE, distributed histories, representative PCB or scaling qualification. |

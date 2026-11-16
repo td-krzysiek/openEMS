@@ -31,6 +31,8 @@ Operator_Ext_CartesianSubgrid_PML::Operator_Ext_CartesianSubgrid_PML(Operator *o
 
 bool Operator_Ext_CartesianSubgrid_PML::BuildExtension()
 {
+	m_Prepared = false;
+	m_Footprint = {};
 	auto &g = m_Compact->Grid();
 	const auto &axes = g.BaseLines();
 	std::array<double, 6> inner{}, guard{}, width{};
@@ -86,6 +88,24 @@ bool Operator_Ext_CartesianSubgrid_PML::BuildExtension()
 		Require(std::abs(material.epsilon / g.m_Epsilon - 1) < 1e-12 &&
 					std::abs(material.permeability / g.m_Mu - 1) < 1e-12,
 				"CartesianSubgrid: PML collar must match the homogeneous lossless background");
+		for (std::size_t face = 6 * leaf; face < 6 * (leaf + 1); ++face)
+		{
+			m_Footprint.magnetic.push_back(face);
+		}
+		for (unsigned int n = 0; n < 3; ++n)
+		{
+			for (unsigned int a = 0; a < 2; ++a)
+			{
+				for (unsigned int b = 0; b < 2; ++b)
+				{
+					const auto trace = g.Restrict(g.LocalEdge(g.m_Leaves[leaf], n, a, b));
+					for (const auto &term : trace.weights)
+					{
+						m_Footprint.electric.push_back(term.first);
+					}
+				}
+			}
+		}
 		for (unsigned int n = 0; n < 3; ++n)
 			for (unsigned int a = 0; a < 2; ++a)
 				for (unsigned int b = 0; b < 2; ++b)
@@ -170,7 +190,28 @@ bool Operator_Ext_CartesianSubgrid_PML::BuildExtension()
 	for (auto &node : magnetic)
 		m_Magnetic.push_back(std::move(node.second));
 	Require(!m_Electric.empty() && !m_Magnetic.empty(), "CartesianSubgrid: empty PML derivative state");
+	for (const auto &node : m_Electric)
+	{
+		m_Footprint.electric.push_back(node.target);
+	}
+	for (const auto &node : m_Magnetic)
+	{
+		m_Footprint.magnetic.push_back(node.target);
+	}
+	for (auto *targets : {&m_Footprint.electric, &m_Footprint.magnetic})
+	{
+		std::sort(targets->begin(), targets->end());
+		targets->erase(std::unique(targets->begin(), targets->end()), targets->end());
+	}
+	m_Prepared = true;
 	return true;
+}
+
+const Operator_Ext_CartesianSubgrid_PML::Footprint &
+Operator_Ext_CartesianSubgrid_PML::PreparedFootprint() const
+{
+	Require(m_Prepared, "CartesianSubgrid: PML footprint requested before successful preparation");
+	return m_Footprint;
 }
 
 Engine_Extension *Operator_Ext_CartesianSubgrid_PML::CreateEngineExtention()

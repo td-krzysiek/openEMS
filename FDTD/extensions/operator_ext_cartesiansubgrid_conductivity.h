@@ -24,6 +24,7 @@ class Operator_Ext_CartesianSubgrid_Conductivity : public Operator_Ext_Cartesian
 	using Sampler = std::function<Coefficients(const CartesianSubgrid::Point &, const CartesianSubgrid::Point &)>;
 	Operator_Ext_CartesianSubgrid_Conductivity(Operator *op, Sampler sampler);
 	bool BuildExtension() override;
+	void ValidatePreparedExtensions() const override;
 	Engine_Ext_CartesianSubgrid_Advance *CreateEngineExtention() override;
 	std::string GetExtensionName() const override { return "Cartesian subgrid midpoint conductivity"; }
 	bool HasLoss() const { return m_HasLoss; }

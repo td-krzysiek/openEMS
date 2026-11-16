@@ -16,6 +16,7 @@ Engine_Ext_CartesianSubgrid_PML::Engine_Ext_CartesianSubgrid_PML(Operator_Ext_Ca
 	: Engine_Extension(op), m_PML(op), m_Electric(op->m_Electric.size()), m_Magnetic(op->m_Magnetic.size())
 {
 	SetPriority(ENG_EXT_PRIO_UPML);
+	op->PreparedFootprint();
 }
 
 void Engine_Ext_CartesianSubgrid_PML::Prepare(

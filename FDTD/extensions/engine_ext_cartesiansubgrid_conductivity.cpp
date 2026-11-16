@@ -13,6 +13,7 @@ Engine_Ext_CartesianSubgrid_Conductivity::Engine_Ext_CartesianSubgrid_Conductivi
 	: Engine_Ext_CartesianSubgrid_Advance(op), m_Conductivity(op), m_Grid(op->m_Compact->Grid()),
 	  m_OldElectric(m_Grid.EdgeCount()), m_SourceCurl(m_Grid.EdgeCount())
 {
+	m_Conductivity->ValidatePreparedExtensions();
 }
 
 void Engine_Ext_CartesianSubgrid_Conductivity::Add(std::array<double, 2> &sum, double value)

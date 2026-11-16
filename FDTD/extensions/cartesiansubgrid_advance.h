@@ -41,6 +41,8 @@ class Operator_Ext_CartesianSubgrid_Advance : public Operator_Extension
 	{
 	}
 	Engine_Ext_CartesianSubgrid_Advance *CreateEngineExtention() override = 0;
+	//! Called only after every operator extension has prepared its actual tables.
+	virtual void ValidatePreparedExtensions() const {}
 };
 
 #endif

@@ -946,6 +946,13 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 			throw std::invalid_argument("CartesianSubgrid: extension preparation failed");
 		}
 	}
+	for (auto *extension : m_Op_exts)
+	{
+		if (const auto *advance = dynamic_cast<Operator_Ext_CartesianSubgrid_Advance *>(extension))
+		{
+			advance->ValidatePreparedExtensions();
+		}
+	}
 	return 0;
 }
 
@@ -1009,6 +1016,13 @@ Engine *Operator_CartesianSubgrid::CreateEngine()
 	if (!m_Grid)
 	{
 		throw std::logic_error("CartesianSubgrid: build the operator first");
+	}
+	for (auto *extension : m_Op_exts)
+	{
+		if (const auto *advance = dynamic_cast<Operator_Ext_CartesianSubgrid_Advance *>(extension))
+		{
+			advance->ValidatePreparedExtensions();
+		}
 	}
 	std::unique_ptr<GPU_Backend> backend(m_EngineType == Engine::GPU ? TakeGPUBackend() : nullptr);
 	if (m_EngineType == Engine::GPU && !backend)
