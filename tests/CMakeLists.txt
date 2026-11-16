@@ -27,6 +27,7 @@ set(TESTS
   test_cartesian_subgrid_device_large
   test_cartesian_subgrid_device_domains
   test_cartesian_subgrid_device_domain_ports
+  test_cartesian_subgrid_device_advance
 )
 
 foreach(test ${TESTS})

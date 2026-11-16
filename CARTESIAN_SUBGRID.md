@@ -1506,3 +1506,46 @@ ownership, worker/coordinator contracts and boundary-only host transport, with
 reference, physical Metal and single-RTX3080 logical-domain controls. It retains
 the existing one-device native paths. Physical multi-GPU, domain ports/PML/loss
 histories and distributed processing remain open; see the canonical checklist.
+
+
+## Paired compact advance extensions
+
+The experimental compact engine can use one explicitly paired
+`Operator_Ext_CartesianSubgrid_Advance` /
+`Engine_Ext_CartesianSubgrid_Advance` to replace its actual electric and
+magnetic half-step. This is an extension boundary, not conductivity support
+or post-step damping. Existing pre/post/apply ordering remains around the
+CPU recurrence. Device providers must return an actual implementation through
+the selected backend; an unsupported device cannot silently fall back to CPU.
+Duplicate or missing providers reject. A failed recurrence or its diagnostics
+poisons further continuation and field observation on that engine.
+
+The transparent test recurrence in
+[the C++ regression](tests/test_cartesian_subgrid_device_advance.cpp) checks
+call counts, CPU hook order, complete-step observations, device failures and
+unchanged paired PML fields. It rebuilds a nonzero excitation after operator
+setup and separately tests zero initial fields; an earlier local test revision
+had only initial-field coverage because setup reset its excitation. That gap
+and the stronger supplement are retained in the evidence archive.
+
+The 21-stage compatibility suite passes on CPU/reference/physical Metal:
+CTest25/25, Python14/14, native fields/ports/PML/dipole/polygons, six CPU
+increment groups, frozen dipoles and three ordinary-engine groups. Sixteen
+older runtime prefixes and11,255 numerical arrays remain unchanged. The
+stronger canonical source-only supplement has maximum Metal/double field
+error6.164e-7, below the unchanged2e-4 gate. Transparent PML fields remain
+exact. A separate physical RTX4090/RTX3080 suite retains both domain orders,
+ports and single-device controls; its full CTest25/25 passes. The same stronger
+source-only supplement also passes on each physical NVIDIA device. These are
+bounded extension/field controls, not lossy/native PCB or scaling acceptance.
+
+Frozen local core SHA256:
+`75e8b7c09f7645132623d0753010f80c5f1d4c6cc7c2101514f785fc763d1658`.
+Frozen CUDA core SHA256:
+`1c7e917010b6c57d1f3247a66bd6c05a8cdc2ba3069162fab855899af1fa3bfe`.
+Evidence is under the contributor's
+`experiments/openems-cartesian-local-subgrid-20261112/advance-provider/`;
+source-only supplements use unchanged cores and separately identified tests.
+No production or antenna runtime is changed. Conductivity, absorber/material
+history combinations, distributed processing and representative antenna
+qualification remain separate milestones.

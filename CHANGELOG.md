@@ -16,6 +16,11 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Added
 
+- Experimental compact Cartesian physics extensions can supply a paired
+  operator/engine advance through the existing CPU/device boundary. Missing
+  device support rejects rather than silently advancing on CPU; this does
+  not yet enable lossy materials or conductors.
+
 - Experimental compact Cartesian domains can select the owning device before
   work and observation batches, with bounded RTX4090/RTX3080 pair controls.
   This does not enable native distributed PML, losses or processing; matching

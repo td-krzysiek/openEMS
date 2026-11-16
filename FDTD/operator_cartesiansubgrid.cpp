@@ -18,6 +18,7 @@
 #include "extensions/operator_ext_cartesiansubgrid_mur.h"
 #include "extensions/operator_ext_cartesiansubgrid_pml.h"
 #include "extensions/engine_ext_cartesiansubgrid_pml.h"
+#include "extensions/cartesiansubgrid_advance.h"
 #include "tools/constants.h"
 
 #include <algorithm>
@@ -82,11 +83,36 @@ class Engine_CartesianSubgrid : public Engine
 									 std::unique_ptr<GPU_Backend> backend = {})
 		: Engine(op), m_Operator(op), m_Backend(std::move(backend))
 	{
+		std::size_t requested = 0;
+		for (std::size_t i = 0; i < op->GetNumberOfExtentions(); ++i)
+		{
+			requested += dynamic_cast<Operator_Ext_CartesianSubgrid_Advance *>(op->GetExtension(i)) != nullptr;
+		}
+		if (requested > 1)
+		{
+			throw std::invalid_argument("CartesianSubgrid: multiple compact advance providers");
+		}
 		InitExtensions();
 		SortExtensionByPriority();
+		for (auto *extension : m_Eng_exts)
+		{
+			if (auto *advance = dynamic_cast<Engine_Ext_CartesianSubgrid_Advance *>(extension))
+			{
+				if (m_Advance)
+				{
+					throw std::invalid_argument("CartesianSubgrid: multiple compact advance providers");
+				}
+				m_Advance = advance;
+			}
+		}
+		if (requested != std::size_t(m_Advance != nullptr))
+		{
+			throw std::invalid_argument("CartesianSubgrid: paired compact advance provider is missing");
+		}
 		if (m_Backend)
 		{
-			m_Device = m_Backend->CreateCartesianSubgrid(op->Grid());
+			m_Device = m_Advance ? m_Advance->CreateDevice(*m_Backend) :
+				m_Backend->CreateCartesianSubgrid(op->Grid());
 			if (!m_Device)
 			{
 				throw std::invalid_argument("CartesianSubgrid: selected GPU backend does not support subgridding");
@@ -95,6 +121,10 @@ class Engine_CartesianSubgrid : public Engine
 			std::size_t extensionBytes = 0;
 			for (auto *extension : m_Eng_exts)
 			{
+				if (extension == m_Advance)
+				{
+					continue;
+				}
 				auto *paired = dynamic_cast<Engine_Ext_CartesianSubgrid_PML *>(extension);
 				if (!paired)
 				{
@@ -110,6 +140,23 @@ class Engine_CartesianSubgrid : public Engine
 		}
 	}
 	bool IterateTS(unsigned int steps) override
+	{
+		if (m_AdvanceFailed)
+		{
+			throw std::logic_error("CartesianSubgrid: failed compact advance cannot continue");
+		}
+		try
+		{
+			return IterateCompact(steps);
+		}
+		catch (...)
+		{
+			m_AdvanceFailed = m_Advance != nullptr;
+			throw;
+		}
+	}
+  private:
+	bool IterateCompact(unsigned int steps)
 	{
 		Excitation *signal = m_Operator->Signal();
 		for (unsigned int step = 0; step < steps; ++step)
@@ -140,11 +187,25 @@ class Engine_CartesianSubgrid : public Engine
 			else
 			{
 				DoPreVoltageUpdates();
-				m_Operator->Grid().UpdateElectric(m_Operator->GetTimestep(), drive);
+				if (m_Advance)
+				{
+					m_Advance->UpdateElectric(m_Operator->GetTimestep(), drive);
+				}
+				else
+				{
+					m_Operator->Grid().UpdateElectric(m_Operator->GetTimestep(), drive);
+				}
 				DoPostVoltageUpdates();
 				Apply2Voltages();
 				DoPreCurrentUpdates();
-				m_Operator->Grid().UpdateMagnetic(m_Operator->GetTimestep());
+				if (m_Advance)
+				{
+					m_Advance->UpdateMagnetic(m_Operator->GetTimestep());
+				}
+				else
+				{
+					m_Operator->Grid().UpdateMagnetic(m_Operator->GetTimestep());
+				}
 				DoPostCurrentUpdates();
 				Apply2Current();
 			}
@@ -153,6 +214,10 @@ class Engine_CartesianSubgrid : public Engine
 		if (m_Device)
 		{
 			m_Device->ReadFields(m_Operator->Grid());
+			if (m_Advance)
+			{
+				m_Advance->ReadDeviceDiagnostics(*m_Device);
+			}
 			for (auto &pair : m_DeviceExtensions)
 			{
 				pair.host->ReadDeviceDiagnostics(*pair.device);
@@ -160,6 +225,7 @@ class Engine_CartesianSubgrid : public Engine
 		}
 		return true;
 	}
+  public:
 	FDTD_FLOAT GetVolt(unsigned int n, unsigned int x, unsigned int y, unsigned int z) const override
 	{
 		const unsigned int pos[3] = {x, y, z};
@@ -167,6 +233,7 @@ class Engine_CartesianSubgrid : public Engine
 	}
 	FDTD_FLOAT GetVolt(unsigned int n, const unsigned int pos[3]) const override
 	{
+		CheckAdvanceState();
 		if (pos[n] + 1 >= m_Operator->GetNumberOfLines(n))
 		{
 			return 0;
@@ -180,6 +247,7 @@ class Engine_CartesianSubgrid : public Engine
 	}
 	FDTD_FLOAT GetCurr(unsigned int n, const unsigned int pos[3]) const override
 	{
+		CheckAdvanceState();
 		if (pos[(n + 1) % 3] + 1 >= m_Operator->GetNumberOfLines((n + 1) % 3) ||
 			pos[(n + 2) % 3] + 1 >= m_Operator->GetNumberOfLines((n + 2) % 3))
 		{
@@ -214,6 +282,13 @@ class Engine_CartesianSubgrid : public Engine
 	}
 
   private:
+	void CheckAdvanceState() const
+	{
+		if (m_AdvanceFailed)
+		{
+			throw std::logic_error("CartesianSubgrid: failed compact advance has no valid observation");
+		}
+	}
 	void DeviceHooks(bool currents, GPU_Hook hook)
 	{
 		// The compact scheme advances a whole timestep, with the same extension
@@ -247,6 +322,8 @@ class Engine_CartesianSubgrid : public Engine
 	// Device execution is destroyed before its creating backend.
 	std::unique_ptr<GPU_Backend> m_Backend;
 	std::unique_ptr<GPU_CartesianSubgrid> m_Device;
+	Engine_Ext_CartesianSubgrid_Advance *m_Advance = nullptr;
+	bool m_AdvanceFailed = false;
 	struct DevicePair
 	{
 		Engine_Ext_CartesianSubgrid_PML *host;
@@ -354,7 +431,8 @@ void Operator_CartesianSubgrid::AddExtension(Operator_Extension *extension)
 {
 	std::unique_ptr<Operator_Extension> owner(extension);
 	if (dynamic_cast<Operator_Ext_CartesianSubgrid_Mur *>(extension) ||
-		dynamic_cast<Operator_Ext_CartesianSubgrid_PML *>(extension))
+		dynamic_cast<Operator_Ext_CartesianSubgrid_PML *>(extension) ||
+		dynamic_cast<Operator_Ext_CartesianSubgrid_Advance *>(extension))
 	{
 		Operator::AddExtension(owner.release());
 		return;

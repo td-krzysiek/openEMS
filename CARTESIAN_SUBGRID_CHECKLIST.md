@@ -1,6 +1,6 @@
 # Cartesian subgridding — implementation and qualification checklist
 
-Last reviewed: **15 November 2026**.
+Last reviewed: **16 November 2026**.
 
 This is the canonical detailed checklist for extending the Cartesian subgridding prototype
 to the functionality of the regular Cartesian solver. Check an item only after
@@ -168,6 +168,12 @@ The outside/inside-refinement controls preserve point-port cells in their
 conventional Yee references. Energy/source-work/loss agrees within 1.46e-12
 through 100k steps; broader sources, distributed R/LC/modal workflows and
 material/interface placements remain open.
+
+A separate frozen native-adapter control also exposed that the two-sample
+Step waveform falls to zero after its stored samples, whereas the ordinary
+source retains sample0. This experimental native-adapter discrepancy is
+reproduced but not corrected in the current milestone. Gaussian/Dirac pulse
+controls and the direct core/domain DC controls do not establish Step parity.
 
 ## 4. Boundaries and radiation postprocessing
 
@@ -438,3 +444,5 @@ numerical change invalidates their prior qualification.
 | 2026-11-16 | Partial D01–D05: compact-domain ownership and host transport | This PR, domain increment (configure-time parent `1a8f48f`) | [Contract, tests, runtime and limitations](CARTESIAN_SUBGRID_DOMAINS.md). Local 19-stage suite, CTest 23/23 / Python 14/14; 13 older prefixes and 11,255 arrays unchanged. Reference, one physical Metal GPU and one physical RTX3080 support 1–4 logical domains and mixed CPU-reference/GPU workers with identical one-device fields. ASan/UBSan domain-source and actual 16,384-edge Metal controls pass. Physical multi-GPU, domain ports/PML/losses/DFT, native selectors, scalability and representative antenna qualification remain open. |
 | 2026-11-16 | Extended partial D01–D05 and P05: coupled domain ports/work | This PR, port-domain increment (configure-time parent `15daf56`) | [Source, gates, hashes and limits](CARTESIAN_SUBGRID_DOMAINS.md#coupled-resistors-and-source-ledgers). All 20 local stages, CTest 24/24/Python 14/14, CUDA six gates/CTest 24/24; 14 older prefixes and 11,255 arrays unchanged. Three logical workers on reference/one Metal GPU/one RTX3080, including mixed CPU-reference/GPU and source-only workers, warm ledgers and strong DC. Identical one-device fields; maximum double error 1.941e-5. Physical multi-GPU, native domain selectors, domain PML/bulk loss/DFT and representative antenna/scaling qualification remain open. |
 | 2026-11-16 | Further partial D02/D03/D05: physical mixed-device contexts | This PR, context increment (configure-time parent `458e612`) | [Reproduction, fix, physical gates and hashes](CARTESIAN_SUBGRID_DOMAINS.md#physical-mixed-device-contexts). Actual RTX4090/RTX3080 pair, both orders, nine field/domain and six coupled-port cases per lane plus retained single-device/fields/ports/DC and CUDA CTest 24/24. Fields identical to one-device; maximum double error 1.941e-5, balance 1.706e-6. All 20 local stages, CTest 24/24/Python 14/14; 15 older prefixes and 11,255 arrays unchanged. ASan/UBSan domain-source controls pass. Host-only activation timing is not FDTD throughput evidence. Native distributed selectors/PML/losses/DFT, collective pause/resume, production scaling and antenna acceptance remain open. |
+
+| 2026-11-16 | Partial extension/parity infrastructure | This PR, paired-advance increment (configure-time parent `c640333`) | [Boundary, tests, source/build and limits](CARTESIAN_SUBGRID.md#paired-compact-advance-extensions). All21 local stages, CTest25/25/Python14/14;16 older prefixes and11,255 arrays unchanged. Physical RTX4090/RTX3080 retained domains/ports plus CTest25/25; canonical real-drive CPU/reference/Metal/RTX4090/RTX3080 supplement separates the repaired test's earlier initial-only coverage. No conductivity/native lossy admission, distributed histories or antenna qualification. |
