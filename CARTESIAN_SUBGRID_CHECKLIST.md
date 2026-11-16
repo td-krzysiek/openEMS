@@ -343,6 +343,18 @@ their own integration checks; master parity does not automatically qualify them.
 - [ ] **D05** Compare fields/RF results with one device and benchmark exchange
   overhead, peak host/device memory and time to an equivalent result.
 
+Partial D01/D02/D03/D04/D05: the [C++ domain lane](CARTESIAN_SUBGRID_DOMAINS.md)
+implements fixed whole-component ownership, owned/ghost state, backend-neutral
+coordinator/worker contracts and preallocated host-staged boundary exchange.
+One through four logical domains, XYZ cuts and mixed CPU-reference/GPU workers
+have complete-field/epoch/failure controls on reference, physical Metal and
+one physical RTX3080. Local 19-stage qualification passes, with 13 older runtime
+prefixes and 11,255 arrays unchanged; CUDA also passes CTest 23/23 and single-device
+fields/ports/DC. These are logical-domain controls on one physical GPU per lane,
+not physical multi-GPU or distributed RF/processing qualification. Domain ports,
+absorber/loss histories, DFT/NF2FF, collective pause/resume, native selectors,
+asynchronous transport and scalability remain open. The D items are incomplete.
+
 ## Milestone decisions
 
 | Milestone | Completion condition | Status |
@@ -407,3 +419,5 @@ numerical change invalidates their prior qualification.
 | 2026-11-15 | Extended partial G01/G03/G04/G06: native planar/extruded PEC CAD | This PR, polygon increment (parent `a846ebf`) | [Native fields/contacts/alignment/shape controls](python/Tests/Cartesian_Subgrid_Polygons.py), [build, results and limits](CARTESIAN_SUBGRID.md#native-planar-and-extruded-pec-polygons). All17 qualification stages pass; CTest21/21, Python14/14, full previous CPU/reference/Metal and ordinary matrix. Eleven prior core/NF2FF prefixes and11,255 numerical arrays retained. No polygonal material, transform, lossy, representative PCB or physical CUDA/multi-device qualification for this increment. |
 | 2026-11-15 | Further partial C02/U02/U05/U06: bounded larger interfaces | This PR, larger-interface increment (parent `3a502cc`) | [Resource-policy and CPU controls](tests/test_cartesian_subgrid_factor.cpp), [three-orientation/device source controls](tests/test_cartesian_subgrid_device_large.cpp), [runtime and exact limits](CARTESIAN_SUBGRID.md#bounded-larger-interface-factors). All 18 stages pass, CTest 22/22 and Python 14/14; twelve prior prefixes and 11,255 arrays unchanged. Actual 16,384-edge CPU/Metal controls pass, 16,386-edge construction rejects. No new arithmetic, CUDA, lossy, structured-field or representative antenna qualification. |
 | 2026-11-15 | Extended partial U02/U04/U05/U06: single physical CUDA | Numerical source `02b94ef` + test-only `a846ebf` include | [Pinned source/build, errors and limits](CARTESIAN_SUBGRID_CUDA.md#qualified-single-rtx3080-lane). All eleven original gates pass across four immutable bounded attempts: CTest 21/21, Python 14/14, fields/ports/DC, native ports/PML, public dipole/NF2FF and ordinary controls. Earlier timeouts preserved; final identities pass. RTX3080 SM86 only, built-in HIP/nvcc, no hidden fallback. Later CAD/larger-interface CUDA, RTX4090 hardware, plugin mode, losses/PCB and multi-device remain open. |
+
+| 2026-11-16 | Partial D01–D05: compact-domain ownership and host transport | This PR, domain increment (configure-time parent `1a8f48f`) | [Contract, tests, runtime and limitations](CARTESIAN_SUBGRID_DOMAINS.md). Local 19-stage suite, CTest 23/23 / Python 14/14; 13 older prefixes and 11,255 arrays unchanged. Reference, one physical Metal GPU and one physical RTX3080 support 1–4 logical domains and mixed CPU-reference/GPU workers with identical one-device fields. ASan/UBSan domain-source and actual 16,384-edge Metal controls pass. Physical multi-GPU, domain ports/PML/losses/DFT, native selectors, scalability and representative antenna qualification remain open. |

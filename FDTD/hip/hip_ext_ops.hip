@@ -62,6 +62,20 @@ void GPU_Backend_HIP::DeviceDownload(void* host, const void* dev, size_t bytes)
 	d->Flush();
 }
 
+void GPU_Backend_HIP::DeviceUpload(void* dev, const void* host, size_t bytes)
+{
+	if (!bytes)
+	{
+		return;
+	}
+	if (!dev || !host)
+	{
+		throw std::invalid_argument("GPU_Backend_HIP: null upload buffer");
+	}
+	HIP_Check(hipMemcpyAsync(dev, host, bytes, hipMemcpyHostToDevice, d->Stream()), "upload");
+	d->Flush();
+}
+
 float* GPU_Backend_HIP::DeviceField(bool currents)
 {
 	return currents ? d->curr : d->volt;

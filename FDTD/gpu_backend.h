@@ -82,6 +82,8 @@ enum GPU_PointOp
 	GPU_OP_SUBGRID_SOURCE_CURL, GPU_OP_SUBGRID_PORT_SOLVE, GPU_OP_SUBGRID_PORT_APPLY,
 	GPU_OP_SUBGRID_PML_PRE, GPU_OP_SUBGRID_PML_POST,
 };
+//! Same indexed-copy operation; retain the existing opcode and plugin layout.
+constexpr GPU_PointOp GPU_OP_SUBGRID_GATHER = GPU_OP_SUBGRID_SOURCE_CURL;
 
 //! Abstract interface to the device used by Engine_GPU
 /*!
@@ -213,6 +215,13 @@ public:
 
 	//! Create a backend for a sub-grid (e.g. a cylindrical multi-grid level) whose work is ordered with the work of this backend. It's the responsibility of the caller to free it.
 	virtual GPU_Backend* NewSubGridBackend() = 0;
+	//! Ordered blocking upload into existing storage; host memory may be reused on return.
+	//! Backends/plugins must be rebuilt with matching headers/build identity.
+	virtual void DeviceUpload(void* dev, const void* host, size_t bytes)
+	{
+		UNUSED(dev); UNUSED(host); UNUSED(bytes);
+		throw std::logic_error("GPU_Backend: existing-buffer upload is unavailable");
+	}
 };
 
 #endif // GPU_BACKEND_H

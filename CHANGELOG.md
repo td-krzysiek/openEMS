@@ -16,6 +16,12 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Added
 
+- Experimental C++ Cartesian-subgrid domain planning, workers and host-staged
+  boundary exchange through the existing reference/GPU backends. The initial
+  lane is limited to lossless/PEC fields and soft sources; it has no native
+  scripting selector or distributed ports, absorbers or processing. Rebuild
+  C++ callers and backend plugins against matching headers; plugin mode is
+  not qualified by the built-in backend controls.
 - Experimental local Cartesian subgridding: configure one box with
   `CartesianSubgridBox` or several separate boxes with `SetCartesianSubgrids`.
   Selected cells split independently in X/Y/Z using `CartesianSubgridRatio` (powers

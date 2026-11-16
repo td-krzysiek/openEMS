@@ -58,6 +58,7 @@ public:
 
 	virtual void* DeviceAlloc(size_t bytes, const void* host=NULL);
 	virtual void DeviceDownload(void* host, const void* dev, size_t bytes);
+	void DeviceUpload(void* dev, const void* host, size_t bytes) override;
 	virtual bool CalcFastEnergy(const unsigned int numNodes[3], double& E_energy, double& H_energy);
 	virtual float* DeviceField(bool currents) {return currents ? m_curr.data() : m_volt.data();}
 	virtual void RunPoints(GPU_PointOp kind, const void* op, uint64_t begin, uint64_t end, bool serial);

@@ -16,9 +16,9 @@ static void Require(bool condition, const char *message)
 }
 
 static void Check(const std::vector<std::uint32_t> &start, const std::vector<std::uint32_t> &column,
-	const std::vector<float> &high, const std::vector<float> &low, std::size_t input)
+	const std::vector<float> &high, const std::vector<float> &low, std::size_t input, bool arbitrary = false)
 {
-	const CartesianSubgridDeviceCurl patterns(start, column, high, low, input);
+	const CartesianSubgridDeviceCurl patterns(start, column, high, low, input, arbitrary);
 	for (std::size_t row = 0; row + 1 < start.size(); ++row)
 	{
 		const std::size_t p = patterns.pattern[row], first = patterns.start[p];
@@ -113,6 +113,12 @@ int main()
 		const CartesianSubgridDeviceCurl p(start, column, high, low, 11);
 		Require(p.pattern[0] == p.pattern[1] && p.pattern[1] == p.pattern[4], "translated reuse lost");
 		Require(p.pattern[0] != p.pattern[3], "signed-zero residual was quantized");
+		// Owned-first domain mapping can make columns non-monotone. Preserve
+		// exact term order, including repeats, without unsigned offset wrap.
+		Check({0, 3, 6}, {5, 1, 3, 15, 11, 13}, {1, 1e8f, -1e8f, 1, 1e8f, -1e8f},
+			{0, 0, 0, 0, 0, 0}, 16, true);
+		Check({0, 3}, {5, 1, 5}, {1, -3, .5f}, {0, .125f, 0}, 6, true);
+		Reject([] { CartesianSubgridDeviceCurl({0, 2}, {2, 0}, {1, 1}, {0, 0}, 2, true); });
 		Check({0}, {}, {}, {}, 0);
 		Check({0, 0, 0}, {}, {}, {}, 0);
 		Reject([] { CartesianSubgridDeviceCurl({}, {}, {}, {}, 0); });

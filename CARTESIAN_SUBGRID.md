@@ -1498,3 +1498,11 @@ setup memory, losses/conductors, representative PCB spatial accuracy and
 multi-device execution remain open. Allocation success and energy conservation
 do not establish antenna accuracy; this increment changes no active or
 production runtime.
+
+## Compact domain implementation
+
+The subsequent [C++ domain increment](CARTESIAN_SUBGRID_DOMAINS.md) adds fixed
+ownership, worker/coordinator contracts and boundary-only host transport, with
+reference, physical Metal and single-RTX3080 logical-domain controls. It retains
+the existing one-device native paths. Physical multi-GPU, domain ports/PML/loss
+histories and distributed processing remain open; see the canonical checklist.

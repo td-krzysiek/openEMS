@@ -149,6 +149,8 @@ struct Op_SubgridSourceCurl
 		curl[source] = increment[edge[source]];
 	}
 };
+//! Generic indexed copy for boundary exchange; no source physics is performed.
+using Op_SubgridGather = Op_SubgridSourceCurl;
 
 //! One small coupled Woodbury system per invocation; ports retain their CPU order.
 struct Op_SubgridPortSolve

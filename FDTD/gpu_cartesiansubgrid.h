@@ -71,5 +71,10 @@ class GPU_CartesianSubgrid
 	{
 		return {};
 	}
+	//! Domain-only transport completion, after the matching ghost upload.
+	virtual void AcknowledgeGhosts(bool, std::size_t)
+	{
+		throw std::logic_error("CartesianSubgrid: ghost acknowledgement is unavailable");
+	}
 };
 #endif

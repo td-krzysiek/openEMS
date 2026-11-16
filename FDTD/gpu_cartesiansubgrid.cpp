@@ -3,6 +3,8 @@
 #include "subgrid_device_curl.h"
 #include "gpu_backend.h"
 #include "cartesian_subgrid.h"
+#include "cartesian_subgrid_domains.h"
+#include "subgrid_interface_limits.h"
 #include "kernels/subgrid_update.h"
 
 #include <algorithm>
@@ -21,9 +23,16 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 {
   public:
 	CartesianSubgridExecution(GPU_Backend &backend, const CartesianSubgrid &grid)
-		: m_Backend(backend)
+		: CartesianSubgridExecution(backend, grid.DeviceData(), 0, 0, false)
 	{
-		const auto data = grid.DeviceData();
+	}
+
+	CartesianSubgridExecution(GPU_Backend &backend, const CartesianSubgridDeviceData &data,
+		std::size_t ownedElectric, std::size_t ownedMagnetic, bool domain)
+		: m_Backend(backend), m_Domain(domain),
+		  m_OwnedElectric(domain ? ownedElectric : data.electric.size()),
+		  m_OwnedMagnetic(domain ? ownedMagnetic : data.magnetic.size())
+	{
 		if (data.factorTails.terms)
 		{
 			std::ostringstream message;
@@ -43,16 +52,23 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 		m_StableStep = data.stableTimestep;
 		m_PortStep = data.portTimestep;
 		m_PortCount = data.rootConductance.size();
-		m_Electric.resize(data.electric.size());
-		m_Magnetic.resize(data.magnetic.size());
+		m_ElectricCount = data.electric.size();
+		m_MagneticCount = data.magnetic.size();
+		// Domain processing is gathered by its coordinator. Keep the legacy
+		// one-device observation mirror, not another full mirror per worker.
+		if (!m_Domain)
+		{
+			m_Electric.resize(m_ElectricCount);
+			m_Magnetic.resize(m_MagneticCount);
+		}
 		m_BlockCount = data.bandwidth.size();
 		m_SourceCount = data.sourceEdge.size();
-		auto *electric = Upload(data.electric), *magnetic = Upload(data.magnetic);
-		auto *increment = Upload(std::vector<float>(data.electric.size(), 0));
 		const CartesianSubgridDeviceCurl transpose(data.transposeStart, data.transposeColumn,
-			data.transposeWeight, data.transposeLow, data.magnetic.size());
+			data.transposeWeight, data.transposeLow, data.magnetic.size(), domain);
 		const CartesianSubgridDeviceCurl curl(data.curlStart, data.curlColumn,
-			data.curlWeight, data.curlLow, data.electric.size());
+			data.curlWeight, data.curlLow, data.electric.size(), domain);
+		auto *electric = Upload(data.electric), *magnetic = Upload(data.magnetic);
+		auto *increment = Upload(std::vector<float>(m_OwnedElectric, 0));
 		m_Transpose = {Upload(transpose.start), Upload(transpose.offset), Upload(transpose.base),
 			Upload(transpose.pattern), Upload(transpose.weight), Upload(transpose.residual),
 			magnetic, increment, 1, 0, 0};
@@ -100,12 +116,16 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 
 	GPU_CartesianSubgridFields Fields() const override
 	{
-		return {m_Update.electric, m_Curl.output, m_Electric.size(), m_Magnetic.size(),
+		return {m_Update.electric, m_Curl.output, m_ElectricCount, m_MagneticCount,
 			m_FixedStep != 0 ? m_FixedStep : m_PortStep};
 	}
 
 	void UpdateElectric(double timestep, double sourceAmplitude) override
 	{
+		if (m_Domain && m_OwnedMagnetic < m_MagneticCount && m_MagneticGhostEpoch != m_Epoch)
+		{
+			throw std::invalid_argument("CartesianSubgrid: stale magnetic ghost epoch");
+		}
 		if (m_PendingStep != 0)
 		{
 			throw std::invalid_argument("CartesianSubgrid: electric update requires a complete prior step");
@@ -129,7 +149,7 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 		m_PortSolve.timestep = dt;
 		m_PortSolve.amplitude = amplitude;
 		m_PortApply.timestep = dt;
-		m_Backend.RunPoints(GPU_OP_SUBGRID_CURL, &m_Transpose, 0, m_Electric.size(), false);
+		m_Backend.RunPoints(GPU_OP_SUBGRID_CURL, &m_Transpose, 0, m_OwnedElectric, false);
 		if (m_PortCount && m_SourceCount)
 		{
 			m_Backend.RunPoints(GPU_OP_SUBGRID_SOURCE_CURL, &m_SourceCurl, 0, m_SourceCount, false);
@@ -139,7 +159,7 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 		{
 			m_Backend.RunPoints(GPU_OP_SUBGRID_PORT_SOLVE, &m_PortSolve, 0, 1, false);
 		}
-		m_Backend.RunPoints(GPU_OP_SUBGRID_ELECTRIC, &m_Update, 0, m_Electric.size(), false);
+		m_Backend.RunPoints(GPU_OP_SUBGRID_ELECTRIC, &m_Update, 0, m_OwnedElectric, false);
 		if (m_PortCount)
 		{
 			m_Backend.RunPoints(GPU_OP_SUBGRID_PORT_APPLY, &m_PortApply, 0, m_PortCount, true);
@@ -158,12 +178,31 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 		{
 			throw std::invalid_argument("CartesianSubgrid: magnetic update requires its paired electric step");
 		}
-		m_Backend.RunPoints(GPU_OP_SUBGRID_CURL, &m_Curl, 0, m_Magnetic.size(), false);
+		if (m_Domain && m_OwnedElectric < m_ElectricCount && m_ElectricGhostEpoch != m_Epoch + 1)
+		{
+			throw std::invalid_argument("CartesianSubgrid: stale electric ghost epoch");
+		}
+		m_Backend.RunPoints(GPU_OP_SUBGRID_CURL, &m_Curl, 0, m_OwnedMagnetic, false);
 		m_PendingStep = 0;
+		++m_Epoch;
+	}
+
+	void AcknowledgeGhosts(bool electric, std::size_t epoch) override
+	{
+		if (!m_Domain || (electric ? m_PendingStep == 0 || epoch != m_Epoch + 1 :
+			m_PendingStep != 0 || epoch != m_Epoch))
+		{
+			throw std::invalid_argument("CartesianSubgrid: invalid ghost completion phase/epoch");
+		}
+		(electric ? m_ElectricGhostEpoch : m_MagneticGhostEpoch) = epoch;
 	}
 
 	void ReadFields(CartesianSubgrid &grid) override
 	{
+		if (m_Domain)
+		{
+			throw std::invalid_argument("CartesianSubgrid: domain observations require an owning coordinator");
+		}
 		if (m_PendingStep != 0)
 		{
 			throw std::invalid_argument("CartesianSubgrid: device observation requires a complete timestep");
@@ -199,7 +238,11 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 	GPU_Backend &m_Backend;
 	std::size_t m_StorageBytes = 0, m_BlockCount = 0, m_SourceCount = 0, m_PortCount = 0;
 	double m_StableStep = 0, m_PortStep = 0, m_FixedStep = 0, m_PendingStep = 0;
-	bool m_Started = false;
+	bool m_Started = false, m_Domain = false;
+	std::size_t m_OwnedElectric = 0, m_OwnedMagnetic = 0, m_Epoch = 0;
+	std::size_t m_ElectricCount = 0, m_MagneticCount = 0;
+	std::size_t m_ElectricGhostEpoch = std::numeric_limits<std::size_t>::max();
+	std::size_t m_MagneticGhostEpoch = std::numeric_limits<std::size_t>::max();
 	std::vector<float> m_Electric, m_Magnetic;
 	Op_SubgridCurl m_Transpose{}, m_Curl{};
 	Op_SubgridMass m_Mass{};
@@ -216,4 +259,77 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 std::unique_ptr<GPU_CartesianSubgrid> GPU_Backend::CreateCartesianSubgrid(const CartesianSubgrid &grid)
 {
 	return std::make_unique<CartesianSubgridExecution>(*this, grid);
+}
+
+namespace
+{
+void ValidateDomain(const CartesianSubgridDomainData &domain)
+{
+	const auto &data = domain.fields;
+	const auto require = [](bool condition, const char *message)
+	{
+		if (!condition)
+		{
+			throw std::invalid_argument(message);
+		}
+	};
+	require(domain.ownedElectric && domain.ownedElectric <= data.electric.size() &&
+		domain.ownedMagnetic && domain.ownedMagnetic <= data.magnetic.size(),
+		"CartesianSubgrid: invalid domain owned counts");
+	require(data.transposeStart.size() == domain.ownedElectric + 1 &&
+		data.curlStart.size() == domain.ownedMagnetic + 1 &&
+		data.stableTimestep > 0 && std::isfinite(data.stableTimestep),
+		"CartesianSubgrid: invalid domain rows/timestep");
+	require(data.rootConductance.empty() && data.portEdge.empty() && data.responseEdge.empty() &&
+		data.portWeight.empty() && data.responseWeight.empty() && data.portCurrent.empty() &&
+		data.portLower.empty() && data.portStart == std::vector<std::uint32_t>{0} &&
+		data.responseStart == std::vector<std::uint32_t>{0} && data.portTimestep == 0 &&
+		data.ledger == std::vector<float>({0, 0, 0, 0}),
+		"CartesianSubgrid: domain port/loss histories are unsupported");
+	require(data.blockStart.size() == data.bandwidth.size() + 1 &&
+		data.lowerStart.size() == data.blockStart.size() && data.blockStart.front() == 0 &&
+		data.lowerStart.front() == 0 && data.blockStart.back() == data.blockEdge.size() &&
+		data.lowerStart.back() == data.lower.size(), "CartesianSubgrid: invalid domain factor bounds");
+	std::vector<bool> seen(domain.ownedElectric, false);
+	for (std::size_t block = 0; block < data.bandwidth.size(); ++block)
+	{
+		const std::size_t first = data.blockStart[block], stop = data.blockStart[block + 1];
+		const std::size_t start = data.lowerStart[block], end = data.lowerStart[block + 1];
+		require(first < stop && stop <= data.blockEdge.size() && start <= end && end <= data.lower.size(),
+			"CartesianSubgrid: invalid domain factor range");
+		const std::size_t entries = CartesianSubgridDetail::InterfaceFactorEntries(stop - first, data.bandwidth[block]);
+		require(end - start == entries, "CartesianSubgrid: invalid domain factor size");
+		for (std::size_t k = first; k < stop; ++k)
+		{
+			const std::size_t edge = data.blockEdge[k];
+			require(edge < domain.ownedElectric && !seen[edge], "CartesianSubgrid: factor writes a ghost or overlapping component");
+			seen[edge] = true;
+			const float diagonal = data.lower[start + (k - first) * (data.bandwidth[block] + 1)];
+			require(diagonal > 0, "CartesianSubgrid: nonpositive domain factor diagonal");
+		}
+	}
+	require(data.sourceEdge.size() == data.sourceWeight.size() &&
+		data.sourceOffStart == std::vector<std::uint32_t>(data.sourceEdge.size() + 1, 0) &&
+		data.sourceOffEdge.empty() && data.sourceOffWeight.empty(), "CartesianSubgrid: invalid domain sources");
+	for (std::size_t edge : data.sourceEdge)
+	{
+		require(edge < domain.ownedElectric, "CartesianSubgrid: source writes a ghost");
+	}
+	for (const auto *values : {&data.electric, &data.magnetic, &data.lower, &data.sourceWeight})
+	{
+		for (float value : *values)
+		{
+			require(std::isfinite(value) && (value == 0 || std::abs(value) >= std::numeric_limits<float>::min()),
+				"CartesianSubgrid: nonrepresentable domain state/factor/source");
+		}
+	}
+}
+}
+
+std::unique_ptr<GPU_CartesianSubgrid> CreateCartesianSubgridDomainExecution(
+	GPU_Backend &backend, const CartesianSubgridDomainData &domain)
+{
+	ValidateDomain(domain);
+	return std::make_unique<CartesianSubgridExecution>(backend, domain.fields,
+		domain.ownedElectric, domain.ownedMagnetic, true);
 }

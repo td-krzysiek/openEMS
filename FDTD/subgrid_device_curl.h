@@ -22,7 +22,7 @@ class CartesianSubgridDeviceCurl
   public:
 	CartesianSubgridDeviceCurl(const std::vector<std::uint32_t> &rowStart,
 		const std::vector<std::uint32_t> &columns, const std::vector<float> &high,
-		const std::vector<float> &low, std::size_t inputCount)
+		const std::vector<float> &low, std::size_t inputCount, bool arbitraryColumns = false)
 	{
 		const auto limit = std::numeric_limits<std::uint32_t>::max();
 		if (rowStart.empty() || rowStart.front() != 0 || rowStart.back() != columns.size() ||
@@ -42,11 +42,12 @@ class CartesianSubgridDeviceCurl
 			{
 				throw std::invalid_argument("CartesianSubgrid: invalid device curl row bounds");
 			}
-			const std::uint32_t origin = first == stop ? 0 : columns[first];
+			const std::uint32_t origin = first == stop ? 0 : arbitraryColumns ?
+				*std::min_element(columns.begin() + first, columns.begin() + stop) : columns[first];
 			std::uint64_t hash = 14695981039346656037ULL;
 			for (std::size_t k = first; k < stop; ++k)
 			{
-				if (columns[k] >= inputCount || (k > first && columns[k] <= columns[k - 1]) ||
+				if (columns[k] >= inputCount || (!arbitraryColumns && k > first && columns[k] <= columns[k - 1]) ||
 					!NormalOrZero(high[k]) || !NormalOrZero(low[k]))
 				{
 					throw std::invalid_argument("CartesianSubgrid: invalid device curl term");

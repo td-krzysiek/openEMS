@@ -146,3 +146,33 @@ increments need fresh physical CUDA acceptance. Plugin mode, RTX4090 hardware,
 lossy/surface/ADE conductors, representative PCB accuracy and multiple devices
 remain open. Existing production multi-GPU execution does not qualify this
 compact subgrid path.
+
+## Scoped logical domains on one RTX3080
+
+The [domain increment](CARTESIAN_SUBGRID_DOMAINS.md), configure-time parent
+`1a8f48f` plus its exact recorded source diff, uses the existing built-in HIP
+backend compiled by nvcc 12.6.85 for SM86/SM89, with `--fmad=false`. Only physical
+RTX3080 SM86 is tested. The same numerical source passes reference/Metal locally.
+
+Run `test_cartesian_subgrid_device_domains --cuda` from the matching build. It
+rejects fallback, exercises 1–4 logical domains and mixed CPU-reference/CUDA
+workers, and retains the original field gates, phase/epoch and invalid-input
+controls. All eight 1500-step cases are identical to one FP32 device, with
+maximum double error 1.62522e-6. CTest 23/23 and existing single-device fields,
+ports and DC controls also pass; maximum physical field error is 8.975e-6 and
+DC error 1.761e-5 (gate 2e-4). These port controls are not domain-port support.
+
+The isolated container exposes one explicit GPU UUID, 4 host CPUs and 4 GiB RAM.
+The first attempt reached our external 300 s CPU CTest deadline after 20 passes;
+it remains incomplete evidence. The second uses identical source/runtime/gates,
+runs physical controls first and allows 900 s for CTest. It completes in 724 s,
+including 647 s of CPU CTest; no concurrent-throughput claim is made. Final
+container exit is 0/noOOM and all source/runtime identities remain unchanged.
+
+CUDA core SHA256:
+`de9994d3e5a09f07de74de1effed5cc9c6371d2d7ee28bd0204d8ccdeab56c0a`.
+Compact 54-file evidence and the exact source/cache/test identities are retained
+in the project study's `domains/cuda-qualification.json` and
+`output/openems-subgrid-domains-cuda-20261115/completed-r02/`. This does not
+qualify physical multi-GPU, native CAD/large-interface CUDA, plugin mode,
+distributed ports/PML/DFT, losses or representative PCB antenna workflows.

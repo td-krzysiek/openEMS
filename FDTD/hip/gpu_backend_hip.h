@@ -55,6 +55,7 @@ public:
 	virtual bool Init(const Operator* op, const GPU_CellModel& model);
 	virtual void* DeviceAlloc(size_t bytes, const void* host=NULL);
 	virtual void DeviceDownload(void* host, const void* dev, size_t bytes);
+	void DeviceUpload(void* dev, const void* host, size_t bytes) override;
 	virtual float* DeviceField(bool currents);
 	virtual void RunPoints(GPU_PointOp kind, const void* op, uint64_t begin, uint64_t end, bool serial);
 

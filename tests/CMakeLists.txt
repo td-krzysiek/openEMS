@@ -25,6 +25,7 @@ set(TESTS
   test_cartesian_subgrid_device_precision
   test_cartesian_subgrid_device_patterns
   test_cartesian_subgrid_device_large
+  test_cartesian_subgrid_device_domains
 )
 
 foreach(test ${TESTS})
