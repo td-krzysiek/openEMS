@@ -138,9 +138,9 @@ adoption. No allocation guard has been raised.
 
 ## Remaining work
 
-Expanded CSR remains the independent oracle and local domain-upload
-intermediate; single-device and global domain preparation now use streamed
-paths. See the [domain setup measurements](CARTESIAN_SUBGRID_DOMAINS.md#streamed-global-domain-preparation).
+Expanded CSR remains the independent oracle; default single-device, global
+domain and local domain preparation now use streamed paths. See the
+[local domain setup measurements](CARTESIAN_SUBGRID_DOMAINS.md#streamed-local-domain-preparation).
 Host topology, fields, magnetic quadrature and observations retain their
 reference organization. Device DFT, proportional multi-domain preparation,
 production-scaled loss/PML histories, full structured scheduling, representative PCB

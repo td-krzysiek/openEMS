@@ -20,7 +20,9 @@ row remapping preserve global IDs, local numbering, operand order and FP32
 high/low coefficient bits. All four plan constructors use this path, including
 the separately prepared loss/PML combination. `CurlPreparation::ExpandedOracle`
 retains the previous expanded input for independent setup controls. Individual
-domain upload arrays and numerical update kernels are unchanged.
+domain upload arrays and numerical update kernels are unchanged in R19.
+The subsequent local-pattern increment below changes the default local
+preparation representation while retaining the same numerical kernels.
 
 Six graded, multi-region/material/PEC/port cases per backend compare complete
 local metadata, halo transfers and256-step fields exactly against that oracle.
@@ -64,6 +66,56 @@ physics, geometry, source or frozen antenna is changed. Per-domain expanded
 uploads, per-state hash maps, global host fields/topology and general large
 interfaces still prevent claiming production-scale readiness.
 
+## Streamed local domain preparation
+
+R20 prepares each worker's exact translated row patterns directly, without
+retaining local expanded CSR arrays or repacking them in the backend.
+`CartesianSubgridDomainData::operators` owns the prepared patterns; backend
+construction borrows them only for upload. `fields.streamCurls` distinguishes
+this package from the retained `ExpandedOracle` local arrays. Global/local
+IDs, row order, split coefficient bits, owned/ghost fields, loss/PML histories
+and numerical update kernels remain unchanged. The GPU package matches the
+old expanded constructor's arrays exactly; this is not a new spatial kernel.
+
+Before GPU allocation, validation checks dimensions, prefix bounds, pattern
+and column ranges, integer addition overflow, finite/normal scalar values and
+the absence of conflicting spatial/expanded data. Thirteen malformed package
+controls reject without allocating GPU memory. Six reference/six Metal cases
+compare exact compressed metadata, transfers and256-step port-driven fields
+against the expanded oracle. Actual native8/16-case reference/Metal TD/FD/U/I
+controls and the fresh45/45 CTest replay pass. The complete R20-r03 source was
+hashed before compilation and rechecked after the build and tests.
+
+Local R20-r03 core SHA256:
+`65309099920fd3f93e5e039ffde808ed77fb520910d9f1c17d672f1ce7de39c7`.
+Physical CUDA qualification is running on the RTX4090/RTX3080 pair, including
+both orders. Its final native scripting/CTest gates are not yet accepted.
+The original R19 fixture/source-binary audit remains preserved above; R20's
+test contains the corrected resistor-before-source ordering.
+
+Three interleaved setup-only repetitions against the actual frozen R19 core,
+491,520 leaves/three domains, with identical counts and timestep:
+
+| Quantity | Frozen R19 | Local patterns |
+|---|---:|---:|
+| Peak process RSS | 943,341,568 B | 656,818,176 B |
+| Domain-plan preparation | 0.4508 s | 0.5392 s |
+| Grid plus plan preparation | 1.2900 s | 1.3923 s |
+
+Peak RSS decreases30.37%, with7.93% longer complete setup. A nonuniform,
+two-material61,440-leaf control shows only2.88% lower peak RSS
+(179,437,568 to174,276,608B), with10.49% longer complete setup. Compression
+benefit depends on coefficient repetition; neither case proves a universal
+memory or performance factor.
+
+A separately bounded setup-only control reaches960,000 leaves, with a median
+peak RSS1,255,030,784B, below its1.5GiB process cap. This does not test FDTD
+evolution, RF accuracy or antenna suitability at that size. The one-million
+cell guards, per-state hash maps, global host topology/fields, magnetic
+quadratures and general interface scaling remain unchanged. Evidence is the
+separately frozen `local-domain-stream-r20-r03` study; no production runtime
+or antenna is modified.
+
 ## Ownership, workers and transport
 
 `CartesianSubgridDomainPlan` assigns fixed ownership from one axis and a list
@@ -84,8 +136,8 @@ Local row remapping retains the exact operand order and split coefficients.
 Ghost dependencies may fan out or cross non-neighbour workers. Only unique
 owned export values are gathered, downloaded and copied into preallocated
 receive buffers, then contiguous ghost ranges are uploaded. No whole-field
-transfer is performed at every half-step. The plan now streams global
-compressed rows during setup; local per-domain uploads remain expanded.
+transfer is performed at every half-step. The plan now streams global and
+local compressed rows during setup; expanded arrays remain an explicit oracle.
 Production-proportional setup memory and structured interiors remain open.
 
 The coordinator knows only worker and transport interfaces. GPU handles and

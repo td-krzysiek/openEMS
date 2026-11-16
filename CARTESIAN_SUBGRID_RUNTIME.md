@@ -78,10 +78,13 @@ interface; `ObservationGrid()` enforces the native observation health guard.
 No external collective pause/resume/snapshot API is enabled by this adapter.
 Normal complete-batch processing is not such an API. PML is the checked
 classical convolution extension, not UPML/CFS parity. The global host topology,
-field mirror and local expanded domain uploads still require scaling work.
+field mirror and per-state ownership maps still require scaling work.
 The separately qualified [global row stream](CARTESIAN_SUBGRID_DOMAINS.md#streamed-global-domain-preparation)
 removes the temporary pair of global expanded operators, without changing
-local upload arrays or runtime kernels.
+local upload arrays or runtime kernels in that R19 increment. The later
+[local row package](CARTESIAN_SUBGRID_DOMAINS.md#streamed-local-domain-preparation)
+also removes expanded local uploads, with unchanged runtime kernels and
+separately recorded qualification.
 
 ## Qualification
 

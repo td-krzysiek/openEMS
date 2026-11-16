@@ -14,6 +14,7 @@
 #include <cmath>
 #include <limits>
 #include <memory>
+#include <optional>
 #include <iostream>
 #include <sstream>
 #include <stdexcept>
@@ -109,7 +110,8 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 	CartesianSubgridExecution(GPU_Backend &backend, const CartesianSubgridDeviceData &data,
 		std::size_t ownedElectric, std::size_t ownedMagnetic, bool domain,
 		std::unique_ptr<GPU_CartesianSubgridRecurrence> recurrence = {},
-		const CartesianSubgrid *streamingGrid = nullptr)
+		const CartesianSubgrid *streamingGrid = nullptr,
+		const CartesianSubgridDeviceOperators *domainOperators = nullptr)
 		: m_Backend(backend), m_Recurrence(std::move(recurrence)), m_Domain(domain),
 		  m_OwnedElectric(domain ? ownedElectric : data.electric.size()),
 		  m_OwnedMagnetic(domain ? ownedMagnetic : data.magnetic.size())
@@ -146,15 +148,22 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 		}
 		m_BlockCount = data.bandwidth.size();
 		m_SourceCount = data.sourceEdge.size();
-		if (data.streamCurls && (!streamingGrid || domain || !data.curlColumn.empty() ||
-			!data.curlWeight.empty() || !data.curlLow.empty() || data.curlStart != std::vector<std::uint32_t>{0} ||
-			!data.transposeStart.empty() || !data.transposeColumn.empty() ||
-			!data.transposeWeight.empty() || !data.transposeLow.empty() ||
-			!data.curlGeometry.empty() || !data.curlMetrics.empty()))
+		const bool validStreamOwner = domain ? domainOperators && !streamingGrid : streamingGrid && !domainOperators;
+		const bool stateOnly = data.curlColumn.empty() && data.curlWeight.empty() && data.curlLow.empty() &&
+			data.curlStart == std::vector<std::uint32_t>{0} && data.transposeStart.empty() &&
+			data.transposeColumn.empty() && data.transposeWeight.empty() && data.transposeLow.empty() &&
+			data.curlGeometry.empty() && data.curlMetrics.empty();
+		if ((domainOperators && !data.streamCurls) ||
+			(data.streamCurls && (!validStreamOwner || !stateOnly)))
 		{
 			throw std::invalid_argument("CartesianSubgrid: invalid state-only curl upload");
 		}
-		auto operators = data.streamCurls ? streamingGrid->DeviceCurls() : PackExpanded(data, domain);
+		std::optional<CartesianSubgridDeviceOperators> prepared;
+		if (!domainOperators)
+		{
+			prepared = data.streamCurls ? streamingGrid->DeviceCurls() : PackExpanded(data, domain);
+		}
+		const auto &operators = domainOperators ? *domainOperators : *prepared;
 		const auto &curl = operators.curl;
 		const auto &transpose = operators.transpose;
 		m_SpatialRows = operators.spatialRows;
@@ -450,6 +459,14 @@ void ValidateDomain(const CartesianSubgridDomainData &domain, bool allowStream =
 			data.curlStart.size() == domain.ownedMagnetic + 1)) &&
 		data.stableTimestep > 0 && std::isfinite(data.stableTimestep),
 		"CartesianSubgrid: invalid domain rows/timestep");
+	if (domain.operators)
+	{
+		const auto &operators = *domain.operators;
+		require(data.streamCurls && operators.geometry.empty() && operators.metrics.empty() &&
+			operators.spatialRows == 0, "CartesianSubgrid: invalid compressed domain upload mode");
+		operators.curl.Validate(domain.ownedMagnetic, data.electric.size());
+		operators.transpose.Validate(domain.ownedElectric, data.magnetic.size());
+	}
 	const std::size_t ports = data.rootConductance.size();
 	require(ports <= 64 && data.portCurrent.size() == ports && data.portLower.size() == ports * ports &&
 		(ports ? data.portTimestep > 0 && std::isfinite(data.portTimestep) &&
@@ -525,7 +542,7 @@ void ValidateDomain(const CartesianSubgridDomainData &domain, bool allowStream =
 std::unique_ptr<GPU_CartesianSubgrid> CreateCartesianSubgridDomainExecution(
 	GPU_Backend &backend, const CartesianSubgridDomainData &domain)
 {
-	ValidateDomain(domain);
+	ValidateDomain(domain, domain.operators.has_value());
 	std::unique_ptr<GPU_CartesianSubgridRecurrence> recurrence;
 	if (domain.loss)
 	{
@@ -536,7 +553,8 @@ std::unique_ptr<GPU_CartesianSubgrid> CreateCartesianSubgridDomainExecution(
 		recurrence = GPU_CreateCartesianSubgridConductivity(*domain.loss);
 	}
 	auto execution = std::make_unique<CartesianSubgridExecution>(backend, domain.fields,
-		domain.ownedElectric, domain.ownedMagnetic, true, std::move(recurrence));
+		domain.ownedElectric, domain.ownedMagnetic, true, std::move(recurrence),
+		nullptr, domain.operators ? &*domain.operators : nullptr);
 	if (domain.loss)
 	{
 		execution->RequireFixedTimestep(domain.loss->timestep);

@@ -32,6 +32,41 @@ class CartesianSubgridDeviceCurl
 		const std::vector<std::uint32_t> &columns, const std::vector<float> &high,
 		const std::vector<float> &low, std::size_t inputCount, bool arbitraryColumns = false);
 
+	//! Validate a borrowed package before any backend allocation or dispatch.
+	void Validate(std::size_t rows, std::size_t inputs) const
+	{
+		const auto limit = std::numeric_limits<std::uint32_t>::max();
+		if (rows > limit || inputs > limit || base.size() != rows || pattern.size() != rows ||
+			start.empty() || start.size() - 1 > limit || offset.size() > limit || start.front() != 0 ||
+			start.back() != offset.size() || weight.size() != offset.size() || residual.size() != offset.size() ||
+			!std::is_sorted(start.begin(), start.end()))
+		{
+			throw std::invalid_argument("CartesianSubgrid: malformed compressed domain curl");
+		}
+		for (std::size_t k = 0; k < weight.size(); ++k)
+		{
+			if (!NormalOrZero(weight[k]) || !NormalOrZero(residual[k]))
+			{
+				throw std::invalid_argument("CartesianSubgrid: nonrepresentable compressed curl coefficient");
+			}
+		}
+		for (std::size_t row = 0; row < rows; ++row)
+		{
+			const std::size_t selected = pattern[row];
+			if (selected >= start.size() - 1)
+			{
+				throw std::invalid_argument("CartesianSubgrid: compressed curl pattern out of range");
+			}
+			for (std::size_t k = start[selected]; k < start[selected + 1]; ++k)
+			{
+				if (offset[k] >= inputs || base[row] > inputs - 1 - offset[k])
+				{
+					throw std::invalid_argument("CartesianSubgrid: compressed curl column out of range");
+				}
+			}
+		}
+	}
+
 	std::size_t DeviceBytes() const
 	{
 		return (start.size() + offset.size() + base.size() + pattern.size()) * sizeof(std::uint32_t) +

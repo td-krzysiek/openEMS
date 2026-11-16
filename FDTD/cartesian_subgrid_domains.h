@@ -20,6 +20,8 @@ class Engine_Ext_CartesianSubgrid_PML;
 struct CartesianSubgridDomainData
 {
 	CartesianSubgridDeviceData fields;
+	//! Prepared local row patterns, borrowed only during device upload.
+	std::optional<CartesianSubgridDeviceOperators> operators;
 	//! Owned constitutive rows/states only; ghosts never own histories.
 	std::optional<CartesianSubgridConductivityData> loss;
 	//! Target-owned convolution rows; source columns may reference field ghosts.

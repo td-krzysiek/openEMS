@@ -30,9 +30,7 @@ template <class T> static void Exact(const std::vector<T> &a, const std::vector<
 static void Exact(const CartesianSubgridDeviceData &a, const CartesianSubgridDeviceData &b)
 {
 	for (const auto &pair : {
-		std::make_pair(&a.curlStart, &b.curlStart), {&a.curlColumn, &b.curlColumn},
-		{&a.transposeStart, &b.transposeStart}, {&a.transposeColumn, &b.transposeColumn},
-		{&a.blockStart, &b.blockStart}, {&a.blockEdge, &b.blockEdge}, {&a.bandwidth, &b.bandwidth},
+		std::make_pair(&a.blockStart, &b.blockStart), {&a.blockEdge, &b.blockEdge}, {&a.bandwidth, &b.bandwidth},
 		{&a.lowerStart, &b.lowerStart}, {&a.sourceEdge, &b.sourceEdge}, {&a.portStart, &b.portStart},
 		{&a.portEdge, &b.portEdge}, {&a.responseStart, &b.responseStart}, {&a.responseEdge, &b.responseEdge},
 		{&a.sourceOffStart, &b.sourceOffStart}, {&a.sourceOffEdge, &b.sourceOffEdge},
@@ -42,8 +40,6 @@ static void Exact(const CartesianSubgridDeviceData &a, const CartesianSubgridDev
 	}
 	for (const auto &pair : {
 		std::make_pair(&a.electric, &b.electric), {&a.magnetic, &b.magnetic},
-		{&a.curlWeight, &b.curlWeight}, {&a.curlLow, &b.curlLow},
-		{&a.transposeWeight, &b.transposeWeight}, {&a.transposeLow, &b.transposeLow},
 		{&a.lower, &b.lower}, {&a.sourceWeight, &b.sourceWeight}, {&a.portWeight, &b.portWeight},
 		{&a.responseWeight, &b.responseWeight}, {&a.rootConductance, &b.rootConductance},
 		{&a.portCurrent, &b.portCurrent}, {&a.portLower, &b.portLower},
@@ -51,7 +47,7 @@ static void Exact(const CartesianSubgridDeviceData &a, const CartesianSubgridDev
 	{
 		Exact(*pair.first, *pair.second);
 	}
-	Require(a.streamCurls == b.streamCurls && a.trackSourceWork == b.trackSourceWork &&
+	Require(a.streamCurls && !b.streamCurls && a.trackSourceWork == b.trackSourceWork &&
 		a.stableTimestep == b.stableTimestep && a.portTimestep == b.portTimestep,
 		"streamed domain changed field/port scheduling");
 }
@@ -118,6 +114,29 @@ static void Control(const SubgridDeviceTarget &target, unsigned int axis, bool m
 		Exact(a.sendElectric, b.sendElectric);
 		Exact(a.sendMagnetic, b.sendMagnetic);
 		Exact(a.fields, b.fields);
+		Require(a.operators.has_value() && !b.operators.has_value() &&
+			a.fields.curlColumn.empty() && a.fields.transposeColumn.empty() &&
+			a.fields.curlWeight.empty() && a.fields.curlLow.empty() &&
+			a.fields.transposeWeight.empty() && a.fields.transposeLow.empty() &&
+			a.fields.curlStart == std::vector<std::uint32_t>{0} && a.fields.transposeStart.empty(),
+			"compressed domain retained an expanded operator");
+		const CartesianSubgridDeviceCurl expectedCurl(b.fields.curlStart, b.fields.curlColumn,
+			b.fields.curlWeight, b.fields.curlLow, b.fields.electric.size(), true);
+		const CartesianSubgridDeviceCurl expectedTranspose(b.fields.transposeStart, b.fields.transposeColumn,
+			b.fields.transposeWeight, b.fields.transposeLow, b.fields.magnetic.size(), true);
+		const auto same = [&](const CartesianSubgridDeviceCurl &packed,
+			const CartesianSubgridDeviceCurl &expected, std::size_t rows, std::size_t columns)
+		{
+			packed.Validate(rows, columns);
+			Exact(packed.start, expected.start);
+			Exact(packed.offset, expected.offset);
+			Exact(packed.base, expected.base);
+			Exact(packed.pattern, expected.pattern);
+			Exact(packed.weight, expected.weight);
+			Exact(packed.residual, expected.residual);
+		};
+		same(a.operators->curl, expectedCurl, a.ownedMagnetic, a.fields.electric.size());
+		same(a.operators->transpose, expectedTranspose, a.ownedElectric, a.fields.magnetic.size());
 	}
 	for (auto field : {CartesianSubgridField::Electric, CartesianSubgridField::Magnetic})
 	{

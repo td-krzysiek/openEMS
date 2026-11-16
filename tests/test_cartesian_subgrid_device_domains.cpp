@@ -7,6 +7,7 @@
 #include <algorithm>
 #include <cmath>
 #include <iostream>
+#include <functional>
 #include <limits>
 #include <memory>
 #include <stdexcept>
@@ -328,9 +329,48 @@ static void Guards(const SubgridDeviceTarget &target)
 	data.fields.sourceWeight.push_back(1);
 	data.fields.sourceOffStart.push_back(0);
 	Reject([&] { CreateCartesianSubgridDomainExecution(*backend, data); });
-	data = plan->Domains().front();
+	const CartesianSubgridDomainPlan expanded(grid, 0, {mid},
+		CartesianSubgridDomainPlan::CurlPreparation::ExpandedOracle);
+	data = expanded.Domains().front();
 	data.fields.transposeColumn.front() = static_cast<std::uint32_t>(data.fields.magnetic.size());
 	Reject([&] { CreateCartesianSubgridDomainExecution(*backend, data); });
+	CountingBackend allocationGuard(*backend);
+	const auto malformed = [&](const std::function<void(CartesianSubgridDomainData &)> &change)
+	{
+		auto invalid = plan->Domains().front();
+		Require(invalid.operators.has_value(), "missing compressed negative-control fixture");
+		change(invalid);
+		const auto before = allocationGuard.allocated;
+		Reject([&] { CreateCartesianSubgridDomainExecution(allocationGuard, invalid); });
+		Require(allocationGuard.allocated == before, "malformed compressed domain allocated GPU memory");
+	};
+	malformed([](auto &d) { d.operators.reset(); });
+	malformed([](auto &d) { d.fields.streamCurls = false; });
+	malformed([](auto &d) { d.fields.transposeColumn.push_back(0); });
+	malformed([](auto &d) { d.operators->geometry.push_back(0); });
+	malformed([](auto &d) { d.operators->transpose.base.pop_back(); });
+	malformed([](auto &d) { d.operators->transpose.weight.clear(); });
+	malformed([](auto &d) { d.operators->curl.start.front() = 1; });
+	malformed([](auto &d) { d.operators->curl.start.back() = 0; });
+	malformed([](auto &d) { d.operators->curl.pattern.front() = std::numeric_limits<std::uint32_t>::max(); });
+	malformed([](auto &d) { d.operators->curl.offset.front() = std::numeric_limits<std::uint32_t>::max(); });
+	malformed([](auto &d) { d.operators->curl.weight.front() = std::numeric_limits<float>::quiet_NaN(); });
+	malformed([](auto &d) { d.operators->curl.residual.front() = std::numeric_limits<float>::denorm_min(); });
+	malformed([](auto &d)
+	{
+		auto &curl = d.operators->curl;
+		for (std::size_t row = 0; row < curl.base.size(); ++row)
+		{
+			const auto pattern = curl.pattern[row];
+			if (curl.start[pattern] < curl.start[pattern + 1])
+			{
+				curl.base[row] = std::numeric_limits<std::uint32_t>::max();
+				return;
+			}
+		}
+		throw std::runtime_error("no nonempty compressed row for overflow control");
+	});
+	std::cout << "PASS: 13 malformed compressed domains rejected before GPU allocation" << std::endl;
 	data = plan->Domains().front();
 	Require(!data.fields.lower.empty(), "missing factor negative-control fixture");
 	data.fields.lower.front() = -1;

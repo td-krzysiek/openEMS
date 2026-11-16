@@ -135,6 +135,11 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Changed
 
+- Experimental Cartesian-subgrid domains now prepare compressed local operator
+  packages directly, avoiding expanded per-worker copies and backend repacking.
+  Malformed packages reject before device allocation; numerical kernels and
+  cell guards are unchanged.
+
 - Experimental Cartesian-subgrid domain preparation no longer retains two
   temporary global expanded curl operators. Local uploads and update kernels
   are unchanged. Scoped setup measurements reduce peak memory at a setup-time

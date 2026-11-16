@@ -303,16 +303,53 @@ CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(const CartesianSubgrid &g
 			std::vector<Index> &starts, std::vector<Index> &columns,
 			std::vector<float> &weight, std::vector<float> &low)
 		{
-			starts.assign(1, 0);
+			using Curl = CartesianSubgridDeviceCurl;
+			std::optional<Curl::Builder> stream;
+			std::vector<Curl::Term> terms;
+			if (data.streamCurls)
+			{
+				stream.emplace(owned.size(), input.size(), true);
+				terms.reserve(8);
+			}
+			else
+			{
+				starts.assign(1, 0);
+			}
 			for (Index row : owned)
 			{
+				terms.clear();
 				curls.ForEach(transpose, row, [&](Index column, float high, float residual)
 				{
-					columns.push_back(input.at(column));
-					weight.push_back(high);
-					low.push_back(residual);
+					const Index localColumn = input.at(column);
+					if (stream)
+					{
+						terms.push_back({localColumn, high, residual});
+					}
+					else
+					{
+						columns.push_back(localColumn);
+						weight.push_back(high);
+						low.push_back(residual);
+					}
 				});
-				starts.push_back(static_cast<Index>(columns.size()));
+				if (stream)
+				{
+					stream->Append(terms);
+				}
+				else
+				{
+					starts.push_back(static_cast<Index>(columns.size()));
+				}
+			}
+			if (stream)
+			{
+				if (!domain.operators)
+				{
+					domain.operators.emplace();
+				}
+				auto &result = transpose ? domain.operators->transpose : domain.operators->curl;
+				result = stream->Finish();
+				local.streamCurls = true;
 			}
 		};
 		rows(true, ownedE, hMaps[worker], local.transposeStart, local.transposeColumn,

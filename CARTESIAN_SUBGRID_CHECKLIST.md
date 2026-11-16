@@ -531,6 +531,19 @@ Physical qualification remains open. Local expanded uploads, hash
 maps, host fields and general interfaces remain scaling work; no C/D/U/A item
 or allocation guard is completed/raised by this scoped result.
 
+
+Further partial C01/C03/C05/D01/D05: [streamed local domain preparation](CARTESIAN_SUBGRID_DOMAINS.md#streamed-local-domain-preparation)
+retains exact local row patterns directly and borrows them only for backend
+upload, without changing kernels or ownership. The complete R20-r03 source
+was fixed/hashed before compilation. Six reference/six Metal exact pattern,
+transfer and256-step port-field cases,13 pre-allocation malformed-package
+guards, native8/16-case TD/FD/ports and fresh CTest45/45 pass. An actual frozen
+R19 comparison at491,520 leaves reduces peak RSS30.37%, with7.93% longer whole
+setup; a graded two-material control saves only2.88% RAM. A960,000-leaf setup
+passes below1.5GiB, without FDTD/RF acceptance at that size. Physical CUDA is
+running, not yet accepted. Per-state maps, global host fields/topology and
+large-interface scaling remain open; guards and production runtimes are unchanged.
+
 ## Milestone decisions
 
 | Milestone | Completion condition | Status |
@@ -619,3 +632,5 @@ numerical change invalidates their prior qualification.
 | 2026-11-16 | Further partial C01/C03/C05/D01/D05: global domain row stream | R19 over `389d372` | [Setup contract and measurements](CARTESIAN_SUBGRID_DOMAINS.md#streamed-global-domain-preparation). Reference/Metal12 exact metadata/field cases, native8/16 TD/FD/port cases and CTest45/45 pass. Actual frozen-parent491,520-leaf peak RSS−23.68%, whole setup+10.07%; local core `560fa47d714b125f0f9417f06692969422e64745da0eef732055033bef8d7fbb`. Physical CUDA pending; local uploads/topology/scaling and antenna acceptance remain open. |
 
 | 2026-11-16 | Qualification audit and test-fixture correction | R19 fixed test over `ef5a17b` | The original local test binary lacks the late port edit; the original CUDA fixture rejects resistor-after-source setup before backend creation. Preserve both records. A corrected separately compiled fixture passes6 reference/6 Metal cases against unchanged core `560fa47d...`; this does not accept the failed CUDA run or qualify an antenna. |
+
+| 2026-11-16 | Further partial C01/C03/C05/D01/D05: exact local row packages | R20-r03 over `21eff5b` | [Local package and measurements](CARTESIAN_SUBGRID_DOMAINS.md#streamed-local-domain-preparation). Fresh source-before-build reference/Metal and native8/16-case controls; CTest45/45 and13 rejection guards. Actual R19 comparison: peak RSS−30.37%, whole setup+7.93%; graded benefit2.88%.960k setup-only control passes. Local core `65309099920fd3f93e5e039ffde808ed77fb520910d9f1c17d672f1ce7de39c7`; physical CUDA pending, no antenna acceptance. |

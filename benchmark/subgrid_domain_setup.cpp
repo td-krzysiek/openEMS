@@ -48,7 +48,20 @@ int main(int argc, char **argv)
 		std::size_t terms = 0, owned = 0, ghosts = 0;
 		for (const auto &domain : plan.Domains())
 		{
-			terms += domain.fields.curlColumn.size() + domain.fields.transposeColumn.size();
+			if (domain.operators)
+			{
+				for (const auto *curl : {&domain.operators->curl, &domain.operators->transpose})
+				{
+					for (auto pattern : curl->pattern)
+					{
+						terms += curl->start[pattern + 1] - curl->start[pattern];
+					}
+				}
+			}
+			else
+			{
+				terms += domain.fields.curlColumn.size() + domain.fields.transposeColumn.size();
+			}
 			owned += domain.ownedElectric + domain.ownedMagnetic;
 			ghosts += domain.globalElectric.size() + domain.globalMagnetic.size() - domain.ownedElectric - domain.ownedMagnetic;
 		}
