@@ -232,7 +232,8 @@ surface fit or update equation changes.
 
 The composed local qualification passes 19 stages, CTest42/42 and Python14/14,
 including 15 Metal constitutive cases and 11,255 identical prior arrays.
-Physical CUDA compatibility replay is pending. Separately, a contained native
+Physical CUDA replay passes all39 gates and CTest42/42, including58
+constitutive comparisons in total:15 per device and14 per pair order. Separately, a contained native
 Cu18 U-line with 961,584 leaves, 153,504 exposed faces and 614,016 traces now
 prepares on Metal and completes eight actual CUDA steps on an RTX4090, without
 host half-step fallback. Eight steps qualify allocation/dispatch only, not RF
