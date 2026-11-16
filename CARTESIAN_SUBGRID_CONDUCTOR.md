@@ -119,9 +119,11 @@ Cartesian faces and the existing passive surface advance. The supplied CAD
 coordinates are unchanged. Invalid/self-crossing/backtracking contours,
 zero-height smooth sheets, transforms and unsupported axial contacts reject.
 There is no new fit, numerical backend, reference-plane shift or roughness model.
-The current r08 guard requires omission of a repeated final closing vertex; a
-reproduced equivalent closed-ring rejection is an experimental-adapter
-restriction under follow-up, not an ordinary upstream solver defect.
+The original r08 guard rejected a conventional repeated closing vertex.
+The r09 follow-up ignores one such terminal sentinel only during validation,
+preserving every supplied coordinate. Extra repetitions still reject. The
+unchanged rejected r08 input passes; this fixes an experimental admission
+restriction, not an ordinary upstream solver defect.
 Direct C++ callers must update CSXCAD before operator setup, as native XML/
 Python setup already does. Holes need supported shell/priority geometry or
 simple decompositions, not self-touching polygon bridges.
@@ -131,7 +133,7 @@ contours, solid/hollow Z cylinders, polygon normals X/Y/Z, Cu18/Cu35, reversed
 extrusion/winding, substrate loss and alternative units/origin. Every native
 mask matches an independent analytic centre classifier; native coordinates
 remain exact. CPU fields, loss and occupied volume match independent occupied-
-box decompositions exactly. All hollow-bore, passive-energy and five invalid-
+box decompositions exactly. All hollow-bore, passive-energy and malformed-
 input controls pass. Maximum normalized shaped-field errors are
 9.71489e-07 on physical Metal and 9.71489e-07 across physical RTX4090/RTX3080,
 within the unchanged 2e-4 gate.
@@ -158,6 +160,22 @@ Actual r08 local core SHA256:
 `5e9b2a6d385ecb7d98c8ba306dd63e2fe139475c1f79685716dd2c2dbe7e2203`.
 Actual r08 CUDA core SHA256:
 `69b8fa61dead03bf134f3aaf815dffcd997084bbabdd8529d42faafade2386a5`.
+
+The r09 closed-ring follow-up passes eight positive and six negative shape
+controls, the composed 15-stage CPU/Metal replay, CTest40/40, Python14/14,
+35 physical CUDA gates/CTest40 and 11,255 unchanged prior arrays. Maximum
+Metal/CUDA shaped-field error remains 9.715e-7 within the unchanged 2e-4 gate.
+Three older-CSXCAD scoped tests pass with three explicit missing-feature skips;
+this is not a full old-dependency replay. R09 local core SHA256:
+`e7f9501ef239d13f657e869fd9a04e6dade05cb9b40a5f47a03b936a3d995955`; CUDA core:
+`5f273237e245d42dcde5340fc6be837b6b4cb1ad36fa4c43c1dd09358f4f60bd`. Curved RF is a separately tracked diagnostic,
+not qualification supplied by this admission fix. The first completed U-line
+ratio4 pair has band S21 phase differences of 0.095° for PEC and 12.7° for
+smooth copper, with complex-S11 differences of 0.00024 and 0.149 respectively. Matched
+native CAD/probes are checked. This unresolved experimental discrepancy is
+retained; finer-grid and constitutive/boundary controls are pending. It is not
+an established ordinary upstream solver defect or evidence that geometric
+sidewall-area bias alone causes the RF error.
 
 Further acceptance requires spatial/time convergence, broad conductor CAD and
 ports, scalable field/interface representation, distributed loss/PML/DFT state

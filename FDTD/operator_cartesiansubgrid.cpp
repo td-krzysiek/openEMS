@@ -85,10 +85,22 @@ double SurfaceConductivity(CSProperties *property)
 void ValidateSurfaceContour(CSPrimPolygon &polygon)
 {
 	using Point = std::array<long double, 2>;
-	const auto count = polygon.GetQtyCoords();
-	if (count < 3 || count > std::size_t(std::numeric_limits<int>::max() / 2))
+	const auto supplied = polygon.GetQtyCoords();
+	if (supplied < 3 || supplied > std::size_t(std::numeric_limits<int>::max() / 2))
 	{
 		throw std::invalid_argument("CartesianSubgrid: surface polygon needs at least three vertices");
+	}
+	std::size_t count = supplied;
+	// An optional closing sentinel is conventional CSXCAD input, not a
+	// zero-length physical edge. Ignore it only in validation; never edit CAD.
+	if (polygon.GetCoord(0) == polygon.GetCoord(int(2 * count - 2)) &&
+		polygon.GetCoord(1) == polygon.GetCoord(int(2 * count - 1)))
+	{
+		--count;
+	}
+	if (count < 3)
+	{
+		throw std::invalid_argument("CartesianSubgrid: surface polygon needs three distinct vertices");
 	}
 	std::vector<Point> points;
 	Point lo{std::numeric_limits<long double>::infinity(), std::numeric_limits<long double>::infinity()};

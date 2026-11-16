@@ -33,7 +33,10 @@ static void Require(bool value, const char *message)
 		throw std::runtime_error(message);
 	}
 }
-enum class Shape { Concave, Curve, Cylinder, Barrel, Bowtie, Backtrack, Flat, Sheet, Cut };
+enum class Shape
+{
+	Concave, Curve, Cylinder, Barrel, Bowtie, Backtrack, Flat, Sheet, Cut, RepeatedClosing
+};
 static bool Inside(Shape shape, double x, double y)
 {
 	const double r = std::hypot(x - 2, y - 2);
@@ -49,6 +52,13 @@ static bool Inside(Shape shape, double x, double y)
 }
 static std::vector<Point> Contour(Shape shape)
 {
+	if (shape == Shape::RepeatedClosing)
+	{
+		auto points = Contour(Shape::Concave);
+		points.push_back(points.front());
+		points.push_back(points.front());
+		return points;
+	}
 	if (shape == Shape::Concave)
 	{
 		return {{1.25, 1.25}, {2.75, 1.25}, {2.75, 1.75}, {1.75, 1.75}, {1.75, 2.75}, {1.25, 2.75}};
@@ -83,7 +93,7 @@ struct Settings
 	Shape shape = Shape::Concave;
 	unsigned int normal = 2;
 	double thickness = 18e-6, unit = .001, offset = 0;
-	bool reverse = false, bulk = false;
+	bool reverse = false, bulk = false, closed = false;
 };
 struct Result
 {
@@ -175,6 +185,10 @@ static Result Run(const Settings &settings, bool boxes, const SubgridDeviceTarge
 		polygon->SetLength(settings.shape == Shape::Sheet ? 0 :
 			(settings.reverse ? -1 : 1) * settings.thickness / settings.unit);
 		points = Contour(settings.shape);
+		if (settings.closed)
+		{
+			points.push_back(points.front());
+		}
 		if (settings.reverse)
 		{
 			std::reverse(points.begin(), points.end());
@@ -290,7 +304,8 @@ static Result Run(const Settings &settings, bool boxes, const SubgridDeviceTarge
 	Require(result.balance < (target ? 2e-4 : 2e-9), "shaped conductor energy ledger failed");
 	Require(result.loss > 1e-8, "shaped conductor has no measurable Ohmic loss");
 	std::cout << "SHAPED_SURFACE shape=" << int(settings.shape) << " boxes=" << boxes << " device=" << bool(target)
-		<< " axis=" << axis << " cells=" << count << " faces=" << result.faces << " volume=" << result.volume
+		<< " axis=" << axis << " closed=" << settings.closed << " reverse=" << settings.reverse
+		<< " cells=" << count << " faces=" << result.faces << " volume=" << result.volume
 		<< " loss=" << result.loss << " balance=" << result.balance << std::endl;
 	return result;
 }
@@ -321,7 +336,8 @@ int main(int argc, char **argv)
 		const auto target = argc == 2 ? SubgridDeviceTarget::FromFlag(argv[1]) : SubgridDeviceTarget{};
 		for (const Settings settings : {Settings{}, Settings{Shape::Curve}, Settings{Shape::Cylinder},
 			Settings{Shape::Barrel, 2, .00027178}, Settings{Shape::Curve, 2, 35e-6, .001, 0, true, true},
-			Settings{Shape::Concave, 0}, Settings{Shape::Curve, 1, 18e-6, 1e-6, 10}})
+			Settings{Shape::Concave, 0}, Settings{Shape::Curve, 1, 18e-6, 1e-6, 10},
+			Settings{Shape::Concave, 2, 18e-6, .001, 0, true, true, true}})
 		{
 			const auto shaped = Run(settings, false, nullptr), decomposed = Run(settings, true, nullptr);
 			const auto device = Run(settings, false, &target);
@@ -332,7 +348,7 @@ int main(int argc, char **argv)
 			std::cout << "SHAPED_COMPARE shape=" << int(settings.shape) << " exact_error=" << exact
 				<< " device_error=" << error << std::endl;
 		}
-		for (Shape shape : {Shape::Bowtie, Shape::Backtrack, Shape::Flat, Shape::Sheet, Shape::Cut})
+		for (Shape shape : {Shape::Bowtie, Shape::Backtrack, Shape::Flat, Shape::Sheet, Shape::Cut, Shape::RepeatedClosing})
 		{
 			bool rejected = false;
 			try

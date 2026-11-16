@@ -179,6 +179,10 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Fixed
 
+- Experimental Cartesian-subgrid smooth-volume contours accept one repeated
+  final closing vertex without changing the supplied CAD. Further repeated,
+  backtracking and self-intersecting edges still reject.
+
 - Experimental Cartesian-subgrid reconstruction and path integration now use
   consistent boundary-roundoff support, retaining genuine interior interpolation.
 
