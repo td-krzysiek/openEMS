@@ -1,0 +1,145 @@
+# Experimental Cartesian-subgrid conductivity
+
+**Qualified scope:** constant native isotropic conductivity boxes and the
+paired single-device recurrence on CPU/reference/Metal and HIP/NVIDIA. The
+combined compatibility gates below pass. This is not distributed-loss,
+conductor/skin, PML/loss or production antenna qualification. Retain the
+allocation and geometry guards from `CARTESIAN_SUBGRID.md`.
+
+## Numerical contract
+
+Use constant isotropic electric conductivity in S/m and magnetic conductivity
+in ohm/m. Native boxes use the existing CSXCAD `kappa` and `sigma` properties;
+permittivity/permeability, priorities, drawing units and local-cell alignment
+retain their existing meaning. Negative/nonfinite coefficients reject. This is
+not a broadband loss-tangent, surface-impedance, skin-depth or roughness model.
+Background conductivity, anisotropic/spatially weighted loss and unsupported
+material primitives remain rejected.
+
+The paired `Operator_Ext_CartesianSubgrid_Conductivity` builds the electric loss
+form `G` from local physical-volume quadrature and the same restricted traces as
+the original electric mass `M`. Its coupled implicit factor is
+`A = M + dt G/2`; the electric increment obeys
+`A (E_new - E_old) = dt (C^T H - G E_old)`.
+Resistor-port responses and the small coupled port solve use that same factor,
+instead of damping the result of an otherwise lossless timestep.
+
+Soft-E sources remain ordered kicks after the implicit/port update. Their work
+uses the original mass and transpose curl. Electric dissipation is the positive
+midpoint quadratic form before those kicks. Magnetic conductivity uses its own
+constitutive midpoint update and positive loss ledger. The current CFL bound
+is retained; midpoint passivity does not imply L-stability or adequate spatial
+resolution for a highly conducting solid.
+
+One shared implementation uses the existing reference, Metal and HIP backends.
+Device factors preserve the original trace/summation order, including full XYZ
+refinement. Histories remain on device. Compensated per-trace/per-face ledgers
+are reduced hierarchically only when an observation requests them. Allocation,
+phase, fixed-timestep and incomplete-observation guards remain explicit.
+
+## Evidence and reproduction
+
+The independent dense oracle in
+[`test_cartesian_subgrid_conductivity.cpp`](tests/test_cartesian_subgrid_conductivity.cpp)
+constructs physical edge/volume forms rather than reading prepared private
+factors. Twelve bounded cases cover zero/stiff loss, pure electric/magnetic
+loss, full XYZ refinement, noncommuting mass/conductance, real pulse/DC sources,
+source-only operation, coupled ports and repeated observations.
+[`test_cartesian_subgrid_conductivity_guards.cpp`](tests/test_cartesian_subgrid_conductivity_guards.cpp)
+checks invalid coefficients, construction, phases, rates and absorber rejection.
+
+The earlier isolated XYZ prototype passed 27/27 CTest checks and twelve physical cases
+on each of Metal, RTX4090 and RTX3080. The largest sampled FP32 field error
+against the independent recurrence was `1.733e-6`; the largest normalized
+energy-balance discrepancy was `2.329e-7`. The CUDA attempt also retained the
+separate lossless domain/port controls on the physical two-card pair, in both
+orders. **That does not run conductivity on multiple devices.**
+
+Isolated XYZ library SHA-256:
+
+- Metal: `7f2e8809dc0441dbb9f952cd971c9754c0e44c4463c87dff9c7ece1bae5739a0`.
+- CUDA: recorded in the contributor's identity-checked `xyz-cuda-r01.json`.
+
+Native controls in
+[`test_cartesian_subgrid_native_conductivity.cpp`](tests/test_cartesian_subgrid_native_conductivity.cpp)
+check analytic uniform-electric-field decay, second-order time convergence,
+translated drawing units, priority/insertion-order changes, a higher-priority
+lossless pocket and repeated preparation. This is a constitutive zero-curl
+control, not a radiating cavity. Actual scripting controls in
+[`Cartesian_Subgrid_Conductivity.py`](python/Tests/Cartesian_Subgrid_Conductivity.py)
+compare native CPU/reference/device fields and require a measurable material
+effect. Both native groups pass in the combined CPU/reference/Metal qualification and
+on each physical RTX4090/RTX3080. Native Python electric/magnetic/combined
+material controls pass on Metal and CUDA; their largest sampled CPU/device
+probe discrepancy is 1.425e-6.
+
+A separate native homogeneous PEC-cube TE110 pilot now adds continuum wave
+evidence. At 6/12/24 base cells per axis, frequency errors are approximately
+1.162%/0.2955%/0.07451%; doubling resolution reduces that error about fourfold.
+CPU/Metal six-cycle traces differ by at most `1.416e-6`. The finest six-cycle
+waveform still differs from the continuum trace by 2.70%, explicitly retained
+as a spatial-error observation. The maximum normalized balance discrepancy is
+`1.702e-7` on Metal. This is a homogeneous closed-mode pilot, not a lossy
+transmission line, heterogeneous scattering or antenna qualification. Its
+standalone source/runtime/trace evidence is `damped-cavity-pilot-r03.json` in
+the contributor's native-admission archive; it does not change the running
+combined-source qualification.
+
+```sh
+ctest --test-dir build --output-on-failure
+build/tests/test_cartesian_subgrid_conductivity --metal
+build/tests/test_cartesian_subgrid_native_conductivity --metal
+# On a separately built and qualified HIP/NVIDIA runtime:
+build/tests/test_cartesian_subgrid_conductivity --cuda
+build/tests/test_cartesian_subgrid_native_conductivity --cuda
+OPENEMS_SUBGRID_DEVICE=metal python3 python/Tests/Cartesian_Subgrid_Conductivity.py
+```
+
+Preserve failed attempts: the early XYZ upload incorrectly required sorted
+master-edge traces; validation now permits their actual order without sorting
+arithmetic. An earlier CUDA CTest attempt exhausted its wall-time budget on the
+unchanged large reference test; a separate retry passed. The later isolated XYZ
+attempt completed all 27 tests in one attempt. These are different source/build
+identities, not interchangeable green checks.
+
+## Combined source/build qualification
+
+The source was compiled from parent b48e819 with the recorded waveform and
+conductivity patches. The later source-tail commit has the same three qualified
+numerical waveform blobs; no production/frozen runtime was rebuilt.
+
+- Local: all 25 stages pass, CTest 29/29 and Python 14/14, native fields/ports/
+  PML/dipole/polygons and two frozen CPU dipoles. Twenty-one earlier library
+  prefixes are unchanged; 11,255 prior numerical arrays remain bit-identical.
+  Two harness-only preparation/import failures are preserved; continuation
+  checked unchanged source/runtime identities before retaining prior green gates.
+- Physical CUDA: all 13 gates pass, CTest 29/29, twelve independent conductivity
+  cases per card, five native analytic and four priority/unit controls per card,
+  actual native material/Step scripts and retained lossless pair controls in
+  both RTX4090/RTX3080 orders. Conductivity runs on one GPU at a time;
+  this does not implement distributed material histories.
+- Largest sampled conductivity field error 1.733e-6; unchanged 2e-4 field gate.
+  Exact numerical tolerances, actual loaded libraries, source inventories,
+  terminal states and failed attempts are recorded in the contributor's
+  `native-admission/{qualification,cuda-qualification,prior-array-comparison}.json`.
+  The ordinary solver implementation is unchanged; its qualified b48e819
+  ordinary-engine suite is retained, not a new run.
+
+Frozen combined core SHA-256:
+
+- CPU/Metal: `51b9bd40dc81e3f50c9cdde47dd387a4ec60e02e8a52790ccde0ec1d051ed27e`.
+- HIP/NVIDIA: `951ad4afd0d82e6e70e8cc52bdf3282ad98b12e1664115f68b9b9d72e2bf017d`.
+
+## Remaining admission gates
+
+Positive loss combined with PML or Mur is still rejected, including apparently
+separated supports. Both histories and work identities need a joint contract.
+The next limited admission must verify disjoint prepared correction targets and
+their coupled electric-mass components after all operators are prepared; a
+bounding-box assumption or extension declaration order is insufficient.
+
+Then qualify native damped-wave/cavity and short-line propagation against
+analytic and regular-Yee controls, including spatial/time sensitivity and power.
+Conducting sheets, physical conductor skin/ADE histories, distributed loss/PML,
+DFT/pause and representative lossy PCB/array behavior remain open. These scoped
+checks do not establish scalability, end-to-end speedup or antenna accuracy.

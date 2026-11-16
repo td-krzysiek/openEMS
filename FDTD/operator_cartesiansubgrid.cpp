@@ -19,6 +19,7 @@
 #include "extensions/operator_ext_cartesiansubgrid_pml.h"
 #include "extensions/engine_ext_cartesiansubgrid_pml.h"
 #include "extensions/cartesiansubgrid_advance.h"
+#include "extensions/operator_ext_cartesiansubgrid_conductivity.h"
 #include "tools/constants.h"
 
 #include <algorithm>
@@ -500,7 +501,7 @@ void Operator_CartesianSubgrid::ValidateProperties() const
 			(type & ~(CSProperties::EXCITATION | CSProperties::PROBEBOX | CSProperties::DUMPBOX)))
 		{
 			throw std::invalid_argument(
-				"CartesianSubgrid: only lossless isotropic materials, PEC, soft E sources "
+				"CartesianSubgrid: only constant isotropic materials, PEC, soft E sources "
 				"and E/H observations are supported");
 		}
 		if (type == CSProperties::LUMPED_ELEMENT)
@@ -518,10 +519,15 @@ void Operator_CartesianSubgrid::ValidateProperties() const
 		if (type == CSProperties::MATERIAL)
 		{
 			auto *material = static_cast<CSPropMaterial *>(property);
-			if (!material->GetIsotropy() || material->GetKappa() != 0 || material->GetSigma() != 0)
+			if (!material->GetIsotropy())
 			{
 				throw std::invalid_argument(
-					"CartesianSubgrid: material objects must be isotropic and lossless");
+					"CartesianSubgrid: material objects must be isotropic");
+			}
+			if (!(material->GetKappa() >= 0) || !std::isfinite(material->GetKappa()) ||
+				!(material->GetSigma() >= 0) || !std::isfinite(material->GetSigma()))
+			{
+				throw std::invalid_argument("CartesianSubgrid: finite nonnegative SI material conductivities required");
 			}
 			if (!(material->GetEpsilon() > 0) || !std::isfinite(material->GetEpsilon()) ||
 				!(material->GetMue() > 0) || !std::isfinite(material->GetMue()))
@@ -707,6 +713,13 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 	if (flags != None)
 	{
 		throw std::invalid_argument("CartesianSubgrid: rectangular operator debug dumps are not supported");
+	}
+	// A repeated preparation replaces only its own automatically installed
+	// provider; manually registered extensions retain their original ownership.
+	if (m_NativeConductivity)
+	{
+		DeleteExtension(m_NativeConductivity);
+		m_NativeConductivity = nullptr;
 	}
 	CartesianSubgrid::Axes lines;
 	for (unsigned int n = 0; n < 3; ++n)
@@ -899,6 +912,33 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 	m_Exc->Reset(dT);
 	PrepareResistors();
 	PrepareSources();
+	bool hasConductivity = false;
+	for (CSProperties *property : CSX->GetPropertyByType(CSProperties::MATERIAL))
+	{
+		auto *material = static_cast<CSPropMaterial *>(property);
+		hasConductivity = hasConductivity || material->GetKappa() != 0 || material->GetSigma() != 0;
+	}
+	if (hasConductivity)
+	{
+		// Keep the sorted pointer snapshot alive through extension setup. Grid
+		// positions are SI offsets; CSXCAD membership uses drawing coordinates.
+		auto conductivity = [this, primitives](const CartesianSubgrid::Point &start,
+			const CartesianSubgrid::Point &stop)
+		{
+			double centre[3];
+			for (unsigned int n = 0; n < 3; ++n)
+			{
+				centre[n] = (start[n] + stop[n]) / (2 * gridDelta) + discLines[n][0];
+			}
+			auto *property = CSX->GetPropertyByCoordPriority(centre, primitives, true);
+			auto *material = property ? static_cast<CSPropMaterial *>(property) : nullptr;
+			return Operator_Ext_CartesianSubgrid_Conductivity::Coefficients{
+				material ? material->GetKappa() : 0, material ? material->GetSigma() : 0};
+		};
+		auto *extension = new Operator_Ext_CartesianSubgrid_Conductivity(this, std::move(conductivity));
+		AddExtension(extension);
+		m_NativeConductivity = extension;
+	}
 	for (auto *extension : m_Op_exts)
 	{
 		if (!extension->BuildExtension())

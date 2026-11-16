@@ -12,6 +12,7 @@
 
 class CartesianSubgrid;
 class GPU_Backend;
+struct Op_SubgridCurl;
 
 //! Borrowed normalized compact buffers; not rectangular voltage/current arrays.
 struct GPU_CartesianSubgridFields
@@ -42,6 +43,23 @@ struct CartesianSubgridDeviceData
 	//! A source-only worker must retain source work when another worker owns ports.
 	bool trackSourceWork = false;
 	double stableTimestep = 0;
+};
+
+//! Paired-physics recurrence hooks around the compact algebraic solve.
+//! The extension supplies the prepared factor/port data, never post-damps a step.
+class GPU_CartesianSubgridRecurrence
+{
+  public:
+	virtual ~GPU_CartesianSubgridRecurrence() = default;
+	virtual void Bind(GPU_Backend &backend, const GPU_CartesianSubgridFields &fields, float *rhs) = 0;
+	//! After original transpose-curl/source capture, before the prepared mass solve.
+	virtual void PrepareElectric(double timestep) = 0;
+	//! After the implicit/port solve, before the ordered soft-source kicks.
+	virtual void FinishElectric(double timestep) = 0;
+	virtual void UpdateMagnetic(const Op_SubgridCurl &curl, double timestep) = 0;
+	virtual void CheckObservation() const = 0;
+	virtual std::array<double, 2> ReadLedger() = 0;
+	virtual std::size_t StorageBytes() const = 0;
 };
 
 //! Device execution owned by the compact engine, created by its existing backend.
@@ -84,5 +102,14 @@ class GPU_CartesianSubgrid
 	{
 		throw std::logic_error("CartesianSubgrid: device ledger observation is unavailable");
 	}
+	//! Extension-specific complete-step diagnostics; absent on the lossless core.
+	virtual std::array<double, 2> ReadAdvanceLedger()
+	{
+		throw std::logic_error("CartesianSubgrid: recurrence diagnostics unavailable");
+	}
 };
+
+std::unique_ptr<GPU_CartesianSubgrid> GPU_CreateCartesianSubgridAdvanced(
+	GPU_Backend &backend, const CartesianSubgrid &grid, CartesianSubgridDeviceData data,
+	std::unique_ptr<GPU_CartesianSubgridRecurrence> recurrence, double timestep);
 #endif

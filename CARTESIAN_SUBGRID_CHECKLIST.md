@@ -320,6 +320,17 @@ Acceptance: each extension needs numerical controls on every claimed backend.
 Additional downstream conductor, runtime-control and multi-GPU extensions need
 their own integration checks; master parity does not automatically qualify them.
 
+Partial F01: the [paired constant-conductivity implementation](CARTESIAN_SUBGRID_CONDUCTIVITY.md)
+passes independent CPU/reference/Metal and physical RTX4090/RTX3080 recurrence
+controls, including full XYZ refinement, pure electric/magnetic losses, ports
+and real sources. Native SI box mapping passes analytic decay/time convergence,
+priority/unit and scripting controls. The combined local 25-stage qualification,
+CTest 29/29, Python 14/14 and physical CUDA 13-gate/CTest 29/29 suite pass;
+21 older prefixes and 11,255 prior arrays are unchanged. A separate native closed-mode
+pilot shows second-order frequency convergence, with residual spatial waveform
+error explicitly recorded. Loss with PML/Mur, general lossy propagation, surface/
+ADE conductors and distributed histories remain open, so F01 is not checked off.
+
 ## 8. Representative antenna qualification
 
 - [ ] **A01** Freeze a regular-grid PEC antenna reference, geometry/material/
@@ -382,7 +393,7 @@ are still open.
 ## Milestone decisions
 
 | Milestone | Completion condition | Status |
-|---|---|---|
+|---|---|---|---|
 | Reference prototype | R01–R08 demonstrated on small CPU controls | Achieved, limited scope |
 | Useful PEC antenna on CPU | Required geometry/mesh/port/PML/NF2FF items, with small-antenna evidence | Achieved for the public vacuum PEC dipole only; broader antenna workflows open |
 | Useful PEC antenna on one GPU | Previous milestone plus scalable representation and a qualified device backend | Open |
@@ -450,3 +461,5 @@ numerical change invalidates their prior qualification.
 | 2026-11-16 | Partial extension/parity infrastructure | This PR, paired-advance increment (configure-time parent `c640333`) | [Boundary, tests, source/build and limits](CARTESIAN_SUBGRID.md#paired-compact-advance-extensions). All21 local stages, CTest25/25/Python14/14;16 older prefixes and11,255 arrays unchanged. Physical RTX4090/RTX3080 retained domains/ports plus CTest25/25; canonical real-drive CPU/reference/Metal/RTX4090/RTX3080 supplement separates the repaired test's earlier initial-only coverage. No conductivity/native lossy admission, distributed histories or antenna qualification. |
 
 | 2026-11-16 | Further partial P01/U05: native source tails | This PR, waveform increment (parent b48e819) | [Contract and evidence](CARTESIAN_SUBGRID.md#native-source-waveform-tails). Step/custom sample-zero repair;21 local stages, CTest 26/26, Python 14/14 and17 older prefixes/11,255 arrays unchanged. Physical RTX4090/RTX3080 waveform/Step plus retained domain/port controls and CUDA CTest 26/26 pass. Native periodic/SSD, delayed/H/TFSF and antenna qualification remain open. |
+
+| 2026-11-16 | Partial F01 and native G01/U04/U05: constant conductivity | This PR, conductivity increment (configure-time parent b48e819 plus qualified waveform patch) | [Contract, hashes and evidence](CARTESIAN_SUBGRID_CONDUCTIVITY.md). Independent dense and native analytic/priority/unit controls; all 25 local stages, CTest 29/29/Python 14/14; physical RTX4090/RTX3080 single-device loss/native controls and retained pair fields/ports, CUDA 13-gates/CTest 29/29 pass. 21 older prefixes and 11,255 arrays unchanged. PML/loss, skin/surface/ADE, distributed histories, scalability and antenna qualification remain open. |

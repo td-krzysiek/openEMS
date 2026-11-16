@@ -1400,6 +1400,12 @@ void CartesianSubgrid::SetResistors(const std::vector<Resistor> &ports, double t
 
 void CartesianSubgrid::ApplyResistors(double timestep, double amplitude)
 {
+	ApplyResistors(timestep, amplitude, m_PortResponse, m_PortLower);
+}
+
+void CartesianSubgrid::ApplyResistors(double timestep, double amplitude,
+	const std::vector<Integral> &responses, const std::vector<double> &lower)
+{
 	Require(timestep == m_PortTimestep, "CartesianSubgrid: resistor timestep changed; reconfigure first");
 	const auto count = m_PortVoltage.size();
 	// Solve directly for net normalized current, j - sqrt(G)*V_mid.
@@ -1414,17 +1420,17 @@ void CartesianSubgrid::ApplyResistors(double timestep, double amplitude)
 		m_PortRHS[i] = amplitude * m_PortCurrent[i] - std::sqrt(m_PortConductance[i]) * voltage;
 		for (std::size_t j = 0; j < i; ++j)
 		{
-			m_PortRHS[i] -= m_PortLower[i * count + j] * m_PortRHS[j];
+			m_PortRHS[i] -= lower[i * count + j] * m_PortRHS[j];
 		}
-		m_PortRHS[i] /= m_PortLower[i * count + i];
+		m_PortRHS[i] /= lower[i * count + i];
 	}
 	for (std::size_t i = count; i-- > 0;)
 	{
 		for (std::size_t j = i + 1; j < count; ++j)
 		{
-			m_PortRHS[i] -= m_PortLower[j * count + i] * m_PortRHS[j];
+			m_PortRHS[i] -= lower[j * count + i] * m_PortRHS[j];
 		}
-		m_PortRHS[i] /= m_PortLower[i * count + i];
+		m_PortRHS[i] /= lower[i * count + i];
 		m_PortMid[i] = amplitude * m_PortCurrent[i] - m_PortRHS[i];
 		m_ResistorLoss += timestep * m_PortMid[i] * m_PortMid[i];
 		m_SourceWork += timestep * m_PortMid[i] * amplitude * m_PortCurrent[i];
@@ -1435,7 +1441,7 @@ void CartesianSubgrid::ApplyResistors(double timestep, double amplitude)
 	}
 	for (std::size_t port = 0; port < count; ++port)
 	{
-		for (const auto &term : m_PortResponse[port].weights)
+		for (const auto &term : responses[port].weights)
 		{
 			m_Electric[term.first] += timestep * term.second * m_PortRHS[port];
 		}

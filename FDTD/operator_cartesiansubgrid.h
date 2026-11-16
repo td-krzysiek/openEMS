@@ -6,6 +6,8 @@
 #include "operator.h"
 #include <memory>
 
+class Operator_Ext_CartesianSubgrid_Conductivity;
+
 //! Native API adapter for the experimental compact XYZ numerical core.
 class Operator_CartesianSubgrid : public Operator
 {
@@ -43,5 +45,7 @@ class Operator_CartesianSubgrid : public Operator
 	std::vector<std::vector<double>> m_Boxes;
 	std::vector<CartesianSubgrid::Index> m_Ratios;
 	std::unique_ptr<CartesianSubgrid> m_Grid;
+	//! Non-owning handle; the operator extension list retains ownership.
+	Operator_Ext_CartesianSubgrid_Conductivity *m_NativeConductivity = nullptr;
 };
 #endif

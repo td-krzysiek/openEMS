@@ -28,8 +28,9 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 	}
 
 	CartesianSubgridExecution(GPU_Backend &backend, const CartesianSubgridDeviceData &data,
-		std::size_t ownedElectric, std::size_t ownedMagnetic, bool domain)
-		: m_Backend(backend), m_Domain(domain),
+		std::size_t ownedElectric, std::size_t ownedMagnetic, bool domain,
+		std::unique_ptr<GPU_CartesianSubgridRecurrence> recurrence = {})
+		: m_Backend(backend), m_Recurrence(std::move(recurrence)), m_Domain(domain),
 		  m_OwnedElectric(domain ? ownedElectric : data.electric.size()),
 		  m_OwnedMagnetic(domain ? ownedMagnetic : data.magnetic.size())
 	{
@@ -92,6 +93,10 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 			electric, increment, portRHS, m_LedgerDevice, 0, 0, static_cast<std::uint32_t>(m_PortCount)};
 		m_PortApply = {electric, Upload(data.responseStart), Upload(data.responseEdge),
 			Upload(data.responseWeight), portRHS, 0};
+		if (m_Recurrence)
+		{
+			m_Recurrence->Bind(m_Backend, Fields(), increment);
+		}
 	}
 
 	~CartesianSubgridExecution() override
@@ -157,6 +162,10 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 		{
 			m_Backend.RunPoints(GPU_OP_SUBGRID_SOURCE_CURL, &m_SourceCurl, 0, m_SourceCount, false);
 		}
+		if (m_Recurrence)
+		{
+			m_Recurrence->PrepareElectric(timestep);
+		}
 		m_Backend.RunPoints(GPU_OP_SUBGRID_MASS, &m_Mass, 0, m_BlockCount, false);
 		if (m_PortCount)
 		{
@@ -166,6 +175,10 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 		if (m_PortCount)
 		{
 			m_Backend.RunPoints(GPU_OP_SUBGRID_PORT_APPLY, &m_PortApply, 0, m_PortCount, true);
+		}
+		if (m_Recurrence)
+		{
+			m_Recurrence->FinishElectric(timestep);
 		}
 		if (m_SourceCount && amplitude != 0)
 		{
@@ -186,7 +199,14 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 			throw std::invalid_argument("CartesianSubgrid: stale electric ghost epoch");
 		}
 		m_Backend.Activate();
-		m_Backend.RunPoints(GPU_OP_SUBGRID_CURL, &m_Curl, 0, m_OwnedMagnetic, false);
+		if (m_Recurrence)
+		{
+			m_Recurrence->UpdateMagnetic(m_Curl, timestep);
+		}
+		else
+		{
+			m_Backend.RunPoints(GPU_OP_SUBGRID_CURL, &m_Curl, 0, m_OwnedMagnetic, false);
+		}
 		m_PendingStep = 0;
 		++m_Epoch;
 	}
@@ -211,11 +231,15 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 		{
 			throw std::invalid_argument("CartesianSubgrid: device observation requires a complete timestep");
 		}
+		if (m_Recurrence)
+		{
+			m_Recurrence->CheckObservation();
+		}
 		m_Backend.Activate();
 		m_Backend.DeviceDownload(m_Electric.data(), m_Update.electric, m_Electric.size() * sizeof(float));
 		m_Backend.DeviceDownload(m_Magnetic.data(), m_Curl.output, m_Magnetic.size() * sizeof(float));
 		grid.ImportDeviceFields(m_Electric.data(), m_Electric.size(), m_Magnetic.data(), m_Magnetic.size());
-		if (m_PortCount)
+		if (m_TrackSourceWork)
 		{
 			const auto ledger = ReadLedger();
 			grid.ImportDeviceLedger(ledger[0], ledger[1]);
@@ -234,7 +258,17 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 
 	std::size_t StorageBytes() const override
 	{
-		return m_StorageBytes;
+		return m_StorageBytes + (m_Recurrence ? m_Recurrence->StorageBytes() : 0);
+	}
+	std::array<double, 2> ReadAdvanceLedger() override
+	{
+		if (!m_Recurrence || m_PendingStep != 0)
+		{
+			throw std::invalid_argument("CartesianSubgrid: recurrence diagnostics require a complete advanced step");
+		}
+		m_Recurrence->CheckObservation();
+		m_Backend.Activate();
+		return m_Recurrence->ReadLedger();
 	}
 
   private:
@@ -251,6 +285,7 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 	}
 
 	GPU_Backend &m_Backend;
+	std::unique_ptr<GPU_CartesianSubgridRecurrence> m_Recurrence;
 	std::size_t m_StorageBytes = 0, m_BlockCount = 0, m_SourceCount = 0, m_PortCount = 0;
 	double m_StableStep = 0, m_PortStep = 0, m_FixedStep = 0, m_PendingStep = 0;
 	bool m_Started = false, m_Domain = false, m_TrackSourceWork = false;
@@ -373,4 +408,23 @@ std::unique_ptr<GPU_CartesianSubgrid> CreateCartesianSubgridDomainExecution(
 	ValidateDomain(domain);
 	return std::make_unique<CartesianSubgridExecution>(backend, domain.fields,
 		domain.ownedElectric, domain.ownedMagnetic, true);
+}
+
+std::unique_ptr<GPU_CartesianSubgrid> GPU_CreateCartesianSubgridAdvanced(
+	GPU_Backend &backend, const CartesianSubgrid &grid, CartesianSubgridDeviceData data,
+	std::unique_ptr<GPU_CartesianSubgridRecurrence> recurrence, double timestep)
+{
+	if (!recurrence || data.electric.size() != grid.EdgeCount() || data.magnetic.size() != grid.FaceCount() ||
+		data.stableTimestep != grid.StableTimestep() || !(timestep > 0) || timestep > grid.StableTimestep())
+	{
+		throw std::invalid_argument("CartesianSubgrid: advanced execution geometry/recurrence mismatch");
+	}
+	CartesianSubgridDomainData checked;
+	checked.ownedElectric = data.electric.size();
+	checked.ownedMagnetic = data.magnetic.size();
+	checked.fields = std::move(data);
+	ValidateDomain(checked);
+	auto execution = std::make_unique<CartesianSubgridExecution>(backend, checked.fields, 0, 0, false, std::move(recurrence));
+	execution->RequireFixedTimestep(timestep);
+	return execution;
 }

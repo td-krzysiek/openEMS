@@ -28,6 +28,8 @@ class CartesianSubgrid
     // the lossless core update itself is unchanged.
 	friend class Operator_Ext_CartesianSubgrid_PML;
 	friend class Engine_Ext_CartesianSubgrid_PML;
+	friend class Operator_Ext_CartesianSubgrid_Conductivity;
+	friend class Engine_Ext_CartesianSubgrid_Conductivity;
   public:
 	using Point = std::array<double, 3>;
 	using Index = std::array<unsigned int, 3>;
@@ -236,6 +238,8 @@ class CartesianSubgrid
 	void CheckStep(double timestep) const;
 	Integral LineIntegral(bool magnetic, const Point &start, const Point &stop) const;
 	void ApplyResistors(double timestep, double sourceAmplitude);
+	void ApplyResistors(double timestep, double sourceAmplitude,
+		const std::vector<Integral> &responses, const std::vector<double> &lower);
 	double Coordinate(unsigned int axis, double lattice) const;
 	double Length(const Leaf &leaf, unsigned int axis) const;
 

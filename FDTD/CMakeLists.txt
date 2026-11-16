@@ -28,6 +28,7 @@ if(APPLE AND ENABLE_METAL)
     ${CMAKE_CURRENT_SOURCE_DIR}/kernels/cell_update.h
     ${CMAKE_CURRENT_SOURCE_DIR}/kernels/subgrid_update.h
     ${CMAKE_CURRENT_SOURCE_DIR}/kernels/subgrid_pml.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/kernels/subgrid_conductivity.h
     ${CMAKE_CURRENT_SOURCE_DIR}/kernels/ext_ops.h
     ${CMAKE_CURRENT_SOURCE_DIR}/metal/metal_kernels.metal)
   set(METAL_CM_SOURCE "#include <metal_stdlib>\nusing namespace metal;\n#pragma STDC FP_CONTRACT OFF\n")
@@ -77,6 +78,7 @@ set(SOURCES
   ${CMAKE_CURRENT_SOURCE_DIR}/gpu_backend.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/gpu_cartesiansubgrid.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/gpu_cartesiansubgrid_pml.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/gpu_cartesiansubgrid_conductivity.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/gpu_plugins.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/gpu_backend_reference.cpp
   PARENT_SCOPE

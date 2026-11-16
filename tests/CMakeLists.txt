@@ -29,6 +29,9 @@ set(TESTS
   test_cartesian_subgrid_device_domain_ports
   test_cartesian_subgrid_device_advance
   test_cartesian_subgrid_device_waveforms
+  test_cartesian_subgrid_conductivity
+  test_cartesian_subgrid_conductivity_guards
+  test_cartesian_subgrid_native_conductivity
 )
 
 foreach(test ${TESTS})

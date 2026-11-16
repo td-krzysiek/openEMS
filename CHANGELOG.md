@@ -16,10 +16,13 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Added
 
+- Experimental Cartesian subgrids accept constant isotropic electric/magnetic
+  conductivity in native material boxes through paired CPU/device updates.
+  Loss with PML/Mur, surface/ADE conductors and distributed loss remain
+  unsupported; see `CARTESIAN_SUBGRID_CONDUCTIVITY.md` for the qualified scope.
 - Experimental compact Cartesian physics extensions can supply a paired
   operator/engine advance through the existing CPU/device boundary. Missing
-  device support rejects rather than silently advancing on CPU; this does
-  not yet enable lossy materials or conductors.
+  device support rejects rather than silently advancing on CPU.
 
 - Experimental compact Cartesian domains can select the owning device before
   work and observation batches, with bounded RTX4090/RTX3080 pair controls.

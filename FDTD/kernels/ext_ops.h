@@ -28,6 +28,7 @@
 #if !defined(__METAL_VERSION__)
 #include "cell_update.h"
 #include "subgrid_update.h"
+#include "subgrid_conductivity.h"
 #include "subgrid_pml.h"
 #endif
 
@@ -333,6 +334,9 @@ struct Op_Dispersive
 //! The backends expand the list to their launches (GPU_Backend::RunPoints()), so a new operation goes here and into
 //! GPU_PointOp only
 #define CM_POINT_OPS(X) \
+	X(GPU_OP_SUBGRID_ELECTRIC_LOSS, Op_SubgridElectricLoss, op_subgrid_electric_loss) \
+	X(GPU_OP_SUBGRID_MAGNETIC_LOSS, Op_SubgridMagneticLoss, op_subgrid_magnetic_loss) \
+	X(GPU_OP_SUBGRID_LOSS_REDUCE, Op_SubgridLossReduce, op_subgrid_loss_reduce) \
 	X(GPU_OP_SUBGRID_PML_PRE, Op_SubgridPMLPre, op_subgrid_pml_pre) \
 	X(GPU_OP_SUBGRID_PML_POST, Op_SubgridPMLPost, op_subgrid_pml_post) \
 	X(GPU_OP_SUBGRID_SOURCE_CURL, Op_SubgridSourceCurl, op_subgrid_source_curl) \
