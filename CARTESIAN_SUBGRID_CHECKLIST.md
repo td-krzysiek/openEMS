@@ -351,9 +351,9 @@ normal thickness and native complete-edge R/N paths. Candidate r02 passes all
 11,255 older arrays remain bit-identical. This is single-device conductor
 coverage plus retained lossless two-device controls, not distributed histories.
 The current r03 adds old-CSXCAD compatibility: its real old-dependency build
-passes35 tests with exactly two optional-feature skips; modern CTest37/37 passes.
-The full r03 local and physical CUDA replays are still running and are not
-claimed complete. Short RF controls agree within each mesh, but the two-level
+passes 35 tests with exactly two optional-feature skips. All 34 modern local
+stages, CTest 37/37/Python 14/14, all 27 physical CUDA gates and CTest 37/37 pass;
+11,255 prior arrays remain bit-identical. Short RF controls agree within each mesh, but the two-level
 point-port fixture is not yet spatially converged. Broad CAD/ports, scaling and
 antenna acceptance remain open; F02 is unchecked.
 
@@ -493,3 +493,5 @@ numerical change invalidates their prior qualification.
 | 2026-11-16 | Further partial F01/B02/B03/U04/U05: disjoint conductivity/PML | This PR, prepared-support increment (parent `ec73f8d`) | [Joint contract and build hashes](CARTESIAN_SUBGRID_CONDUCTIVITY.md#disjoint-conductivity-and-pml). All26 local stages, CTest30/30/Python14/14; all15 physical CUDA gates/CTest30/30. Twenty-four ledger cases/eight field comparisons per RTX4090/RTX3080, native scripting, zero-loss/order/overlap guards and retained lossless pair controls. Maximum joint field error7.431e-7 and balance1.805e-7. Twenty-two older prefixes/11,255 arrays unchanged. No overlapping/Mur loss, surface/ADE, distributed histories, representative PCB or scaling qualification. |
 
 | 2026-11-16 | Partial F02, retained F01/B02/U04/U05 | This PR, surface-state increment (parent `08e2274`) | [Equations, source/build identities and limits](CARTESIAN_SUBGRID_SURFACE.md). All30 local stages/all19 physical CUDA gates, CTest33/33/Python14/14;11,255 arrays unchanged. CPU/reference/Metal and RTX4090/RTX3080 scalar/path surface controls, disjoint PML, unchanged retained lossless pair controls in both orders. Native conductor geometry, RF line/array, distributed histories and scaling remain open. |
+
+| 2026-11-16 | Further partial F02/G01/P02/P05/U04/U05 | Native volume/path increment `c006caa` | [Contract, source/build identities and limits](CARTESIAN_SUBGRID_CONDUCTOR.md). Actual r03 source matches the published numerical/test files; all 34 local stages, CTest 37/37/Python 14/14, all 27 physical CUDA gates and CTest 37/37 pass. Native Cu18/Cu35 opaque volumes, same-metal unions/priority cuts and ordinary per-cell R/N paths run on CPU/reference/Metal and each RTX4090/RTX3080. Retained lossless pair controls pass both orders; 11,255 older arrays remain bit-identical. Actual older-CSXCAD build passes 35 solver tests with two explicit absent-feature skips. Point-port RF mesh changes remain unresolved; arbitrary CAD, scalable interiors/interfaces, distributed histories/DFT and antenna acceptance remain open. |

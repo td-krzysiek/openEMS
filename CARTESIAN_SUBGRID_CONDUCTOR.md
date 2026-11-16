@@ -79,13 +79,16 @@ runtime links the actual older library. Python ABI compatibility and volume
 metal on that absent-feature dependency are not claimed.
 
 The current r03 source adds the optional-dependency guard to that numerical
-candidate. Its modern-dependency CTest 37/37 and focused physical Metal controls
-pass; the complete 34-stage integration replay and separate physical CUDA replay
-are still running at this publication. Do not treat the r02 receipt as their
-terminal result. Local r02 core SHA256 is
-`7a7d8b5e94c2624f829e2f46592ce44ebcf0722d553c79013ba494b310a9f167`;
-its CUDA core is
-`a8d2815b012cf64e9e66c0a103c7ce6207d791d6d256570632e94d24755f0240`.
+candidate. All 34 local stages pass: CTest 37/37, Python 14/14 and 11,255 prior
+arrays bit-identical. All 27 physical CUDA gates and CTest 37/37 pass, including
+native conductor/path controls on each RTX4090/RTX3080 and the retained lossless
+pair controls in both orders. The source inventory is identical to fork commit
+`c006caa9e1da257175a8798b0fc80f0fb1f5dbab` for every numerical/test source.
+
+Actual r03 local core SHA256:
+`8c306301e648183b29f76486cf718f8ab09d087723e27bb78bf9e17da5b8f120`.
+Actual r03 CUDA core SHA256:
+`584f586e463c87911fb628adb7a94356836f062afb25b064325d3c121b5d9fa4`.
 
 A separate fixed-current-plane two-resolution diagnostic retains within-level
 native/ordinary S differences below 0.00223, but the mesh change is approximately

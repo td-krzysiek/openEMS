@@ -22,8 +22,8 @@ and representative PCB qualification remain open.
 tracks the completed controls and remaining feature/engine milestones in PR #29.
 
 The [native smooth-conductor/path-port candidate](CARTESIAN_SUBGRID_CONDUCTOR.md)
-adds scoped volume-box mapping. Its implementation, qualified r02 evidence and
-pending r03 full replay are distinguished there; general PCB RF acceptance and
+adds scoped volume-box mapping. Its implementation and completed scoped r03 CPU/Metal/CUDA evidence
+are distinguished there; general PCB RF acceptance and
 structured scaling remain open.
 
 ## Geometry, storage and execution
