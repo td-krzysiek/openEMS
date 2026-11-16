@@ -107,8 +107,9 @@ The composed r07 local replay passes14 stages, CTest39/39, Python14/14 and
 operators, exact coefficient pools, order and state-only factor/source/port
 metadata against independent expanded preparation; malformed/incomplete row
 streams and duplicate ordering are rejected. Physical Metal includes the
-20,000-step exact-FP32 field and strong-DC controls. R07 CUDA qualification
-is still in progress; r06 CUDA results do not qualify this new preparation.
+20,000-step exact-FP32 field and strong-DC controls. The separate r07 physical CUDA replay also passes33 gates and CTest39/39,
+including each RTX4090/RTX3080 and both retained lossless pair orders. Actual
+Docker terminal state is exit0/no OOM; source/runtime identities are rechecked.
 
 Three interleaved Metal repetitions on a491,520-leaf procedural fixture give:
 
@@ -129,6 +130,8 @@ No production/ordinary-Yee performance claim follows from these diagnostics.
 
 Actual r07 local core SHA256:
 `4af61e6916978ba5d017b802e1bc64355cd6b3ce133d3753568e4dde896ece1f`.
+Actual r07 CUDA core SHA256:
+`a69a976f05a9309a2746af23adbab5d0962a3bc4b657bff045ba82ae11d88d94`.
 The native replay is a correctness suite, not a CPU speed benchmark; its
 reference-backend timings need separate controlled review before performance
 adoption. No allocation guard has been raised.
