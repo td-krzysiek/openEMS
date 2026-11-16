@@ -3,11 +3,58 @@
 This is a scoped C++ core interface. The
 [canonical checklist](CARTESIAN_SUBGRID_CHECKLIST.md) separates implementation
 from physical backend, processing and representative-antenna qualification.
-The native XML/Python/Matlab engine selector remains single-device.
+The [native CLI/Python adapter](CARTESIAN_SUBGRID_RUNTIME.md) now selects fixed
+local workers separately from geometry XML. Its qualification and unsupported
+runtime controls are recorded separately from the C++ contract below.
 
 The bounded C++ lane additionally has physical RTX4090/RTX3080 pair evidence
 in [Physical mixed-device contexts](#physical-mixed-device-contexts). This does
-not extend its supported physics or qualify native distributed execution.
+not by itself qualify native distributed execution; the later native evidence
+is recorded in the linked runtime document.
+
+## Streamed global domain preparation
+
+Cold plans now read exact compressed global curl/transpose patterns instead
+of first allocating both expanded CSR operators. Ghost discovery and local
+row remapping preserve global IDs, local numbering, operand order and FP32
+high/low coefficient bits. All four plan constructors use this path, including
+the separately prepared loss/PML combination. `CurlPreparation::ExpandedOracle`
+retains the previous expanded input for independent setup controls. Individual
+domain upload arrays and numerical update kernels are unchanged.
+
+Six graded, multi-region/material/PEC/port cases per backend compare complete
+local metadata, halo transfers and256-step fields exactly against that oracle.
+Reference and physical Metal pass, as do actual native Python TD/FD/U/I
+controls (8 reference/16 Metal cases) and all45 CTest cases. The local core is
+`560fa47d714b125f0f9417f06692969422e64745da0eef732055033bef8d7fbb`.
+Physical CUDA qualification of this increment is queued separately; the
+earlier R18 matrix does not qualify changed preparation code automatically.
+
+Three interleaved setup-only repetitions on the same Mac compare491,520
+leaves and three domains against the actual frozen R18-r02 runtime
+(`b0b157b27840bde3debef17ff1f914c8b9a049905dbed9b7716059fd8a404de4`).
+Both retain the same owned/ghost counts, local terms and timestep. Medians:
+
+| Quantity | Frozen R18-r02 | Global stream |
+|---|---:|---:|
+| Peak process RSS | 1,231,798,272 B | 940,146,688 B |
+| Domain-plan preparation | 0.3204 s | 0.4417 s |
+| Grid plus domain-plan preparation | 1.1739 s | 1.2921 s |
+
+Peak RSS decreases23.68%; whole setup takes10.07% longer. This is a memory
+tradeoff, not a timestep or production speedup. Smaller25,920/120,000/207,360
+leaf cases separately preserve exact counts and show lower peak memory.
+The first standalone benchmark compile omitted the existing Boost include
+path; its failure is retained separately from the corrected measurements.
+
+Reproduce the setup-only harness with `benchmark/subgrid_domain_setup.cpp`,
+using `streamed` or `expanded`, a size up to64 and a worker count. Link against
+matching headers/library; the frozen-parent comparison uses its original
+three-argument plan constructor. The evidence archive is the separately
+identified `domain-stream-r19` study. No production runtime, allocation guard,
+physics, geometry, source or frozen antenna is changed. Per-domain expanded
+uploads, per-state hash maps, global host fields/topology and general large
+interfaces still prevent claiming production-scale readiness.
 
 ## Ownership, workers and transport
 
@@ -29,9 +76,9 @@ Local row remapping retains the exact operand order and split coefficients.
 Ghost dependencies may fan out or cross non-neighbour workers. Only unique
 owned export values are gathered, downloaded and copied into preallocated
 receive buffers, then contiguous ghost ranges are uploaded. No whole-field
-transfer is performed at every half-step. The plan still uses a temporary
-global expanded upload during setup; production-proportional setup memory
-and structured interiors remain open.
+transfer is performed at every half-step. The plan now streams global
+compressed rows during setup; local per-domain uploads remain expanded.
+Production-proportional setup memory and structured interiors remain open.
 
 The coordinator knows only worker and transport interfaces. GPU handles and
 local gathers/uploads belong in the local worker adapter, not the scheduling

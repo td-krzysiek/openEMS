@@ -26,9 +26,9 @@ class CartesianSubgridDeviceGeometry
 	std::size_t rows = 0;
 
 	CartesianSubgridDeviceGeometry(const CartesianSubgridRegularCurl &regular,
-		const CartesianSubgridMetricView &view)
+		const CartesianSubgridMetricView &view, bool enabled = true)
 	{
-		if (!regular.RowCount())
+		if (!enabled || !regular.RowCount())
 		{
 			return;
 		}

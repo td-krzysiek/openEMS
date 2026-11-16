@@ -35,19 +35,21 @@ struct CartesianSubgridDomainData
 class CartesianSubgridDomainPlan
 {
   public:
+	//! Expanded preparation is retained as an independent setup oracle.
+	enum class CurlPreparation { Streamed, ExpandedOracle };
 	struct Transfer
 	{
 		std::uint32_t sender, sendOffset, receiver, receiveOffset;
 	};
 	//! Cuts are assignment planes, not new mesh faces. Leaves stay indivisible.
 	CartesianSubgridDomainPlan(const CartesianSubgrid &grid, unsigned int axis,
-		const std::vector<double> &cuts);
+		const std::vector<double> &cuts, CurlPreparation curls = CurlPreparation::Streamed);
 	CartesianSubgridDomainPlan(const Engine_Ext_CartesianSubgrid_Conductivity &advance,
-		unsigned int axis, const std::vector<double> &cuts);
+		unsigned int axis, const std::vector<double> &cuts, CurlPreparation curls = CurlPreparation::Streamed);
 	CartesianSubgridDomainPlan(const Engine_Ext_CartesianSubgrid_PML &pml,
-		unsigned int axis, const std::vector<double> &cuts);
+		unsigned int axis, const std::vector<double> &cuts, CurlPreparation curls = CurlPreparation::Streamed);
 	CartesianSubgridDomainPlan(const Engine_Ext_CartesianSubgrid_Conductivity &advance,
-		const Engine_Ext_CartesianSubgrid_PML &pml, unsigned int axis, const std::vector<double> &cuts);
+		const Engine_Ext_CartesianSubgrid_PML &pml, unsigned int axis, const std::vector<double> &cuts, CurlPreparation curls = CurlPreparation::Streamed);
 	const std::vector<CartesianSubgridDomainData> &Domains() const { return m_Domains; }
 	const std::vector<Transfer> &Transfers(CartesianSubgridField field) const
 	{

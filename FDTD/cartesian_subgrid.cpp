@@ -2011,7 +2011,7 @@ CartesianSubgridDeviceData CartesianSubgrid::PrepareDeviceData(bool includeCurls
 	return data;
 }
 
-CartesianSubgridDeviceOperators CartesianSubgrid::DeviceCurls() const
+CartesianSubgridDeviceOperators CartesianSubgrid::DeviceCurls(bool spatialBlocks) const
 {
 	Require(m_PendingMagneticTimestep == 0, "CartesianSubgrid: device curls require a complete timestep");
 	const auto narrow = [](std::size_t value)
@@ -2028,7 +2028,7 @@ CartesianSubgridDeviceOperators CartesianSubgrid::DeviceCurls() const
 		return converted;
 	};
 	const auto view = CurlMetrics();
-	CartesianSubgridDeviceGeometry spatial(m_CurlOperator.Regular(), view);
+	CartesianSubgridDeviceGeometry spatial(m_CurlOperator.Regular(), view, spatialBlocks);
 	CartesianSubgridDeviceOperators result;
 	using Curl = CartesianSubgridDeviceCurl;
 	std::vector<Curl::Term> terms, packedTerms;

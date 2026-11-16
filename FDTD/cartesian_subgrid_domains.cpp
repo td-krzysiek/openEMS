@@ -13,6 +13,43 @@ namespace
 {
 using Index = std::uint32_t;
 using Map = std::unordered_map<Index, Index>;
+class CurlRows
+{
+  public:
+	CurlRows(const CartesianSubgrid &grid, const CartesianSubgridDeviceData &data) : m_Data(data)
+	{
+		if (data.streamCurls)
+		{
+			m_Patterns = grid.DeviceCurls(false);
+		}
+	}
+
+	template <class Visitor> void ForEach(bool transpose, Index row, Visitor visitor) const
+	{
+		if (m_Patterns)
+		{
+			const auto &curl = transpose ? m_Patterns->transpose : m_Patterns->curl;
+			const Index pattern = curl.pattern.at(row), base = curl.base.at(row);
+			for (Index k = curl.start.at(pattern); k < curl.start.at(pattern + 1); ++k)
+			{
+				visitor(base + curl.offset[k], curl.weight[k], curl.residual[k]);
+			}
+			return;
+		}
+		const auto &start = transpose ? m_Data.transposeStart : m_Data.curlStart;
+		const auto &column = transpose ? m_Data.transposeColumn : m_Data.curlColumn;
+		const auto &weight = transpose ? m_Data.transposeWeight : m_Data.curlWeight;
+		const auto &low = transpose ? m_Data.transposeLow : m_Data.curlLow;
+		for (Index k = start.at(row); k < start.at(row + 1); ++k)
+		{
+			visitor(column[k], weight[k], low[k]);
+		}
+	}
+
+  private:
+	const CartesianSubgridDeviceData &m_Data;
+	std::optional<CartesianSubgridDeviceOperators> m_Patterns;
+};
 void Require(bool condition, const char *message)
 {
 	if (!condition)
@@ -41,29 +78,30 @@ void Rows(const std::vector<Index> &owned, const std::vector<Index> &starts,
 }
 
 CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(const CartesianSubgrid &grid,
-	unsigned int axis, const std::vector<double> &cuts)
-	: CartesianSubgridDomainPlan(grid, axis, cuts, {{grid.DeviceData(), {}}, {}})
+	unsigned int axis, const std::vector<double> &cuts, CurlPreparation curls)
+	: CartesianSubgridDomainPlan(grid, axis, cuts, {{curls == CurlPreparation::ExpandedOracle ? grid.DeviceData() : grid.DeviceStateData(), {}}, {}})
 {
 }
 
 CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(
 	const Engine_Ext_CartesianSubgrid_Conductivity &advance, unsigned int axis,
-	const std::vector<double> &cuts)
-	: CartesianSubgridDomainPlan(advance.Grid(), axis, cuts, {advance.PrepareDomainData(), {}})
+	const std::vector<double> &cuts, CurlPreparation curls)
+	: CartesianSubgridDomainPlan(advance.Grid(), axis, cuts, {advance.PrepareDomainData(nullptr, curls == CurlPreparation::ExpandedOracle), {}})
 {
 }
 
 CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(const Engine_Ext_CartesianSubgrid_PML &pml,
-	unsigned int axis, const std::vector<double> &cuts)
-	: CartesianSubgridDomainPlan(pml.Grid(), axis, cuts, {{pml.Grid().DeviceData(), {}}, pml.PrepareDomainData()})
+	unsigned int axis, const std::vector<double> &cuts, CurlPreparation curls)
+	: CartesianSubgridDomainPlan(pml.Grid(), axis, cuts, {{curls == CurlPreparation::ExpandedOracle ? pml.Grid().DeviceData() : pml.Grid().DeviceStateData(), {}},
+		pml.PrepareDomainData()})
 {
 }
 
 CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(
 	const Engine_Ext_CartesianSubgrid_Conductivity &advance, const Engine_Ext_CartesianSubgrid_PML &pml,
-	unsigned int axis, const std::vector<double> &cuts)
+	unsigned int axis, const std::vector<double> &cuts, CurlPreparation curls)
 	: CartesianSubgridDomainPlan(advance.Grid(), axis, cuts,
-		{advance.PrepareDomainData(&pml), pml.PrepareDomainData(&advance)})
+		{advance.PrepareDomainData(&pml, curls == CurlPreparation::ExpandedOracle), pml.PrepareDomainData(&advance)})
 {
 }
 
@@ -80,6 +118,7 @@ CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(const CartesianSubgrid &g
 		previous = cut;
 	}
 	const auto &data = prepared.advance.fields;
+	const CurlRows curls(grid, data);
 	Require(!data.rootConductance.empty() || data.ledger == std::vector<float>({0, 0, 0, 0}),
 		"CartesianSubgrid: a non-port accumulated ledger has no qualified ownership");
 	m_StableStep = data.stableTimestep;
@@ -205,25 +244,23 @@ CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(const CartesianSubgrid &g
 		std::set<Index> ghostE, ghostH;
 		for (Index row : ownedE)
 		{
-			for (Index k = data.transposeStart[row]; k < data.transposeStart[row + 1]; ++k)
+			curls.ForEach(true, row, [&](Index column, float, float)
 			{
-				const Index column = data.transposeColumn[k];
 				if (hOwner[column] != worker)
 				{
 					ghostH.insert(column);
 				}
-			}
+			});
 		}
 		for (Index row : ownedH)
 		{
-			for (Index k = data.curlStart[row]; k < data.curlStart[row + 1]; ++k)
+			curls.ForEach(false, row, [&](Index column, float, float)
 			{
-				const Index column = data.curlColumn[k];
 				if (eOwner[column] != worker)
 				{
 					ghostE.insert(column);
 				}
-			}
+			});
 		}
 		if (prepared.pml)
 		{
@@ -262,10 +299,25 @@ CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(const CartesianSubgrid &g
 			hMaps[worker].emplace(global, static_cast<Index>(local.magnetic.size()));
 			local.magnetic.push_back(data.magnetic[global]);
 		}
-		Rows(ownedE, data.transposeStart, data.transposeColumn, data.transposeWeight, data.transposeLow,
-			hMaps[worker], local.transposeStart, local.transposeColumn, local.transposeWeight, local.transposeLow);
-		Rows(ownedH, data.curlStart, data.curlColumn, data.curlWeight, data.curlLow,
-			eMaps[worker], local.curlStart, local.curlColumn, local.curlWeight, local.curlLow);
+		const auto rows = [&](bool transpose, const std::vector<Index> &owned, const Map &input,
+			std::vector<Index> &starts, std::vector<Index> &columns,
+			std::vector<float> &weight, std::vector<float> &low)
+		{
+			starts.assign(1, 0);
+			for (Index row : owned)
+			{
+				curls.ForEach(transpose, row, [&](Index column, float high, float residual)
+				{
+					columns.push_back(input.at(column));
+					weight.push_back(high);
+					low.push_back(residual);
+				});
+				starts.push_back(static_cast<Index>(columns.size()));
+			}
+		};
+		rows(true, ownedE, hMaps[worker], local.transposeStart, local.transposeColumn,
+			local.transposeWeight, local.transposeLow);
+		rows(false, ownedH, eMaps[worker], local.curlStart, local.curlColumn, local.curlWeight, local.curlLow);
 		for (Index block = 0; block < data.bandwidth.size(); ++block)
 		{
 			const Index first = data.blockStart[block], stop = data.blockStart[block + 1];

@@ -78,7 +78,10 @@ interface; `ObservationGrid()` enforces the native observation health guard.
 No external collective pause/resume/snapshot API is enabled by this adapter.
 Normal complete-batch processing is not such an API. PML is the checked
 classical convolution extension, not UPML/CFS parity. The global host topology,
-field mirror and expanded domain preparation still require scaling work.
+field mirror and local expanded domain uploads still require scaling work.
+The separately qualified [global row stream](CARTESIAN_SUBGRID_DOMAINS.md#streamed-global-domain-preparation)
+removes the temporary pair of global expanded operators, without changing
+local upload arrays or runtime kernels.
 
 ## Qualification
 
@@ -109,12 +112,15 @@ Local R18-r01 core SHA256:
 Local R18-r02 core SHA256:
 `b0b157b27840bde3debef17ff1f914c8b9a049905dbed9b7716059fd8a404de4`.
 
-Physical R18-r01 CUDA48-gate/CTest44 qualification is running on the authorized
-RTX4090/RTX3080 pair. The separately built R02 focused follow-up waits for that
-terminal result. These live matrices are **not accepted physical native-domain
-qualification yet**. Earlier low-level physical-domain evidence does not
-substitute for native processing tests. Two logical Metal workers are not two
-physical GPUs.
+Physical R18-r01 passes48 CUDA gates and CTest44/44 on the authorized
+RTX4090/RTX3080 pair, including native C++ domains in both device orders and
+16 actual Python TD/FD/U/I cases. Its terminal exit is0, without OOM; source
+and runtime identities are rechecked. CUDA core SHA256:
+`8cc678373160b2433b178f6827771f712ce96ef596612f2920b1e38b08c0f6a3`.
+The separately built parser-only R02 focused follow-up is running; it is not
+yet accepted CUDA evidence for that source. Earlier low-level physical-domain
+evidence does not substitute for native processing tests. Two logical Metal
+workers are not two physical GPUs.
 
 Evidence is under the separately frozen `native-runtime-r18/` and
 `native-runtime-r18-r02/` studies. No frozen antenna, production runtime or

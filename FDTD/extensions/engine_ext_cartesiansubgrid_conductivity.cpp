@@ -160,7 +160,7 @@ void Engine_Ext_CartesianSubgrid_Conductivity::UpdateMagnetic(double timestep)
 }
 
 CartesianSubgridConductivityPrepared Engine_Ext_CartesianSubgrid_Conductivity::PrepareDomainData(
-	const Engine_Ext_CartesianSubgrid_PML *pml) const
+	const Engine_Ext_CartesianSubgrid_PML *pml, bool expandedCurls) const
 {
 	if (m_Advanced || m_UsingDevice || m_Grid.m_PendingMagneticTimestep != 0)
 	{
@@ -181,9 +181,9 @@ CartesianSubgridConductivityPrepared Engine_Ext_CartesianSubgrid_Conductivity::P
 	m_Conductivity->ValidatePreparedExtensions();
 	if (!m_Conductivity->HasLoss())
 	{
-		return {m_Grid.DeviceData(), {}};
+		return {expandedCurls ? m_Grid.DeviceData() : m_Grid.DeviceStateData(), {}};
 	}
-	return PrepareDeviceData(true);
+	return PrepareDeviceData(expandedCurls);
 }
 
 CartesianSubgridConductivityPrepared Engine_Ext_CartesianSubgrid_Conductivity::PrepareDeviceData(bool expanded) const

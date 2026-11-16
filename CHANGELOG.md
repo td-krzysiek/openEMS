@@ -135,6 +135,11 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Changed
 
+- Experimental Cartesian-subgrid domain preparation no longer retains two
+  temporary global expanded curl operators. Local uploads and update kernels
+  are unchanged. Scoped setup measurements reduce peak memory at a setup-time
+  cost; this does not qualify production-sized models.
+
 - Experimental single-device Cartesian-subgrid preparation streams compressed
   curl rows instead of retaining both expanded operators. Scoped CPU/Metal
   controls retain fields, ports and losses; a bounded layout benchmark reduces

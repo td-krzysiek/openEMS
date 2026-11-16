@@ -29,6 +29,7 @@ set(TESTS
   test_cartesian_subgrid_device_large
   test_cartesian_subgrid_device_domains
   test_cartesian_subgrid_device_domain_ports
+  test_cartesian_subgrid_device_domain_stream
   test_cartesian_subgrid_device_domain_loss
   test_cartesian_subgrid_device_domain_pml
   test_cartesian_subgrid_device_native_runtime
