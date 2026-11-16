@@ -21,6 +21,11 @@ and representative PCB qualification remain open.
 [Implementation and qualification checklist](CARTESIAN_SUBGRID_CHECKLIST.md)
 tracks the completed controls and remaining feature/engine milestones in PR #29.
 
+The [native smooth-conductor/path-port candidate](CARTESIAN_SUBGRID_CONDUCTOR.md)
+adds scoped volume-box mapping. Its implementation, qualified r02 evidence and
+pending r03 full replay are distinguished there; general PCB RF acceptance and
+structured scaling remain open.
+
 ## Geometry, storage and execution
 
 - One refinement level and 1 through 64 independent rectangular boxes, each

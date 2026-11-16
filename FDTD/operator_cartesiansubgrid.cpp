@@ -10,6 +10,10 @@
 #include "CSPropMaterial.h"
 #include "CSPropLumpedElement.h"
 #include "CSPropProbeBox.h"
+#if __has_include("CSPropLossyMetal.h")
+#include "CSPropLossyMetal.h"
+#define OPENEMS_SUBGRID_NATIVE_LOSSYMETAL 1
+#endif
 #include "engine.h"
 #include "gpu_backend.h"
 #include "extensions/operator_ext_excitation.h"
@@ -20,6 +24,7 @@
 #include "extensions/engine_ext_cartesiansubgrid_pml.h"
 #include "extensions/cartesiansubgrid_advance.h"
 #include "extensions/operator_ext_cartesiansubgrid_conductivity.h"
+#include "extensions/cartesiansubgrid_conductor.h"
 #include "tools/constants.h"
 
 #include <algorithm>
@@ -28,9 +33,53 @@
 #include <limits>
 #include <sstream>
 #include <stdexcept>
+#include <type_traits>
+#include <utility>
 
 namespace
 {
+#ifdef OPENEMS_SUBGRID_NATIVE_LOSSYMETAL
+constexpr int SurfaceMetalType = CSProperties::METAL | CSProperties::LOSSYMETAL;
+template <class T, class = void> struct HasSmoothSurfaceAPI : std::false_type {};
+template <class T> struct HasSmoothSurfaceAPI<T, std::void_t<
+	decltype(std::declval<T &>().GetConductivity()), decltype(std::declval<T &>().GetRq()),
+	decltype(std::declval<T &>().GetRoughnessModel())>> : std::true_type {};
+template <class T> double SmoothConductivity(T &metal)
+{
+	if constexpr (HasSmoothSurfaceAPI<T>::value)
+	{
+		const double sigma = metal.GetConductivity();
+		if (!(sigma > 0) || !std::isfinite(sigma) || metal.GetRq() != 0 || metal.GetRoughnessModel() != 0)
+		{
+			throw std::invalid_argument("CartesianSubgrid: native surface metal requires finite positive conductivity and Rq=0/roughness none");
+		}
+		return sigma;
+	}
+	else
+	{
+		throw std::invalid_argument("CartesianSubgrid: native surface metal requires the matching CSXCAD surface API");
+	}
+}
+#else
+// Older independently versioned CSXCAD builds have no volume-lossy-metal
+// property. Keep their existing materials available without inventing a type.
+constexpr int SurfaceMetalType = -1;
+#endif
+bool IsSurfaceMetal(CSProperties *property)
+{
+	return property && property->GetType() == SurfaceMetalType;
+}
+double SurfaceConductivity(CSProperties *property)
+{
+#ifdef OPENEMS_SUBGRID_NATIVE_LOSSYMETAL
+	auto *metal = dynamic_cast<CSPropLossyMetal *>(property);
+	if (metal)
+	{
+		return SmoothConductivity(*metal);
+	}
+#endif
+	throw std::invalid_argument("CartesianSubgrid: native surface metal is unavailable in this CSXCAD build");
+}
 bool UnitWeight(const std::string &term)
 {
 	// CSXCAD stores a numeric weight without a term. Its value is checked
@@ -497,13 +546,17 @@ void Operator_CartesianSubgrid::ValidateProperties() const
 	for (CSProperties *property : CSX->GetPropertyByType(CSProperties::ANY))
 	{
 		const int type = property->GetType();
-		if (type != CSProperties::MATERIAL && type != CSProperties::METAL &&
+		if (type != CSProperties::MATERIAL && type != CSProperties::METAL && type != SurfaceMetalType &&
 			type != CSProperties::LUMPED_ELEMENT &&
 			(type & ~(CSProperties::EXCITATION | CSProperties::PROBEBOX | CSProperties::DUMPBOX)))
 		{
 			throw std::invalid_argument(
 				"CartesianSubgrid: only constant isotropic materials, PEC, soft E sources "
 				"and E/H observations are supported");
+		}
+		if (type == SurfaceMetalType)
+		{
+			SurfaceConductivity(property);
 		}
 		if (type == CSProperties::LUMPED_ELEMENT)
 		{
@@ -580,6 +633,21 @@ void Operator_CartesianSubgrid::ValidateProperties() const
 		}
 		for (CSPrimitives *primitive : property->GetAllPrimitives())
 		{
+			if (type == SurfaceMetalType)
+			{
+				double bounds[6];
+				if (!dynamic_cast<CSPrimBox *>(primitive) || primitive->HasTransform() || !primitive->GetBoundBox(bounds))
+				{
+					throw std::invalid_argument("CartesianSubgrid: native surface metal currently requires untransformed volume boxes");
+				}
+				for (unsigned int n = 0; n < 3; ++n)
+				{
+					if (!(bounds[2 * n + 1] > bounds[2 * n]))
+					{
+						throw std::invalid_argument("CartesianSubgrid: native surface boxes require positive physical volume");
+					}
+				}
+			}
 			if (type == CSProperties::LUMPED_ELEMENT && !dynamic_cast<CSPrimBox *>(primitive))
 			{
 				throw std::invalid_argument("CartesianSubgrid: resistors must use a line box");
@@ -658,7 +726,7 @@ void Operator_CartesianSubgrid::ValidateProperties() const
 				throw std::invalid_argument(
 					"CartesianSubgrid: material objects must use axis-aligned volume boxes");
 			}
-			if ((type == CSProperties::MATERIAL || type == CSProperties::METAL) &&
+			if ((type == CSProperties::MATERIAL || type == CSProperties::METAL || type == SurfaceMetalType) &&
 				primitive->GetCoordinateSystem() != UNDEFINED_CS &&
 				primitive->GetCoordinateSystem() != CARTESIAN)
 			{
@@ -882,7 +950,23 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 		auto *property = CSX->GetPropertyByCoordPriority(centre, geometry, true);
 		return property && property->GetType() == CSProperties::METAL;
 	};
-	const bool hasMetal = CSX->GetQtyPrimitives(CSProperties::METAL) != 0;
+	const bool hasMetal = std::any_of(geometry.begin(), geometry.end(), [](CSPrimitives *primitive)
+	{
+		return primitive->GetProperty()->GetType() == CSProperties::METAL;
+	});
+	const bool hasSurfaceMetal = std::any_of(geometry.begin(), geometry.end(), [](CSPrimitives *primitive)
+	{
+		return IsSurfaceMetal(primitive->GetProperty());
+	});
+	auto opaque = [this, geometry](const CartesianSubgrid::Point &start, const CartesianSubgrid::Point &stop)
+	{
+		double centre[3];
+		for (unsigned int n = 0; n < 3; ++n)
+		{
+			centre[n] = (start[n] + stop[n]) / (2 * gridDelta) + discLines[n][0];
+		}
+		return IsSurfaceMetal(CSX->GetPropertyByCoordPriority(centre, geometry, true));
+	};
 	CartesianSubgrid::BoundaryConditions boundaries;
 	for (unsigned int i = 0; i < boundaries.size(); ++i)
 	{
@@ -891,7 +975,8 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 	}
 	m_Grid.reset(new CartesianSubgrid(
 		lines, GetBackgroundEpsR() * EPS0, GetBackgroundMueR() * MUE0, regions, false, sample,
-		hasMetal ? CartesianSubgrid::PECSelector(pec) : CartesianSubgrid::PECSelector(), boundaries));
+		hasMetal ? CartesianSubgrid::PECSelector(pec) : CartesianSubgrid::PECSelector(), boundaries,
+		hasSurfaceMetal ? CartesianSubgrid::OpaqueSelector(opaque) : CartesianSubgrid::OpaqueSelector()));
 	if (hasMetal && m_Grid->PECTraceCount() == 0)
 	{
 		throw std::invalid_argument(
@@ -910,6 +995,8 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 	{
 		throw std::invalid_argument("CartesianSubgrid: periodic excitation is not yet supported");
 	}
+	// Reset clears the waveform metadata; the conductor fit uses the configured band.
+	const double surfaceMaximumFrequency = m_Exc->GetMaxFrequency();
 	m_Exc->Reset(dT);
 	PrepareResistors();
 	PrepareSources();
@@ -919,7 +1006,7 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 		auto *material = static_cast<CSPropMaterial *>(property);
 		hasConductivity = hasConductivity || material->GetKappa() != 0 || material->GetSigma() != 0;
 	}
-	if (hasConductivity)
+	if (hasConductivity || hasSurfaceMetal)
 	{
 		// Keep the sorted pointer snapshot alive through extension setup. Grid
 		// positions are SI offsets; CSXCAD membership uses drawing coordinates.
@@ -936,9 +1023,42 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 			return Operator_Ext_CartesianSubgrid_Conductivity::Coefficients{
 				material ? material->GetKappa() : 0, material ? material->GetSigma() : 0};
 		};
-		auto *extension = new Operator_Ext_CartesianSubgrid_Conductivity(this, std::move(conductivity));
-		AddExtension(extension);
-		m_NativeConductivity = extension;
+		auto extension = std::make_unique<Operator_Ext_CartesianSubgrid_Conductivity>(this, std::move(conductivity));
+		if (hasSurfaceMetal)
+		{
+			std::size_t resolved = 0;
+			for (std::size_t leaf = 0; leaf < m_Grid->CellCount(); ++leaf)
+			{
+				resolved += m_Grid->LeafIsOpaque(leaf);
+			}
+			if (!resolved)
+			{
+				throw std::invalid_argument("CartesianSubgrid: native surface metal resolves no excluded volume cells");
+			}
+			auto material = [this, geometry](std::size_t leaf)
+			{
+				const auto lo = m_Grid->LeafStart(leaf), length = m_Grid->LeafLengths(leaf);
+				double centre[3];
+				for (unsigned int n = 0; n < 3; ++n)
+				{
+					centre[n] = (lo[n] + .5 * length[n]) / gridDelta + discLines[n][0];
+				}
+				auto *property = CSX->GetPropertyByCoordPriority(centre, geometry, true);
+				return SurfaceConductivity(property);
+			};
+			auto prepared = CartesianSubgridConductor::Prepare(*m_Grid, material, surfaceMaximumFrequency);
+			if (prepared.surfaces.empty())
+			{
+				throw std::invalid_argument("CartesianSubgrid: native surface metal resolves no exposed free surface traces");
+			}
+			std::cout << "CartesianSubgrid smooth surface metal: " << resolved << " volume cells, "
+				<< prepared.faces << " exposed faces, " << prepared.surfaces.size() << " traces, "
+				<< prepared.fits << " cached fits, " << prepared.normalColumns << " occupied normal columns; max fit Re/Im errors " << prepared.maximumRealFitError
+				<< "/" << prepared.maximumImaginaryFitError << std::endl;
+			extension->SetSurfaceAdmittances(std::move(prepared.surfaces));
+		}
+		AddExtension(extension.get());
+		m_NativeConductivity = extension.release();
 	}
 	for (auto *extension : m_Op_exts)
 	{
@@ -1093,26 +1213,33 @@ void Operator_CartesianSubgrid::PrepareResistors()
 				stop[n] = box->GetCoord(2 * n + 1);
 				if (n != unsigned(resistor->GetDirection()) && start[n] != stop[n])
 				{
-					throw std::invalid_argument("CartesianSubgrid: native resistor currently requires one "
-												"local edge, not a distributed box");
+					throw std::invalid_argument("CartesianSubgrid: native resistor requires a line path, not a distributed box");
 				}
 			}
 			const auto a = DrawingPoint(start), b = DrawingPoint(stop);
-			if (!m_Grid->IsIndependentEdge(a, b))
+			const auto segments = m_Grid->LocalEdgePathSegments(a, b);
+			if (segments.empty())
 			{
-				throw std::invalid_argument("CartesianSubgrid: native resistor must span exactly one "
-											"unconstrained independent local edge");
+				throw std::invalid_argument("CartesianSubgrid: native resistor must span a complete local-edge path outside PEC/opaque volume");
 			}
-			const auto path = m_Grid->VoltagePath(a, b);
-			for (const auto &term : path.weights)
+			// Match the ordinary CSX lumped adapter: N series cells each carry R/N.
+			// A single resistor on the complete voltage functional is a different
+			// nonlocal circuit; the explicit C++ SetResistors API retains that choice.
+			std::set<std::size_t> localOccupied;
+			for (const auto &segment : segments)
 			{
-				if (!occupied.insert(term.first).second)
+				const auto path = m_Grid->VoltagePath(segment.first, segment.second);
+				for (const auto &term : path.weights)
 				{
-					throw std::invalid_argument(
-						"CartesianSubgrid: overlapping native resistors are unsupported");
+					if (occupied.count(term.first))
+					{
+						throw std::invalid_argument("CartesianSubgrid: overlapping native resistors are unsupported");
+					}
+					localOccupied.insert(term.first);
 				}
+				ports.push_back({segment.first, segment.second, resistor->GetResistance() / segments.size(), 0});
 			}
-			ports.push_back({a, b, resistor->GetResistance(), 0});
+			occupied.insert(localOccupied.begin(), localOccupied.end());
 			primitive->SetPrimitiveUsed(true);
 		}
 	}

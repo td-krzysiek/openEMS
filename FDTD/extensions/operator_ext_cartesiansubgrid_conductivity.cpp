@@ -10,6 +10,7 @@
 #include <stdexcept>
 #include <utility>
 #include <string>
+#include <limits>
 
 namespace
 {
@@ -59,6 +60,10 @@ bool Operator_Ext_CartesianSubgrid_Conductivity::BuildExtension()
 	m_SurfaceDenominator.clear();
 	for (std::size_t c = 0; c < g.CellCount(); ++c)
 	{
+		if (g.LeafIsOpaque(c))
+		{
+			continue;
+		}
 		const auto start = g.LeafStart(c), length = g.LeafLengths(c);
 		auto stop = start;
 		for (unsigned int n = 0; n < 3; ++n)
@@ -132,7 +137,32 @@ bool Operator_Ext_CartesianSubgrid_Conductivity::BuildExtension()
 	{
 		Require(std::isfinite(surface.conductance) && surface.conductance >= 0,
 			"CartesianSubgrid surface conductance must be finite and nonnegative");
-		const auto path = g.VoltagePath(surface.start, surface.stop);
+		CartesianSubgrid::Integral path;
+		if (surface.localEdge)
+		{
+			const auto edge = *surface.localEdge;
+			path = g.LeafEdgeVoltage(edge.leaf, edge.axis, edge.first, edge.second);
+			const auto origin = g.LeafStart(edge.leaf), length = g.LeafLengths(edge.leaf);
+			auto start = origin;
+			start[(edge.axis + 1) % 3] += edge.first * length[(edge.axis + 1) % 3];
+			start[(edge.axis + 2) % 3] += edge.second * length[(edge.axis + 2) % 3];
+			auto stop = start;
+			stop[edge.axis] += length[edge.axis];
+			for (unsigned int n = 0; n < 3; ++n)
+			{
+				const double tolerance = std::min(length[n] * 1e-8,
+					32 * std::numeric_limits<double>::epsilon() *
+						std::max({std::abs(start[n]), std::abs(stop[n]), length[n]}));
+				Require(std::isfinite(surface.start[n]) && std::isfinite(surface.stop[n]) &&
+					std::abs(surface.start[n] - start[n]) <= tolerance &&
+					std::abs(surface.stop[n] - stop[n]) <= tolerance,
+					"CartesianSubgrid surface edge index/physical coordinates differ");
+			}
+		}
+		else
+		{
+			path = g.VoltagePath(surface.start, surface.stop);
+		}
 		Require(!path.weights.empty(), "CartesianSubgrid surface voltage path is empty or PEC");
 		if (surface.conductance > 0)
 		{

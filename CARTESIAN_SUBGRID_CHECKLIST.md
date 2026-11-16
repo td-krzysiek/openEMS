@@ -343,6 +343,20 @@ short RF lines, roughness and distributed surface histories are not admitted.
 F02 stays unchecked. A reproduced reconstruction-roundoff defect in PR29 is
 corrected without moving mesh/CAD coordinates or weakening mass-graph guards.
 
+Further partial F02/G01/P02/P05: the
+[native smooth-conductor/path-port increment](CARTESIAN_SUBGRID_CONDUCTOR.md)
+implements physical opaque volume boxes, same-metal unions, priority-clipped
+normal thickness and native complete-edge R/N paths. Candidate r02 passes all
+34 local stages, CTest37/37/Python14/14, all27 physical CUDA gates and CTest37/37;
+11,255 older arrays remain bit-identical. This is single-device conductor
+coverage plus retained lossless two-device controls, not distributed histories.
+The current r03 adds old-CSXCAD compatibility: its real old-dependency build
+passes35 tests with exactly two optional-feature skips; modern CTest37/37 passes.
+The full r03 local and physical CUDA replays are still running and are not
+claimed complete. Short RF controls agree within each mesh, but the two-level
+point-port fixture is not yet spatially converged. Broad CAD/ports, scaling and
+antenna acceptance remain open; F02 is unchecked.
+
 ## 8. Representative antenna qualification
 
 - [ ] **A01** Freeze a regular-grid PEC antenna reference, geometry/material/

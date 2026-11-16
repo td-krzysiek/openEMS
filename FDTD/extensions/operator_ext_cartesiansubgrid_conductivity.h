@@ -31,6 +31,13 @@ class Operator_Ext_CartesianSubgrid_Conductivity : public Operator_Ext_Cartesian
 			double resistance = 0; //!< ohm, nonnegative
 			double inductance = 0; //!< H, strictly positive
 		};
+		struct LocalEdge
+		{
+			std::size_t leaf = 0;
+			unsigned int axis = 0, first = 0, second = 0;
+		};
+		//! Optional resolved surface edge; start/stop must match its geometry.
+		std::optional<LocalEdge> localEdge;
 		CartesianSubgrid::Point start{}, stop{};
 		double conductance = 0; //!< S, nonnegative parallel instantaneous term
 		std::vector<Pole> poles;

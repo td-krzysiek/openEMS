@@ -16,16 +16,22 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Added
 
+- Experimental Cartesian subgrids can map physical smooth-volume conductor
+  boxes and same-metal unions to passive surface states. Native line-box
+  resistors now preserve the ordinary per-cell R/N convention across complete
+  local-edge paths. Optional CSXCAD metadata is checked explicitly; no PEC
+  fallback is used. See `CARTESIAN_SUBGRID_CONDUCTOR.md` for qualification limits.
+
 - Experimental C++ Cartesian-subgrid surface conductance/RL states share the
   bulk-loss advance on CPU and existing GPU backends. Stored energy, Ohmic
-  loss and disjoint PML have scoped controls; native conductor geometry and
-  distributed surface histories are not yet supported. Matching rebuilt
+  loss and disjoint PML have scoped controls; broader conductor CAD and
+  distributed surface histories remain unsupported. Matching rebuilt
   callers/plugins are required; see `CARTESIAN_SUBGRID_SURFACE.md`.
 
 - Experimental Cartesian subgrids accept constant isotropic electric/magnetic
   conductivity in native material boxes through paired CPU/device updates.
   Separated loss/PML is checked against prepared correction/collar supports.
-  Overlapping loss/PML, Mur with loss, native surface/ADE conductors and distributed
+  Overlapping loss/PML, Mur with loss, broader surface/ADE conductor workflows and distributed
   loss remain unsupported; see `CARTESIAN_SUBGRID_CONDUCTIVITY.md` for the qualified scope.
 - Experimental compact Cartesian physics extensions can supply a paired
   operator/engine advance through the existing CPU/device boundary. Missing

@@ -66,6 +66,8 @@ class CartesianSubgrid
 	using MediumSampler = std::function<Medium(const Point &, const Point &)>;
 	//! Setup-only PEC edge classifier in absolute SI coordinates.
 	using PECSelector = std::function<bool(unsigned int, const Point &, const Point &)>;
+	//! Whole excluded conductor leaves: no bulk E/H energy or curl inside.
+	using OpaqueSelector = std::function<bool(const Point &, const Point &)>;
 	//! Setup-only exact line/contour weights on this grid's normalized state.
 	struct Integral
 	{
@@ -84,6 +86,10 @@ class CartesianSubgrid
 	double Evaluate(const Integral &integral) const;
 	//! Exact independent local edge, used by the restricted native lumped adapter.
 	bool IsIndependentEdge(const Point &start, const Point &stop) const;
+	//! Connected axis-aligned whole local edges; no partial, interior-metal or PEC segments.
+	bool IsLocalEdgePath(const Point &start, const Point &stop) const;
+	//! Ordered oriented whole-edge segments; empty means an invalid geometric path.
+	std::vector<std::pair<Point, Point>> LocalEdgePathSegments(const Point &start, const Point &stop) const;
 	//! Dual contour bounds around a zero-width, node-centred native probe.
 	std::pair<double, double> DualBounds(unsigned int axis, const Point &point) const;
 	//! Fixed-step, passive midpoint resistor coupling; at most 64 small reference ports.
@@ -105,13 +111,27 @@ class CartesianSubgrid
 	CartesianSubgrid(const Axes &lines, double epsilon, double permeability,
 					 const std::vector<Region> &regions, bool uniformFine = false,
 					 const MediumSampler &medium = MediumSampler(), const PECSelector &pec = PECSelector(),
-					 const BoundaryConditions &boundaries = BoundaryConditions{});
+					 const BoundaryConditions &boundaries = BoundaryConditions{},
+					 const OpaqueSelector &opaque = OpaqueSelector());
 	//! Actual local edge classification, including dependent interface traces.
 	bool LeafEdgeIsPEC(std::size_t leaf, unsigned int axis, unsigned int first, unsigned int second) const;
 	std::size_t PECTraceCount() const
 	{
 		return m_PECEdges.size();
 	}
+	bool LeafIsOpaque(std::size_t leaf) const
+	{
+		return !m_OpaqueCells.empty() && m_OpaqueCells.at(leaf);
+	}
+	//! Direct local trace, avoiding global line lookup and quadrature scans.
+	Integral LeafEdgeVoltage(std::size_t leaf, unsigned int axis, unsigned int first, unsigned int second) const;
+	struct SurfaceFace
+	{
+		std::size_t leaf = 0;
+		unsigned int normal = 0, side = 0;
+	};
+	//! Resolved exposed faces; unresolved coarse-face subdivision rejects.
+	std::vector<SurfaceFace> OpaqueBoundaryFaces() const;
 	Medium LeafMedium(std::size_t leaf) const
 	{
 		return m_Media.at(leaf);
@@ -120,6 +140,11 @@ class CartesianSubgrid
 	const Axes &BaseLines() const
 	{
 		return m_Lines;
+	}
+	//! Setup/inspection lookup in physical coordinates, with the existing boundary tie policy.
+	std::size_t LeafAt(const Point &point) const
+	{
+		return FindLeaf(point);
 	}
 	Point LeafStart(std::size_t leaf) const;
 	Point LeafLengths(std::size_t leaf) const;
@@ -229,7 +254,7 @@ class CartesianSubgrid
 	std::size_t RootIndex(const Index &cell) const;
 	std::size_t FindLeaf(const Point &position) const;
 	double TraceValue(const Trace &trace, const std::vector<double> &amplitude) const;
-	void Build(const MediumSampler &medium, const PECSelector &pec);
+	void Build(const MediumSampler &medium, const PECSelector &pec, const OpaqueSelector &opaque);
 	Point EdgePoint(const Edge &edge, double fraction) const;
 	double FactorMass(const std::map<std::pair<std::size_t, std::size_t>, double> &offDiagonal);
 	void Curl(const std::vector<double> &electric, std::vector<double> &magnetic) const;
@@ -255,6 +280,7 @@ class CartesianSubgrid
 	double m_StableStep = 0;
 	std::vector<Leaf> m_Leaves;
 	std::vector<Medium> m_Media;
+	std::vector<unsigned char> m_OpaqueCells;
 	std::vector<std::size_t> m_RootLeaves;
 	std::vector<Index> m_RootRatios;
 	std::optional<CartesianSubgridEdgeIndex> m_EdgeIndex;

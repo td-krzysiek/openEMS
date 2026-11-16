@@ -28,6 +28,12 @@ static void Integrals()
 			return 2 + p[(n + 1) % 3] * 100 + p[(n + 2) % 3] * 200;
 		});
 	const Grid::Point a{.006, .006, .002}, b{.006, .006, .010}, c{.006, .006, .006};
+	Require(grid.IsLocalEdgePath(a, b) && grid.IsLocalEdgePath(b, a),
+		"whole multi-edge coarse/fine voltage path rejected");
+	Require(!grid.IsLocalEdgePath(a, {.006, .006, .0095}) &&
+		!grid.IsLocalEdgePath({.0062, .006, .002}, {.0062, .006, .010}) &&
+		!grid.IsLocalEdgePath(a, a) && !grid.IsLocalEdgePath(a, {.007, .006, .010}),
+		"partial, interpolated, zero-length or diagonal native edge path admitted");
 	const auto full = grid.VoltagePath(a, b), first = grid.VoltagePath(a, c), second = grid.VoltagePath(c, b);
 	const double value = grid.Evaluate(full);
 	Require(std::abs(value - 3.8 * .008) < 1e-14, "voltage is not an exact local-cell integral");
