@@ -1163,3 +1163,11 @@ promoted. Evidence: `native-field-gather-r56-r02/zero-region-review-r01.json`,
 The exact independently compiled R55 memory driver and reproduction steps are
 also available in this fork as `benchmark/subgrid_initial_memory.{cpp,md}`;
 this is a host-memory characterization, not an FDTD speed benchmark.
+
+
+R56 R03's twelve focused CPU/reference cases now pass, including24 empty E/H
+boundary controls. Maximum measured field and four-batch complex-DFT discrepancy
+is0; no full read occurs before the explicit fallback. All787 source files
+and the executing test/library/log identities were rechecked. This focused
+receipt does not replace full CPU72, physical64, Metal or RF/antenna acceptance.
+Evidence: `native-field-gather-r56-r03/focused-reference-r03.json`.
