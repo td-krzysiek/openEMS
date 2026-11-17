@@ -1767,3 +1767,37 @@ index output and the full R66 audit remain pending; no native/GPU/RF or speed
 acceptance follows from these synthetic reader controls. Existing R66 and
 queued native chains remain unchanged. Evidence:
 `cad-candidate-index-r70/reviewer-independent-r01.json`.
+
+R70 now independently accepts scoped CPU native index controls. Both separate
+builds pass;822/825 sources are rehashed. Actual CSXCAD replay preserves50,208
+property/primitive winners. Eight cold native preparations retain complete
+parent/candidate media/opaque/PEC and field/loss/PML tables and sparse reports
+exactly; four intended geometry-cut rejections pass. Two128-step public runs
+retain16 exact finite nontrivial own-time U/I/HDF5 arrays. The full-model reader
+also preserves CAD selection without building an antenna operator. Independent
+review rehashes1,680 files. A sandbox-denied external `time -l` measurement
+initially held the build before compilation; fresh prefixes use `wait4`, with
+identical source/flags/resource bounds and original evidence preserved. CPU81
+and actual-parent16 regression is running. Source remains unpromoted; physical
+backends, complete representative preparation/RF and speed evidence remain
+pending. Evidence: `cad-candidate-index-r70/build-cad-independent-r03.json`,
+`cad-candidate-index-r70/native-independent-r02.json`,
+`cad-candidate-index-r70/cpu-measurement-adapter-r02.json`.
+
+R70 full local CPU regression now independently accepts81/81 tests with no
+skips,16 exact actual-parent operator/field files and128 finite nontrivial
+field snapshots. One inherited Clang-only fixture narrowing error is corrected
+by replacing identical runtime int branches with constant double3.0. Its12
+controls retain the same1.17765e-7 maximum relative error against both libraries;
+no solver equations or geometry change. Only the missing corrected test was
+compiled separately; all existing executables and both cores remain unchanged.
+The newer local CTest summary wording held the observer after all81 tests
+passed. A named continuation verifies81 individual passing results and runs only
+the four remaining comparison commands; CTest is not repeated. Separate Metal
+parent/candidate builds and physical controls are now admitted through their
+own unchanged headroom guards, not yet accepted. R70 index source remains
+unpromoted and R66/production runtimes unchanged. Evidence:
+`cad-candidate-index-r70/clang-test-control-r01.json`,
+`cad-candidate-index-r70/ctest-format-adapter-r03.json`,
+`cad-candidate-index-r70/cpu-regression-independent-r03.json`,
+`cad-candidate-index-r70/metal-preparation-r01.json`.
