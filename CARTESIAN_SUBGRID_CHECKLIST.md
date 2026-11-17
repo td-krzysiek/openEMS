@@ -862,9 +862,9 @@ convergence. Frozen R37 ratio16 is the separately hash-bound Z1 comparison.
 
 R42 is a separately frozen unpromoted candidate over R40: identical opposite
 face metric coefficients are stored once per pair while all six magnetic
-field/history states remain separate. Its build and independent face-view
-oracle pass; full CPU62/actual-parent fields, a four-mode resident-memory
-comparison and physical replay remain pending. It changes no equations,
+field/history states remain separate. Its build, independent face-view
+oracle, CPU62/62 and16 exact actual-R40 operator/field files pass. A four-mode
+resident-memory comparison and physical replay remain pending. It changes no equations,
 precision, mesh or size guards.
 
 R43 full-model type inventory identifies a separate required PCB-CAD gap:
@@ -874,3 +874,19 @@ box-positive/shaped-negative controls reproduce that explicit feature limit.
 Do not remove these shapes or silently use bounding boxes to admit an antenna.
 Shaped material integration, priority and convergence must be implemented and
 qualified separately; memory improvements alone do not make the model usable.
+
+R43 independent archive/runtime/log review confirms the explicit shaped-material
+limit: one tiny box setup completes, extruded material polygon and priority air
+bore reject, with zero FDTD steps. The failed original XML-writing harness is
+retained separately; the full antenna was only inventoried, not launched.
+
+R44 is a separately frozen unpromoted candidate over R40, excluding R42.
+Optional material samples2/4/8 select positive tensor-midpoint volume averages
+of epsilon/mu and electric/magnetic conductivity, resolving native CAD priority
+at each point. Strict aligned boxes remain the default. Original contours are
+retained; conservative contour-segment bounds limit quadrature to boundary
+leaves. This is a scalar approximation, not conformal integration. Independent
+analytic fraction/energy and six native axis/unit/priority controls plus
+C++/Python/XML/Matlab interfaces are prepared; build and qualifications remain
+pending. Thin inclusions, quadrature/mesh RF convergence and actual shaped-
+material device/domain controls remain open. No full-array admission follows.
