@@ -51,20 +51,21 @@ void Engine_Ext_CartesianSubgrid_Conductivity::UpdateElectric(double timestep, d
 	m_Advanced = true;
 	// Kept empty for device-only execution; reference sweeps reuse the
 	// same capacities after their first call. No material history moves.
+	auto &electric = g.m_Electric.MutableDense();
 	m_OldElectric.resize(g.EdgeCount());
 	m_SourceCurl.resize(g.EdgeCount());
 	g.m_Increment.resize(g.EdgeCount());
-	std::copy(g.m_Electric.begin(), g.m_Electric.end(), m_OldElectric.begin());
-	g.CurlTranspose(g.m_Magnetic, g.m_Increment);
+	std::copy(electric.begin(), electric.end(), m_OldElectric.begin());
+	g.CurlTranspose(g.m_Magnetic.MutableDense(), g.m_Increment);
 	std::copy(g.m_Increment.begin(), g.m_Increment.end(), m_SourceCurl.begin());
 	for (std::size_t i = 0; i < g.EdgeCount(); ++i)
 	{
-		g.m_Increment[i] -= c.m_EffectiveDiagonal[i] * g.m_Electric[i];
+		g.m_Increment[i] -= c.m_EffectiveDiagonal[i] * electric[i];
 	}
 	for (const auto &term : c.m_EffectiveOffDiagonal)
 	{
-		g.m_Increment[term.first.first] -= term.second * g.m_Electric[term.first.second];
-		g.m_Increment[term.first.second] -= term.second * g.m_Electric[term.first.first];
+		g.m_Increment[term.first.first] -= term.second * electric[term.first.second];
+		g.m_Increment[term.first.second] -= term.second * electric[term.first.first];
 	}
 	for (std::size_t pole = 0; pole < m_SurfaceState.size(); ++pole)
 	{
@@ -79,7 +80,7 @@ void Engine_Ext_CartesianSubgrid_Conductivity::UpdateElectric(double timestep, d
 	{
 		for (std::size_t i = 0; i < g.EdgeCount(); ++i)
 		{
-			g.m_Electric[i] += timestep * g.m_Increment[i];
+			electric[i] += timestep * g.m_Increment[i];
 		}
 	}
 	else
@@ -92,7 +93,7 @@ void Engine_Ext_CartesianSubgrid_Conductivity::UpdateElectric(double timestep, d
 		double field = 0;
 		for (const auto &term : trace)
 		{
-			field += term.second * .5 * (m_OldElectric[term.first] + g.m_Electric[term.first]);
+			field += term.second * .5 * (m_OldElectric[term.first] + electric[term.first]);
 		}
 		Add(m_ElectricLoss, timestep * field * field);
 	}
@@ -102,7 +103,7 @@ void Engine_Ext_CartesianSubgrid_Conductivity::UpdateElectric(double timestep, d
 		double voltage = 0;
 		for (const auto &term : c.m_SurfaceTrace[pole])
 		{
-			voltage += term.second * .5 * (m_OldElectric[term.first] + g.m_Electric[term.first]);
+			voltage += term.second * .5 * (m_OldElectric[term.first] + electric[term.first]);
 		}
 		const double previous = m_SurfaceState[pole];
 		const double a = .5 * timestep * c.m_SurfaceRate[pole];
@@ -113,20 +114,20 @@ void Engine_Ext_CartesianSubgrid_Conductivity::UpdateElectric(double timestep, d
 	for (const auto &source : g.m_Sources)
 	{
 		const double change = drive * source.second;
-		double derivative = g.m_Electric[source.first];
+		double derivative = electric[source.first];
 		for (const auto &term : g.m_MassOffDiagonal)
 		{
 			if (term.first.first == source.first)
 			{
-				derivative += term.second * g.m_Electric[term.first.second];
+				derivative += term.second * electric[term.first.second];
 			}
 			if (term.first.second == source.first)
 			{
-				derivative += term.second * g.m_Electric[term.first.first];
+				derivative += term.second * electric[term.first.first];
 			}
 		}
 		g.m_SourceWork += change * (derivative + .5 * change - .5 * timestep * m_SourceCurl[source.first]);
-		g.m_Electric[source.first] += change;
+		electric[source.first] += change;
 	}
 	g.m_PendingMagneticTimestep = timestep;
 }
@@ -145,19 +146,20 @@ void Engine_Ext_CartesianSubgrid_Conductivity::UpdateMagnetic(double timestep)
 	{
 		throw std::invalid_argument("CartesianSubgrid conductivity magnetic phase is invalid");
 	}
+	auto &magnetic = g.m_Magnetic.MutableDense();
 	g.m_Curl.resize(g.FaceCount());
-	g.Curl(g.m_Electric, g.m_Curl);
+	g.Curl(g.m_Electric.MutableDense(), g.m_Curl);
 	for (std::size_t i = 0; i < g.FaceCount(); ++i)
 	{
-		const double previous = g.m_Magnetic[i], rate = c.m_MagneticRate[i], a = .5 * timestep * rate;
+		const double previous = magnetic[i], rate = c.m_MagneticRate[i], a = .5 * timestep * rate;
 		if (rate == 0)
 		{
-			g.m_Magnetic[i] -= timestep * g.m_Curl[i];
+			magnetic[i] -= timestep * g.m_Curl[i];
 		}
 		else
 		{
-			g.m_Magnetic[i] = ((1 - a) * previous - timestep * g.m_Curl[i]) / (1 + a);
-			const double mid = .5 * (previous + g.m_Magnetic[i]);
+			magnetic[i] = ((1 - a) * previous - timestep * g.m_Curl[i]) / (1 + a);
+			const double mid = .5 * (previous + magnetic[i]);
 			Add(m_MagneticLoss, timestep * rate * mid * mid);
 		}
 	}

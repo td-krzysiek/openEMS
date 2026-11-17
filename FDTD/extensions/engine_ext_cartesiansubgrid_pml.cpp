@@ -73,30 +73,30 @@ void Engine_Ext_CartesianSubgrid_PML::Apply(
 void Engine_Ext_CartesianSubgrid_PML::DoPreVoltageUpdates()
 {
 	m_HostAdvanced = true;
-	const auto &g = m_PML->m_Compact->Grid();
-	Prepare(m_PML->m_Electric, m_Electric, g.m_Magnetic, g.m_Electric, 1);
+	auto &g = m_PML->m_Compact->Grid();
+	Prepare(m_PML->m_Electric, m_Electric, g.m_Magnetic.MutableDense(), g.m_Electric.MutableDense(), 1);
 }
 void Engine_Ext_CartesianSubgrid_PML::DoPostVoltageUpdates()
 {
-	Finish(m_PML->m_Electric, m_Electric, m_PML->m_Compact->Grid().m_Electric);
+	Finish(m_PML->m_Electric, m_Electric, m_PML->m_Compact->Grid().m_Electric.MutableDense());
 }
 void Engine_Ext_CartesianSubgrid_PML::Apply2Voltages()
 {
-	Apply(m_PML->m_Electric, m_Electric, m_PML->m_Compact->Grid().m_Electric);
+	Apply(m_PML->m_Electric, m_Electric, m_PML->m_Compact->Grid().m_Electric.MutableDense());
 }
 void Engine_Ext_CartesianSubgrid_PML::DoPreCurrentUpdates()
 {
 	m_HostAdvanced = true;
-	const auto &g = m_PML->m_Compact->Grid();
-	Prepare(m_PML->m_Magnetic, m_Magnetic, g.m_Electric, g.m_Magnetic, -1);
+	auto &g = m_PML->m_Compact->Grid();
+	Prepare(m_PML->m_Magnetic, m_Magnetic, g.m_Electric.MutableDense(), g.m_Magnetic.MutableDense(), -1);
 }
 void Engine_Ext_CartesianSubgrid_PML::DoPostCurrentUpdates()
 {
-	Finish(m_PML->m_Magnetic, m_Magnetic, m_PML->m_Compact->Grid().m_Magnetic);
+	Finish(m_PML->m_Magnetic, m_Magnetic, m_PML->m_Compact->Grid().m_Magnetic.MutableDense());
 }
 void Engine_Ext_CartesianSubgrid_PML::Apply2Current()
 {
-	Apply(m_PML->m_Magnetic, m_Magnetic, m_PML->m_Compact->Grid().m_Magnetic);
+	Apply(m_PML->m_Magnetic, m_Magnetic, m_PML->m_Compact->Grid().m_Magnetic.MutableDense());
 }
 
 CartesianSubgridPMLData Engine_Ext_CartesianSubgrid_PML::PrepareDeviceData() const

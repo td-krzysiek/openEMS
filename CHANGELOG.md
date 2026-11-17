@@ -16,6 +16,10 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Added
 
+- Experimental Cartesian-subgrid initial E/H fields retain exact implicit zeros
+  until CPU writes or explicit complete device imports need dense host values.
+  Supplied nonzero fields and precision guards remain unchanged. Rebuild callers.
+
 - Experimental Cartesian subgrids share exactly repeated leaf material values,
   with a bounded palette and dense fallback for fully varying media. Rebuild
   matching callers; material values and field equations are unchanged.

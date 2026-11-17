@@ -1112,19 +1112,16 @@ promotion. R52 memory numbers remain separately scoped homogeneous evidence;
 no combined native PCB/antenna capacity or Metal qualification is inferred.
 No production runtime changes. Evidence: `native-material-composition-r54/`.
 
-R55 separately freezes exact implicit initial +0 host E/H storage over R54.
-Logical field sizes and read semantics are retained; CPU writes and complete
-device imports materialize dense arrays. CPU sweeps bind dense storage outside
-their value loops. The new focused test covers a billion logical zeros without
-a value allocation, copy/move/reset, signed zeros and FTZ rejection, metadata/
-domain preparation, exact CPU updates and six selected-observation/device-energy
-controls through explicit full import. The build and six focused CPU/device-reference
-cases pass, with exact fields/energy and lazy storage until full import. Full
-CPU71 is running; physical60 waits for CPU acceptance and accepted exact R54
-pair release.
-Four matched GPU-free3.93M zero-state memory controls are also queued behind CPU
-acceptance. Implementation is not numerical/RAM/Metal/antenna qualification.
-Evidence: `implicit-zero-state-r55/preparation-r01.json`.
+R55 exact implicit initial +0 E/H storage passes CPU71/71,16 bit-identical
+actual-R54 operator/field files and60 physical CUDA gates, exit0/noOOM. All784
+source and424 archive files were independently rehashed before exact numerical/
+API/test promotion. Read-only metadata, domain setup, selected observations and
+energy retain zero value-array allocation; CPU writes/full imports materialize
+fields. Four matched3.93M homogeneous host controls save281,743,856 accounted
+initial bytes (268.69MiB). Plan peak RSS falls19.08% patterns/20.25% blocks;
+post-write storage is comparable. These single host measurements are not native
+PCB/GPU/antenna admission or FDTD speedup. Metal and representative RF remain
+open. Evidence: `implicit-zero-state-r55/independent-qualification-r01.json`.
 
 
 R56 separately stages native E/H dump gathers over frozen R55. It reuses the
@@ -1139,3 +1136,14 @@ bit-identity claim. CPU72 and physical64 are queued behind actual predecessor
 acceptance/release. Device DFT, generic E/H probes, Metal, collective pause,
 RF/NF2FF and antenna qualification remain open. No production runtime changes.
 Evidence: `native-field-gather-r56/preparation-r01.json`.
+
+
+R56 R01's isolated build failed before numerical execution because a borrowed
+const interface called an existing nonconst interpolation getter. Preserve its
+exact failed terminal/source/diagnostics. R02 adds one const getter overload,
+retaining the existing nonconst signature and every adapter/test/physics/gate
+unchanged. Its isolated build/CPU72 pipeline is admitted after accepted R55;
+physical64 waits for CPU acceptance and the exact accepted R55 pair release.
+This remains an unqualified source, not a promoted solver fix or antenna build.
+Evidence: `native-field-gather-r56/build-failure-review-r01.json`,
+`native-field-gather-r56-r02/preparation-r01.json`.

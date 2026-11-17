@@ -136,3 +136,40 @@ they are not a native PCB or full-antenna capacity measurement for R54. Initial
 double fields and generic full fallback remain in this increment. R55 stages
 implicit zero fields separately; Metal, native PCB scaling, E/H/DFT and
 representative antenna acceptance remain open.
+
+
+## Staged implicit initial fields — R55
+
+Initial normalized E/H fields have their full logical sizes but no dense host
+double allocation while exactly initial +0. Const point reads, energy, initial
+FP32 validation, setup metadata, domain preparation and sparse device observations
+must not materialize those arrays. CPU writes, explicit initial field setters
+and full device imports materialize them. Nonzero/negative-zero supplied states
+retain the existing value and FTZ conversion path. No field is compressed or
+discarded after a write.
+
+`HostFieldStorage()` reports logical counts and allocated E/H double capacities;
+it is not total process memory, device memory or a resource-admission estimate.
+The representation retains all allocation guards, does not alter the solver
+scheme and does not remove the explicit E/H/DFT full fallback. CPU extension
+updates obtain contiguous storage explicitly. The staged source changes private
+C++ layout and requires rebuilding all callers.
+
+Focused controls cover a billion logical values without a value allocation,
+owning copy/move, explicit materialization/reset, signed zeros and FTZ rejection,
+metadata/domain preparation, identical CPU steps, and selected device observations
+plus scalar energy before an exact full import. Full CPU/loss/PML/native and
+physical-device composition tests remain required, as does matched peak-RAM
+measurement. Historical initialization benchmarks with nonzero `SetElectric`
+are not a measure of this optimization. No antenna admission follows.
+
+
+R55 qualification now passes CPU71/71,16 exact actual-R54 operator/field
+files and60 physical CUDA gates. Independently rehashed784 source/424 archived
+files. Four matched3.93M-leaf zero-state host controls retain exact sampled
+fields/curls and ownership. Initial accounted storage drops281,743,856bytes
+(268.69MiB); preparation peak RSS drops19.08% patterns/20.25% blocks. A subsequent
+CPU write/step materializes full fields and restores comparable storage. These
+are single homogeneous host observations, not native PCB/GPU/antenna capacity
+or FDTD-throughput measurements. Metal, prepared E/H/DFT and representative
+RF/antenna remain open. Exact numerical/API/test source is promoted.

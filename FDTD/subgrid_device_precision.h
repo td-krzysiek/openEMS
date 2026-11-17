@@ -2,6 +2,7 @@
 #ifndef CARTESIAN_SUBGRID_DEVICE_PRECISION_H
 #define CARTESIAN_SUBGRID_DEVICE_PRECISION_H
 
+#include "subgrid_field_state.h"
 #include <algorithm>
 #include <cmath>
 #include <cstddef>
@@ -61,6 +62,27 @@ template <class Sink> inline void StateTo(const std::vector<double> &values, Tai
 }
 
 inline std::vector<float> State(const std::vector<double> &values, TailInfo &info)
+{
+	std::vector<float> result;
+	result.reserve(values.size());
+	StateTo(values, info, [&](float value) { result.push_back(value); });
+	return result;
+}
+
+//! Exact implicit +0 contributes no dropped FTZ tails and needs no host array.
+template <class Sink> inline void StateTo(const CartesianSubgridFieldState &values, TailInfo &info, Sink sink)
+{
+	if (!values.ImplicitZero())
+	{
+		StateTo(values.Dense(), info, sink);
+		return;
+	}
+	for (std::size_t i = 0; i < values.size(); ++i)
+	{
+		sink(0.f);
+	}
+}
+inline std::vector<float> State(const CartesianSubgridFieldState &values, TailInfo &info)
 {
 	std::vector<float> result;
 	result.reserve(values.size());

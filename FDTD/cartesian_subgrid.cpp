@@ -652,8 +652,8 @@ void CartesianSubgrid::Build(const MediumSampler &medium, const PECSelector &pec
 	Require(bound > 0 && std::isfinite(bound), "CartesianSubgrid: invalid coupled spectral bound");
 	std::vector<double>().swap(columns);
 	m_StableStep = 1.98 / bound;
-	m_Electric.assign(m_Edges.size(), 0);
-	m_Magnetic.assign(6 * m_Leaves.size(), 0);
+	m_Electric.AssignZero(m_Edges.size());
+	m_Magnetic.AssignZero(6 * m_Leaves.size());
 	// CPU-only sweep work is allocated on first reference use. Device
 	// preparation and complete-batch field mirrors do not need it.
 }
@@ -987,8 +987,9 @@ void CartesianSubgrid::UpdateElectric(double timestep, double sourceAmplitude)
 	CheckStep(timestep);
 	Require(m_PendingMagneticTimestep == 0, "CartesianSubgrid: complete the pending magnetic sweep first");
 	Require(std::isfinite(sourceAmplitude), "CartesianSubgrid: nonfinite drive");
+	auto &electric = m_Electric.MutableDense();
 	m_Increment.resize(m_Electric.size());
-	CurlTranspose(m_Magnetic, m_Increment);
+	CurlTranspose(m_Magnetic.MutableDense(), m_Increment);
 	if (!m_PortVoltage.empty() && !m_Sources.empty())
 	{
 		m_SourceCurl.resize(m_Electric.size());
@@ -999,7 +1000,7 @@ void CartesianSubgrid::UpdateElectric(double timestep, double sourceAmplitude)
 	{
 		for (std::size_t i = 0; i < m_Electric.size(); ++i)
 		{
-			m_Electric[i] += timestep * m_Increment[i];
+			electric[i] += timestep * m_Increment[i];
 		}
 	}
 	else
@@ -1011,21 +1012,21 @@ void CartesianSubgrid::UpdateElectric(double timestep, double sourceAmplitude)
 		const double change = sourceAmplitude * source.second;
 		if (!m_PortVoltage.empty())
 		{
-			double derivative = m_Electric[source.first];
+			double derivative = electric[source.first];
 			for (const auto &term : m_MassOffDiagonal)
 			{
 				if (term.first.first == source.first)
 				{
-					derivative += term.second * m_Electric[term.first.second];
+					derivative += term.second * electric[term.first.second];
 				}
 				if (term.first.second == source.first)
 				{
-					derivative += term.second * m_Electric[term.first.first];
+					derivative += term.second * electric[term.first.first];
 				}
 			}
 			m_SourceWork += change * (derivative + .5 * change - .5 * timestep * m_SourceCurl[source.first]);
 		}
-		m_Electric[source.first] += change;
+		electric[source.first] += change;
 	}
 	m_PendingMagneticTimestep = timestep;
 }
@@ -1034,11 +1035,12 @@ void CartesianSubgrid::UpdateMagnetic(double timestep)
 {
 	Require(timestep == m_PendingMagneticTimestep && timestep > 0,
 			"CartesianSubgrid: magnetic sweep must follow electric sweep at the same timestep");
+	auto &magnetic = m_Magnetic.MutableDense();
 	m_Curl.resize(m_Magnetic.size());
-	Curl(m_Electric, m_Curl);
+	Curl(m_Electric.MutableDense(), m_Curl);
 	for (std::size_t i = 0; i < m_Magnetic.size(); ++i)
 	{
-		m_Magnetic[i] -= timestep * m_Curl[i];
+		magnetic[i] -= timestep * m_Curl[i];
 	}
 	m_PendingMagneticTimestep = 0;
 }
@@ -1261,16 +1263,18 @@ unsigned int CartesianSubgrid::EdgeDirection(std::size_t edge) const
 
 void CartesianSubgrid::SetElectric(const Field &field)
 {
+	auto &electric = m_Electric.MutableDense();
 	for (std::size_t edge = 0; edge < m_Electric.size(); ++edge)
 	{
 		const double value = field(EdgeDirection(edge), EdgePosition(edge));
 		Require(std::isfinite(value), "CartesianSubgrid: nonfinite initial electric field");
-		m_Electric[edge] = value * m_SqrtMass[edge];
+		electric[edge] = value * m_SqrtMass[edge];
 	}
 }
 
 void CartesianSubgrid::SetMagnetic(const Field &field)
 {
+	auto &magnetic = m_Magnetic.MutableDense();
 	for (std::size_t cell = 0; cell < m_Leaves.size(); ++cell)
 	{
 		const Leaf &leaf = m_Leaves[cell];
@@ -1295,12 +1299,12 @@ void CartesianSubgrid::SetMagnetic(const Field &field)
 				const std::size_t index = 6 * cell + 2 * n + side;
 				if (m_PECFaces[index])
 				{
-					m_Magnetic[index] = 0;
+					magnetic[index] = 0;
 					continue;
 				}
 				const double value = field(n, position);
 				Require(std::isfinite(value), "CartesianSubgrid: nonfinite initial magnetic field");
-				m_Magnetic[index] = value * m_Media[cell].permeability * area * m_SqrtReluctance[(index) / 2];
+				magnetic[index] = value * m_Media[cell].permeability * area * m_SqrtReluctance[(index) / 2];
 			}
 		}
 	}
@@ -1383,7 +1387,7 @@ std::size_t CartesianSubgrid::FindLeaf(const Point &position) const
 	return first + (std::size_t(child[0]) * ratio[1] + child[1]) * ratio[2] + child[2];
 }
 
-double CartesianSubgrid::TraceValue(const Trace &trace, const std::vector<double> &amplitude) const
+double CartesianSubgrid::TraceValue(const Trace &trace, const CartesianSubgridFieldState &amplitude) const
 {
 	double value = 0;
 	for (const auto &term : trace.weights)
@@ -1482,7 +1486,11 @@ void CartesianSubgrid::AddElectric(std::size_t edge, double value)
 
 double CartesianSubgrid::ElectricEnergy() const
 {
-	double result = .5 * std::inner_product(m_Electric.begin(), m_Electric.end(), m_Electric.begin(), 0.);
+	if (m_Electric.ImplicitZero())
+	{
+		return 0.;
+	}
+	double result = .5 * std::inner_product(m_Electric.Dense().begin(), m_Electric.Dense().end(), m_Electric.Dense().begin(), 0.);
 	for (const auto &term : m_MassOffDiagonal)
 	{
 		result += term.second * m_Electric[term.first.first] * m_Electric[term.first.second];
@@ -1492,7 +1500,11 @@ double CartesianSubgrid::ElectricEnergy() const
 
 double CartesianSubgrid::MagneticEnergy() const
 {
-	return .5 * std::inner_product(m_Magnetic.begin(), m_Magnetic.end(), m_Magnetic.begin(), 0.);
+	if (m_Magnetic.ImplicitZero())
+	{
+		return 0.;
+	}
+	return .5 * std::inner_product(m_Magnetic.Dense().begin(), m_Magnetic.Dense().end(), m_Magnetic.Dense().begin(), 0.);
 }
 
 double CartesianSubgrid::Energy(double timestep) const
@@ -1501,9 +1513,12 @@ double CartesianSubgrid::Energy(double timestep) const
 	if (timestep != 0)
 	{
 		CheckStep(timestep);
-		std::vector<double> curl(m_Magnetic.size());
-		Curl(m_Electric, curl);
-		value += .5 * timestep * std::inner_product(curl.begin(), curl.end(), m_Magnetic.begin(), 0.);
+		if (!m_Electric.ImplicitZero() && !m_Magnetic.ImplicitZero())
+		{
+			std::vector<double> curl(m_Magnetic.size());
+			Curl(m_Electric.Dense(), curl);
+			value += .5 * timestep * std::inner_product(curl.begin(), curl.end(), m_Magnetic.Dense().begin(), 0.);
+		}
 	}
 	return value;
 }
@@ -1552,11 +1567,12 @@ std::size_t CartesianSubgrid::StorageBytes() const
 	bytes += m_EdgeIndex->StorageBytes();
 	bytes += m_PECEdges.size() * (sizeof(Edge) + 4 * sizeof(void *)) + m_PECFaces.capacity();
 	for (const auto *values :
-		 {&m_SqrtMass, &m_SqrtReluctance, &m_Electric, &m_Magnetic, &m_Increment, &m_Curl,
+		 {&m_SqrtMass, &m_SqrtReluctance, &m_Increment, &m_Curl,
 		  &m_InterfaceWork})
 	{
 		bytes += values->capacity() * sizeof(double);
 	}
+	bytes += (m_Electric.capacity() + m_Magnetic.capacity()) * sizeof(double);
 	bytes += m_CurlOperator.AllocationBytes();
 	bytes += m_MassOffDiagonal.capacity() * sizeof(decltype(m_MassOffDiagonal)::value_type);
 	bytes += m_Sources.capacity() * sizeof(decltype(m_Sources)::value_type);
@@ -2141,6 +2157,7 @@ void CartesianSubgrid::ApplyResistors(double timestep, double amplitude,
 	const std::vector<Integral> &responses, const std::vector<double> &lower)
 {
 	Require(timestep == m_PortTimestep, "CartesianSubgrid: resistor timestep changed; reconfigure first");
+	auto &electric = m_Electric.MutableDense();
 	const auto count = m_PortVoltage.size();
 	// Solve directly for net normalized current, j - sqrt(G)*V_mid.
 	// (I + dt/2 D)(j - sqrt(G)*V_mid) = j - C^T(u_old + dt/2 S^-1 K^T v).
@@ -2149,7 +2166,7 @@ void CartesianSubgrid::ApplyResistors(double timestep, double amplitude,
 		double voltage = 0;
 		for (const auto &term : m_PortVoltage[i].weights)
 		{
-			voltage += term.second * (m_Electric[term.first] + .5 * timestep * m_Increment[term.first]);
+			voltage += term.second * (electric[term.first] + .5 * timestep * m_Increment[term.first]);
 		}
 		m_PortRHS[i] = amplitude * m_PortCurrent[i] - std::sqrt(m_PortConductance[i]) * voltage;
 		for (std::size_t j = 0; j < i; ++j)
@@ -2171,13 +2188,13 @@ void CartesianSubgrid::ApplyResistors(double timestep, double amplitude,
 	}
 	for (std::size_t i = 0; i < m_Electric.size(); ++i)
 	{
-		m_Electric[i] += timestep * m_Increment[i];
+		electric[i] += timestep * m_Increment[i];
 	}
 	for (std::size_t port = 0; port < count; ++port)
 	{
 		for (const auto &term : responses[port].weights)
 		{
-			m_Electric[term.first] += timestep * term.second * m_PortRHS[port];
+			electric[term.first] += timestep * term.second * m_PortRHS[port];
 		}
 	}
 }
@@ -2692,8 +2709,8 @@ void CartesianSubgrid::ImportDeviceFields(const float *electric, std::size_t ele
 			}
 		}
 	}
-	std::copy(electric, electric + electricCount, m_Electric.begin());
-	std::copy(magnetic, magnetic + magneticCount, m_Magnetic.begin());
+	std::copy(electric, electric + electricCount, m_Electric.MutableDense().begin());
+	std::copy(magnetic, magnetic + magneticCount, m_Magnetic.MutableDense().begin());
 }
 
 void CartesianSubgrid::ImportDeviceLedger(double resistorLoss, double sourceWork)

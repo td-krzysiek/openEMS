@@ -6,6 +6,7 @@
 #include "subgrid_edge_index.h"
 #include "subgrid_leaf_index.h"
 #include "subgrid_material_palette.h"
+#include "subgrid_field_state.h"
 #include "gpu_cartesiansubgrid.h"
 #include <array>
 #include <cstddef>
@@ -225,6 +226,17 @@ class CartesianSubgrid
 	{
 		return m_Leaves.size();
 	}
+	//! Actual initial/observation double-field allocations, not total process memory.
+	struct FieldStorageInfo
+	{
+		std::size_t electricValues = 0, magneticValues = 0, electricBytes = 0, magneticBytes = 0;
+		bool electricImplicitZero = false, magneticImplicitZero = false;
+	};
+	FieldStorageInfo HostFieldStorage() const
+	{
+		return {m_Electric.size(), m_Magnetic.size(), m_Electric.capacity() * sizeof(double),
+			m_Magnetic.capacity() * sizeof(double), m_Electric.ImplicitZero(), m_Magnetic.ImplicitZero()};
+	}
 	std::size_t StorageBytes() const;
 	std::size_t CurlStorageBytes() const
 	{
@@ -328,7 +340,7 @@ class CartesianSubgrid
 	Trace Restrict(const Edge &edge, bool ignoreLocalPEC = false) const;
 	std::size_t RootIndex(const Index &cell) const;
 	std::size_t FindLeaf(const Point &position) const;
-	double TraceValue(const Trace &trace, const std::vector<double> &amplitude) const;
+	double TraceValue(const Trace &trace, const CartesianSubgridFieldState &amplitude) const;
 	void Build(const MediumSampler &medium, const PECSelector &pec, const OpaqueSelector &opaque, std::size_t expectedLeaves);
 	void ConfigureRegularCurl();
 	CartesianSubgridMetricView CurlMetrics() const
@@ -377,7 +389,8 @@ class CartesianSubgrid
 	std::size_t m_InverseBoundSolves = 0, m_BipartiteBoundBlocks = 0;
 	std::vector<std::pair<std::pair<std::size_t, std::size_t>, double>> m_MassOffDiagonal;
 	CartesianSubgridCurl m_CurlOperator;
-	std::vector<double> m_Electric, m_Magnetic, m_Increment, m_Curl;
+	CartesianSubgridFieldState m_Electric, m_Magnetic;
+	std::vector<double> m_Increment, m_Curl;
 	std::vector<std::pair<std::size_t, double>> m_Sources;
 	std::vector<Integral> m_PortVoltage, m_PortResponse;
 	std::vector<double> m_PortConductance, m_PortCurrent, m_PortLower, m_PortRHS, m_PortMid, m_SourceCurl;
