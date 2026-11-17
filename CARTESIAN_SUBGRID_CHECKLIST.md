@@ -1755,3 +1755,13 @@ Evidence: `cad-candidate-index-r70/DESIGN.md`,
 `cad-candidate-index-r70/preliminary-independent-r01.json`,
 `cad-candidate-index-r70/cpu-preparation-r01.json`,
 `cad-candidate-index-r70/native-chain-r02.json`.
+
+R70's independent bounded metadata/field consumer and malformed-evidence
+self-tests are now prepared, with syntax inspection only. The consumer requires
+terminal native success, exact source/runtime/input identities, complete
+parent/candidate coefficients, finite leaf/CSR/PML data and nontrivial own-time
+port/HDF5 fields. Self-tests were not admitted under unchanged local memory
+reserve; neither linked-native acceptance nor speed evidence is claimed.
+Actual full-board R66 remains live and unchanged; its full native audit and
+first representative FDTD remain pending. Evidence:
+`cad-candidate-index-r70/reviewer-preparation-r01.json`.
