@@ -380,8 +380,18 @@ only that test declaration. Its next retained test fixture violates the required
 region margin; separately corrected fixtures preserve the margin and compare
 ordinary fields on matching grids, ordinary G on both layouts and actual
 refined CPU/device fields. Fresh r03 also keeps the shared timestep below the
-ordinary CFL; CPU59, physical, native RF and full-antenna qualification remain
-open. No source from these unqualified candidates is promoted.
+ordinary CFL. Full CPU59/59,48 new port cases,16 exact actual-parent files
+and native observations pass. A separately named collector corrects only a
+renamed retained rank-log marker on the same immutable archive; no numerical
+rerun. The26 physical gates, Metal, native RF and full-antenna acceptance remain
+open. Separate R35 retains already verified local-edge support to avoid a
+whole-grid voltage-path scan per port edge. Its original new test assumed
+identical support; instrumentation finds a tiny extra general-quadrature
+coefficient at a rounded cut (3.63e-16 relative), with identical main weight.
+Fresh r02 changes only that oracle, keeps the original2e-14 numerical bound
+on the complete functional and adds wrong-main/wrong-support negatives. Its
+first48 path cases pass; full CPU60 and physical qualification remain open.
+No R34/R35 numerical source is promoted.
 No full-PCB, guard increase or production adoption follows.
 
 - [ ] **U01** Define device-resident block fields, interface metadata and update
