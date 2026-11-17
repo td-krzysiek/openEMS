@@ -33,7 +33,7 @@ struct Fixture
 		csx.GetGrid()->SetDeltaUnit(.001);
 		for (unsigned int n = 0; n < 3; ++n)
 		{
-			const double base[5] = {0, graded ? .5 : 1, graded ? 1.5 : 2, graded ? 3 : 3, 4};
+			const double base[5] = {0, graded ? .5 : 1, graded ? 1.5 : 2, 3.0, 4};
 			for (unsigned int k = 0; k < 4; ++k)
 			{
 				lines[n].push_back(base[k]);
