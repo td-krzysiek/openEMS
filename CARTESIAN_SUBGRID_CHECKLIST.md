@@ -1889,16 +1889,20 @@ Original point-H failures are retained. No solver or frozen runtime changes.
 Evidence: `oblique-interface-r72/independent-r03.json`,
 `oblique-interface-r72/review_r03.py`.
 
-R72's separate device diagnostic is staged, not promoted or qualified. It
+R72's separate device diagnostic is staged, not promoted. It
 requires an explicit target and rejects missing/invalid target arguments before
-backend/grid creation. Eight FP32 reference-backend cases are running against
-the immutable double CPU traces. A physical Metal replay is queued behind
-accepted reference checks and the existing R73 terminal RF review. Every raw
+backend/grid creation. Eight FP32 reference-backend cases pass independent
+review against immutable double CPU traces: maximum raw/mean history error
+5.170151298824128e-7, with575,733,760 bytes peak child RSS. The unchanged
+spatial/temporal/invariant and source/runtime/resource gates pass. This is CPU
+reference execution, not a physical GPU result. Metal is queued behind the
+existing R73 terminal RF review. Every raw
 point/volume column retains a per-trace2e-4 CPU gate, with an additional2e-6
 FP32-reference gate for Metal. The original CPU point-H spatial failures remain
 failed. R11 stays open; no numerical library, antenna or production runtime
 changes. Evidence: `oblique-interface-r72/preparation-r04.json`,
 `oblique-interface-r72/negative-controls-r04.json`,
+`oblique-interface-r72/independent-r04.json`,
 `oblique-interface-r72/preparation-r05.json`.
 
 R70 CUDA physical replay has a prepared serial worker for both single devices
