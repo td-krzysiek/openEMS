@@ -1250,3 +1250,34 @@ waiting for actual R58 acceptance. Recent Metal still waits for unchanged
 headroom; no production/antenna runtime changes. Evidence: `device-dft-r57-r02/
 independent-qualification-r01.json`, `device-dft-r57-r02/promotion-r01.json`,
 `native-device-dft-r58/focused-reference-r01.json`.
+
+
+R58 now passes full GPU-free CPU74/74 and16 exact actual-R57 operator/field
+arrays, exit0/noOOM. Independent review rehashes794 source files. Twelve native
+complex-array cases have maximum relative error2.85387e-7; eleven retain no
+host E/H selection. Actual physical72 is separately admitted and observed by
+container b1579d3a2eba27269fbcbef56957e3bf5807e51fd369b3ef6edd478b6e0e9314;
+no R58 source is promoted before physical acceptance. The matched public-dipole
+host/device/single/pair NF2FF harness is R59 R03. R59 R02 was still unlaunched
+when static review corrected its final percent-comment port-file reader;
+its driver/public fixture and gates are unchanged, with the review preserved.
+Evidence: `native-device-dft-r58/independent-cpu-review-r01.json`,
+`native-device-dft-r58/cpu-qualification-r01.json`,
+`native-dft-radiation-r59-r02/static-harness-review-r01.json`,
+`native-dft-radiation-r59-r03/preparation-r01.json`.
+
+R60 stages an explicit completed-epoch owner-thread fence over exact R58.
+A worker selects/waits for its backend before acknowledging that exact epoch;
+the coordinator returns only after every logical worker succeeds. Wrong or
+missing acknowledgements/backend failures prevent continuation. No field or
+DFT download, migration, ordinary-step barrier or competing control-file
+protocol is introduced. Two focused targets include actual backend-wait call
+verification before return, half-step/epoch/failure negatives, unchanged resumed
+fields/DFT and native PML/bulk-loss cases.799 source files are frozen; the
+isolated GPU-free build is admitted as
+edd09d25cb9de520434602a0376ee91a03e934c89784c7df75b90b4f246a431f.
+Expected fullCPU76, physical80 and external pause/snapshot integration remain
+pending. Physical admission must also follow the exact accepted R59 job release.
+This is staged implementation, not numerical or antenna qualification.
+Evidence: `collective-fence-r60/preparation-r01.json`,
+`collective-fence-r60/DESIGN.md`.
