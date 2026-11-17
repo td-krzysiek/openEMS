@@ -1679,3 +1679,16 @@ code is promoted or performance claim made at this stage.
 Evidence: `curl-row-accumulator-r68/preparation-r01.json`,
 `curl-row-accumulator-r68/build-admission-r01.json`,
 `curl-row-accumulator-r68/cpu-admission-r01.json`.
+
+R68's setup-only comparison now accepts six balanced interleaved preparations:
+all1,304 complete native report lines match the independently accepted prior
+copper-reference report exactly;41 archived artifacts are rehashed. Median
+curl/stability preparation is16.4507 to14.3918s (-12.52%); native grid is33.4879
+to31.9515s (-4.59%), whole inspector53.0465 to52.3556s (-1.30%). These are three
+shared-host repeats, not a statistical, antenna or FDTD speed claim; native/grid
+intervals are nested. CPU80 remains running. Source is still unpromoted;
+physical88 is staged only after accepted CPU80 and actual pair release, and
+recent Metal remains unadmitted under unchanged headroom guards.
+Evidence: `curl-row-accumulator-r68/benchmark-independent-r01.json`,
+`curl-row-accumulator-r68/physical-preparation-r01.json`,
+`curl-row-accumulator-r68/metal-headroom-r01.json`.
