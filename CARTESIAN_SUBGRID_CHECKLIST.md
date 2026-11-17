@@ -105,8 +105,10 @@ universal limits of subgridding. A shared timestep is retained.
 - [x] **R08** Native soft-E source, E/H probes and E/H field dumps on the CPU
   reference; existing cylindrical-cavity and regular CPU-engine controls pass.
 - [x] **R09** Matlab/Octave configuration helper and test source are present.
-- [ ] **R10** Execute the Matlab/Octave helper/test and check generated XML
-  with the native solver. The local interpreter was unavailable.
+- [x] **R10** Execute the Matlab/Octave helper/test and check generated XML
+  with the native solver. R69 qualifies actual Octave8.4.0 helpers and native
+  no-simulation preparation; proprietary Matlab/MEX and field execution remain
+  separate. See the scoped evidence below.
 - [ ] **R11** Extend interface-accuracy tests to oblique incidence, broader
   spectra, different ratios/aspect ratios and polarization. Existing coarse
   packet cases remain inaccurate; energy conservation alone is insufficient.
@@ -1673,7 +1675,7 @@ retaining the original contribution order, positive-zero insertion, cancelled
 entries and ascending index traversal. It does not change update kernels or
 running/frozen runtimes. Its isolated GPU-free build passes; the direct map
 oracle passes33,024 exact additions with signed-zero/cancellation/large-key and
-capacity-reuse controls. Full CPU80/actual-parent replay is running; physical
+capacity-reuse controls. Full CPU80/actual-parent replay passes; physical
 CUDA, recent Metal and interleaved setup timings remain separate. No candidate
 code is promoted or performance claim made at this stage.
 Evidence: `curl-row-accumulator-r68/preparation-r01.json`,
@@ -1686,9 +1688,32 @@ copper-reference report exactly;41 archived artifacts are rehashed. Median
 curl/stability preparation is16.4507 to14.3918s (-12.52%); native grid is33.4879
 to31.9515s (-4.59%), whole inspector53.0465 to52.3556s (-1.30%). These are three
 shared-host repeats, not a statistical, antenna or FDTD speed claim; native/grid
-intervals are nested. CPU80 remains running. Source is still unpromoted;
-physical88 is staged only after accepted CPU80 and actual pair release, and
+intervals are nested. CPU80/80 and56 scripts independently pass, retaining16
+exact actual-R67 files with profiling off and16 with profiling on;824 source
+and554 archive files are rehashed. Source is still unpromoted;
+physical88 is queued after accepted CPU80 and actual pair release, and
 recent Metal remains unadmitted under unchanged headroom guards.
 Evidence: `curl-row-accumulator-r68/benchmark-independent-r01.json`,
+`curl-row-accumulator-r68/cpu-independent-r01.json`,
 `curl-row-accumulator-r68/physical-preparation-r01.json`,
 `curl-row-accumulator-r68/metal-headroom-r01.json`.
+
+R69 closes R10 within actual Octave8.4.0 helper/native-preparation scope. The
+unchanged existing M unit passes15 checks, and the driver verifies16 invalid
+options plus clearing. All206 helper/test files match exact R67 openEMS and
+public CSXCAD `cc37cb4`; an independent Git-archive comparison confirms the
+CSXCAD bytes. Actual M writers generate two separate anisotropic-region XML
+fixtures with default or nonuniform X/Z children. Both produce1,824 native
+leaves in basic/reference layouts, with identical four-line sparse reports,
+bounded positive timesteps and zero field steps/no created engine. Actual
+over-budget and off-base-corner cases reject with the intended diagnostics.
+Independent review rehashes241 archived files and822 native sources, retaining
+terminal/resource/runtime identities. A local reviewer-key correction is
+recorded without numerical reruns. Optional Octave tooling is a separate
+local-only test image, not a production dependency or registry upload. The
+native solver retains the original dependency image and accepted R67 core.
+No proprietary Matlab, MEX/HDF5, FDTD field, physical GPU, Metal or antenna
+acceptance follows; antenna copper-contact gates are unchanged.
+Evidence: `octave-interface-r69/independent-r01.json`,
+`octave-interface-r69/review-adapter-r01.json`,
+`octave-interface-r69/tools-qualified-r01.json`.
