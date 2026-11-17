@@ -642,5 +642,38 @@ This is a modest peak-memory improvement with slower CPU preparation, not a
 general speedup. Removing that global allocation/term-count limit is necessary
 for larger streamed plans but does not admit them: allocation/interface guards
 remain. Combined registration with the separate R30 loss fixture is exercised
-by the pending R31 source, not relabelled as this54-test run. New ownership and
-initial-field-copy candidates remain separately unqualified.
+by the separately qualified R31 source, not relabelled as this54-test run.
+The metadata-only initial-field-copy candidate remains separately unqualified.
+
+
+## Tiled domain ownership labels
+
+R31 changes only setup ownership-label storage. A uniform256-state tile stores
+one worker ID; mixed tiles store exact byte labels for at most64 workers.
+Global field IDs, local addresses, port/interface reassignment and coefficient
+operations remain unchanged. The expanded oracle keeps dense uint32 labels.
+Thirty size/pattern controls verify labels, owning copies, bounds and rejected
+mutations;11,827 direct-map lookups agree with the dense oracle. These compact
+label bytes alone are not a whole-plan memory prediction.
+
+The exact promoted source passes CPU56/56,16 exact actual-R29 files, native
+reference observations and the combined R30 native child-loss registration.
+All22 physical CUDA gates pass on the actual4090/3080 pair in both orders,
+including24 exact metadata/field domain cases,48 native child-coordinate
+cases,58 native child-loss cases and16 native Python TD/FD/port cases. Runtime,
+source, raw files and terminal exit0/no-OOM were independently rechecked.
+
+Three interleaved repetitions compare actual frozen R28/R29/R31 prefixes;
+the table reports change against the immediately preceding R29.
+
+| Fixture leaves | R29 peak RSS, bytes | R31 peak RSS, bytes | RSS change | Whole setup change |
+|---:|---:|---:|---:|---:|
+|491,520 uniform|325894144|308592640|−5.31%|+2.36%|
+|61,440 graded|90390528|87769088|−2.90%|+4.73%|
+|960,000 uniform|601464832|568954880|−5.41%|+3.69%|
+
+These are measured preparation-memory reductions with slightly longer setup,
+not FDTD speedups. Global owned-index arrays and initial host fields remain in
+this revision. Subsequent R32/R33 candidates require independent acceptance.
+Metal, full-array scaling, RF convergence and production adoption remain open;
+no allocation, interface, numerical or resource guard is increased.

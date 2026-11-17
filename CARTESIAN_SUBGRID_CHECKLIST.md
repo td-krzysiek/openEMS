@@ -334,18 +334,27 @@ preparation speedup. Eighteen physical CUDA gates pass on4090/3080 in both
 orders, including24 exact domain and16 native Python cases. The exact
 numerical/test source is now promoted; Metal remains open. See the
 [implicit incoming contract](CARTESIAN_SUBGRID_DOMAINS.md#implicit-incoming-curl-support).
-Separate frozen R31 compresses only
+The qualified R31 source now compresses only
 worker ownership labels in256-state uniform/byte-mixed tiles, retaining the
 dense oracle. Thirty storage/address controls, full CPU56/56,16 exact parent
 files, native reference and the unified R30 test pass. Three interleaved
 repetitions reduce peak RSS2.90–5.41% against R29, with measured whole setup
-+2.36–4.73%; physical22-gate qualification is running and Metal remains open.
-The numerical source is not yet promoted. Separate R32 metadata-only initial
++2.36–4.73%. All22 physical CUDA gates pass on4090/3080 in both orders,
+including24 exact domain cases,16 native Python cases and58 native-child loss
+compositions. Exact source is promoted; Metal remains open. See the
+[tiled-owner contract](CARTESIAN_SUBGRID_DOMAINS.md#tiled-domain-ownership-labels).
+Separate R32 metadata-only initial
 state preparation removes global FP32 E/H copies while preserving global FTZ
 qualification and constructor-local borrowing. Its original misplaced-flag
 compile failure is retained; R32-r02 corrects only the header placement and
-passes16 metadata/tail/domain-state controls, early actual-parent replay and
-streamed fields. Full CPU57, RSS/setup and physical qualification remain open.
+passes16 metadata/tail/domain-state controls, full CPU57/57,16 exact
+actual-parent files and native observations. Three interleaved measurements
+reduce peak RSS2.73–6.05% against R31, with whole setup+0.23–3.08%;
+physical22-gate qualification is running. Source is not promoted; Metal remains
+open. R33 owns finalized labels and precomputes canonical owned ranks using
+uniform-tile bases or exact mixed/dense uint32 ranks, removing mutable global
+address slots. Its frozen implementation/new oracle are building; no numerical,
+physical or memory qualification is claimed.
 No full-PCB, guard increase or production adoption follows.
 
 - [ ] **U01** Define device-resident block fields, interface metadata and update
@@ -735,3 +744,5 @@ numerical change invalidates their prior qualification.
 | 2026-11-17 | Further partial M/G/P/U/D: exact native child coordinates | R27-r02/R28; exact qualified source promoted | [API and coordinate contract](CARTESIAN_SUBGRID_RUNTIME.md#exact-native-child-coordinates). CPU53/53,16 exact frozen-parent files,18 physical CUDA gates/48 child-coordinate cases,24 exact domain cases and16 native Python cases pass on4090/3080 in both orders. Metal/Octave, large-scale and antenna qualification remain open; no guard increase. Separate R30 native-coordinate loss composition passes14 CPU/reference and58 physical CUDA cases; combined new CTest registration and Metal remain pending. |
 
 | 2026-11-17 | Further partial C01/C03/C05/D01/D05: implicit incoming curl support | R29-r02, exact qualified source promoted | [Topology query and measured tradeoff](CARTESIAN_SUBGRID_DOMAINS.md#implicit-incoming-curl-support). CPU54/54,16 exact actual-R28 files,24 all-row controls and18 physical CUDA gates/24 exact domain cases/16 native cases pass. Interleaved peak RSS−2.28–3.82%, whole setup+8.84–18.90% against R28. Metal, large-array and RF convergence remain open; guards unchanged. |
+
+| 2026-11-17 | Further partial C03/C05/D01/D05: tiled domain ownership | R31, exact qualified source promoted | [Contract and measured storage](CARTESIAN_SUBGRID_DOMAINS.md#tiled-domain-ownership-labels). CPU56/56,30 storage/address controls,16 exact actual-parent files and22 physical CUDA gates pass on4090/3080 in both orders. Native child losses, TD/FD/ports and exact domain fields are retained. Interleaved peak RSS−2.90–5.41% against R29; whole setup+2.36–4.73%. Metal, full-array scaling and RF remain open; allocation guards unchanged. |

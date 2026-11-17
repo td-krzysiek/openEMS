@@ -2,6 +2,7 @@
 #ifndef CARTESIAN_SUBGRID_DOMAIN_MAP_H
 #define CARTESIAN_SUBGRID_DOMAIN_MAP_H
 
+#include "subgrid_domain_owners.h"
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -20,7 +21,8 @@ class CartesianSubgridDomainMap
 	using Index = std::uint32_t;
 	static constexpr Index absent = std::numeric_limits<Index>::max();
 
-	CartesianSubgridDomainMap(const std::vector<Index> &owners, std::vector<Index> &local,
+	template <class Owners>
+	CartesianSubgridDomainMap(const Owners &owners, std::vector<Index> &local,
 		Index worker, bool indexed)
 		: m_Owners(owners), m_Local(local), m_Worker(worker), m_Indexed(indexed)
 	{
@@ -104,7 +106,7 @@ class CartesianSubgridDomainMap
 	}
 
   private:
-	const std::vector<Index> &m_Owners;
+	CartesianSubgridDomainOwnerView m_Owners;
 	std::vector<Index> &m_Local;
 	Index m_Worker;
 	bool m_Indexed;

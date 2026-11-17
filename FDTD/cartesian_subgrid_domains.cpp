@@ -167,15 +167,20 @@ CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(const CartesianSubgrid &g
 	{
 		return static_cast<Index>(std::upper_bound(cuts.begin(), cuts.end(), coordinate) - cuts.begin());
 	};
-	std::vector<Index> eOwner(m_ElectricCount), hOwner(m_MagneticCount);
+	CartesianSubgridDomainOwners eOwner(data.streamCurls), hOwner(data.streamCurls);
+	eOwner.reserve(m_ElectricCount);
+	hOwner.reserve(m_MagneticCount);
 	for (Index edge = 0; edge < m_ElectricCount; ++edge)
 	{
-		eOwner[edge] = owner(grid.EdgePosition(edge)[axis]);
+		eOwner.push_back(owner(grid.EdgePosition(edge)[axis]));
 	}
 	for (Index leaf = 0; leaf < grid.CellCount(); ++leaf)
 	{
 		const Index worker = owner(grid.LeafStart(leaf)[axis] + .5 * grid.LeafLengths(leaf)[axis]);
-		std::fill(hOwner.begin() + 6 * leaf, hOwner.begin() + 6 * leaf + 6, worker);
+		for (unsigned int face = 0; face < 6; ++face)
+		{
+			hOwner.push_back(worker);
+		}
 	}
 	for (Index block = 0; block < data.bandwidth.size(); ++block)
 	{
@@ -189,7 +194,7 @@ CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(const CartesianSubgrid &g
 		for (Index k = first; k < stop; ++k)
 		{
 			const Index edge = data.blockEdge[k];
-			eOwner[edge] = worker;
+			eOwner.Set(edge, worker);
 		}
 	}
 	// Preserve the complete small Woodbury solve, its ordering and responses.
@@ -235,7 +240,7 @@ CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(const CartesianSubgrid &g
 		{
 			if (touched[edge])
 			{
-				eOwner[edge] = portOwner;
+				eOwner.Set(edge, portOwner);
 			}
 		}
 	}
@@ -308,7 +313,7 @@ CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(const CartesianSubgrid &g
 		if (prepared.pml)
 		{
 			const auto dependencies = [&](const CartesianSubgridPMLData::Rows &rows,
-				const std::vector<Index> &targetOwners, const std::vector<Index> &sourceOwners,
+				const CartesianSubgridDomainOwners &targetOwners, const CartesianSubgridDomainOwners &sourceOwners,
 				std::set<Index> &ghosts)
 			{
 				for (Index row = 0; row < rows.target.size(); ++row)
@@ -460,7 +465,7 @@ CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(const CartesianSubgrid &g
 			domain.pml.emplace();
 			domain.pml->timestep = prepared.pml->timestep;
 			const auto select = [&](const CartesianSubgridPMLData::Rows &input,
-				const std::vector<Index> &owners, const auto &targets, const auto &sources,
+				const CartesianSubgridDomainOwners &owners, const auto &targets, const auto &sources,
 				CartesianSubgridPMLData::Rows &output)
 			{
 				for (Index group = 0; group + 1 < input.group.size(); ++group)
