@@ -10,6 +10,7 @@
 #include "CSPropMaterial.h"
 #include "CSPropLumpedElement.h"
 #include "CSPropProbeBox.h"
+#include <iterator>
 #if __has_include("CSPropLossyMetal.h")
 #include "CSPropLossyMetal.h"
 #define OPENEMS_SUBGRID_NATIVE_LOSSYMETAL 1
@@ -997,6 +998,39 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 	const auto geometry = CSX->GetAllPrimitives(
 		true, (CSProperties::PropertyType)(CSProperties::MATERIAL | CSProperties::METAL));
 	std::vector<std::array<double, 6>> bounds;
+	std::vector<std::array<double, 6>> resistorCaps;
+	for (auto *property : CSX->GetPropertyByType(CSProperties::LUMPED_ELEMENT))
+	{
+		const auto *resistor = static_cast<CSPropLumpedElement *>(property);
+		if (!resistor->GetCaps())
+		{
+			continue;
+		}
+		const auto direction = unsigned(resistor->GetDirection());
+		for (auto *primitive : property->GetAllPrimitives())
+		{
+			auto *box = static_cast<CSPrimBox *>(primitive);
+			std::array<double, 6> cap;
+			bool transverse = false;
+			for (unsigned int n = 0; n < 3; ++n)
+			{
+				cap[2 * n] = std::min(box->GetCoord(2 * n), box->GetCoord(2 * n + 1));
+				cap[2 * n + 1] = std::max(box->GetCoord(2 * n), box->GetCoord(2 * n + 1));
+				transverse = transverse || (n != direction && cap[2 * n] != cap[2 * n + 1]);
+			}
+			if (!transverse)
+			{
+				continue;
+			}
+			const double ends[2] = {cap[2 * direction], cap[2 * direction + 1]};
+			for (double end : ends)
+			{
+				cap[2 * direction] = cap[2 * direction + 1] = end;
+				resistorCaps.push_back(cap);
+				bounds.push_back(cap);
+			}
+		}
+	}
 	struct AxialObject
 	{
 		unsigned int axis;
@@ -1126,9 +1160,28 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 			centre[n] = (start[n] + stop[n]) / (2 * gridDelta) + discLines[n][0];
 		}
 		auto *property = CSX->GetPropertyByCoordPriority(centre, geometry, true);
-		return property && property->GetType() == CSProperties::METAL;
+		if (property && property->GetType() == CSProperties::METAL)
+		{
+			return true;
+		}
+		for (const auto &cap : resistorCaps)
+		{
+			bool inside = true;
+			for (unsigned int n = 0; n < 3; ++n)
+			{
+				const double tolerance = 64 * std::numeric_limits<double>::epsilon() *
+					std::max({std::abs(cap[2 * n]), std::abs(cap[2 * n + 1]),
+						std::abs(discLines[n][numLines[n] - 1] - discLines[n][0])});
+				inside = inside && centre[n] >= cap[2 * n] - tolerance && centre[n] <= cap[2 * n + 1] + tolerance;
+			}
+			if (inside)
+			{
+				return true;
+			}
+		}
+		return false;
 	};
-	const bool hasMetal = std::any_of(geometry.begin(), geometry.end(), [](CSPrimitives *primitive)
+	const bool hasMetal = !resistorCaps.empty() || std::any_of(geometry.begin(), geometry.end(), [](CSPrimitives *primitive)
 	{
 		return primitive->GetProperty()->GetType() == CSProperties::METAL;
 	});
@@ -1181,7 +1234,7 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 	// Reset clears the waveform metadata; the conductor fit uses the configured band.
 	const double surfaceMaximumFrequency = m_Exc->GetMaxFrequency();
 	m_Exc->Reset(dT);
-	PrepareResistors();
+	const auto distributedResistors = PrepareResistors();
 	PrepareSources();
 	bool hasConductivity = false;
 	for (CSProperties *property : CSX->GetPropertyByType(CSProperties::MATERIAL))
@@ -1189,7 +1242,7 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 		auto *material = static_cast<CSPropMaterial *>(property);
 		hasConductivity = hasConductivity || material->GetKappa() != 0 || material->GetSigma() != 0;
 	}
-	if (hasConductivity || hasSurfaceMetal)
+	if (hasConductivity || hasSurfaceMetal || !distributedResistors.empty())
 	{
 		// Keep the sorted pointer snapshot alive through extension setup. Grid
 		// positions are SI offsets; CSXCAD membership uses drawing coordinates.
@@ -1207,6 +1260,15 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 				material ? material->GetKappa() : 0, material ? material->GetSigma() : 0};
 		};
 		auto extension = std::make_unique<Operator_Ext_CartesianSubgrid_Conductivity>(this, std::move(conductivity));
+		std::vector<Operator_Ext_CartesianSubgrid_Conductivity::SurfaceAdmittance> admittances;
+		for (const auto &resistor : distributedResistors)
+		{
+			Operator_Ext_CartesianSubgrid_Conductivity::SurfaceAdmittance admittance;
+			admittance.start = resistor.start;
+			admittance.stop = resistor.stop;
+			admittance.conductance = 1 / resistor.resistance;
+			admittances.push_back(std::move(admittance));
+		}
 		if (hasSurfaceMetal)
 		{
 			std::size_t resolved = 0;
@@ -1238,8 +1300,10 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 				<< prepared.faces << " exposed faces, " << prepared.surfaces.size() << " traces, "
 				<< prepared.fits << " cached fits, " << prepared.normalColumns << " occupied normal columns; max fit Re/Im errors " << prepared.maximumRealFitError
 				<< "/" << prepared.maximumImaginaryFitError << std::endl;
-			extension->SetSurfaceAdmittances(std::move(prepared.surfaces));
+			admittances.insert(admittances.end(),
+				std::make_move_iterator(prepared.surfaces.begin()), std::make_move_iterator(prepared.surfaces.end()));
 		}
+		extension->SetSurfaceAdmittances(std::move(admittances));
 		AddExtension(extension.get());
 		m_NativeConductivity = extension.release();
 	}
@@ -1417,9 +1481,10 @@ CartesianSubgrid::Point Operator_CartesianSubgrid::DrawingPoint(const double *dr
 	return point;
 }
 
-void Operator_CartesianSubgrid::PrepareResistors()
+std::vector<CartesianSubgrid::Resistor> Operator_CartesianSubgrid::PrepareResistors()
 {
 	std::vector<CartesianSubgrid::Resistor> ports;
+	std::vector<CartesianSubgrid::Resistor> distributed;
 	std::set<std::size_t> occupied;
 	for (auto *property : CSX->GetPropertyByType(CSProperties::LUMPED_ELEMENT))
 	{
@@ -1428,16 +1493,29 @@ void Operator_CartesianSubgrid::PrepareResistors()
 		{
 			auto *box = static_cast<CSPrimBox *>(primitive);
 			double start[3], stop[3];
+			bool transverse = false;
 			for (unsigned int n = 0; n < 3; ++n)
 			{
 				start[n] = box->GetCoord(2 * n);
 				stop[n] = box->GetCoord(2 * n + 1);
-				if (n != unsigned(resistor->GetDirection()) && start[n] != stop[n])
-				{
-					throw std::invalid_argument("CartesianSubgrid: native resistor requires a line path, not a distributed box");
-				}
+				transverse = transverse || (n != unsigned(resistor->GetDirection()) && start[n] != stop[n]);
 			}
 			const auto a = DrawingPoint(start), b = DrawingPoint(stop);
+			if (transverse)
+			{
+				auto resolved = m_Grid->DistributedResistor(a, b, unsigned(resistor->GetDirection()), resistor->GetResistance());
+				for (const auto &edge : resolved)
+				{
+					const auto path = m_Grid->VoltagePath(edge.start, edge.stop);
+					if (path.weights.size() != 1 || !occupied.insert(path.weights.front().first).second)
+					{
+						throw std::invalid_argument("CartesianSubgrid: overlapping or unresolved distributed resistor");
+					}
+				}
+				distributed.insert(distributed.end(), std::make_move_iterator(resolved.begin()), std::make_move_iterator(resolved.end()));
+				primitive->SetPrimitiveUsed(true);
+				continue;
+			}
 			const auto segments = m_Grid->LocalEdgePathSegments(a, b);
 			if (segments.empty())
 			{
@@ -1465,4 +1543,5 @@ void Operator_CartesianSubgrid::PrepareResistors()
 		}
 	}
 	m_Grid->SetResistors(ports, dT);
+	return distributed;
 }

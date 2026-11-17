@@ -28,6 +28,7 @@ set(TESTS
   test_cartesian_subgrid_domain_map
   test_cartesian_subgrid_domain_owners
   test_cartesian_subgrid_domain_ranks
+  test_cartesian_subgrid_native_box_ports
   test_cartesian_subgrid_initial_metadata
   test_cartesian_subgrid_reference_work
   test_cartesian_subgrid_leaf_index

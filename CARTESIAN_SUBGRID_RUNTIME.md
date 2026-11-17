@@ -185,3 +185,40 @@ exit0/no-OOM are independently rechecked. This unchanged standalone fixture
 is now registered in CTest; the combined registration passes in R31's
 56-test superset. Physical Metal remains pending. It is not a PCB RF-convergence result.
 Allocation/interface guards remain unchanged.
+
+
+## Native rectangular resistive ports
+
+Native lumped resistors may span a resolved transverse sheet or volume rather
+than only a one-dimensional line. The experimental adapter retains the native
+bounds and positive R, checks complete independent local-edge support, and
+normalizes dual-area/edge-length conductances to the requested total resistance.
+Hanging traces, unresolved endpoints, missing/opaque support and overlapping
+ports reject. `Caps=true` adds tangential PEC electrodes at both longitudinal
+ends. The existing line-port path and allocation guards remain unchanged.
+This is geometry/preparation support, not an RF-calibrated antenna port.
+
+R34-r03 passes Linux CPU CTest59/59, sixteen exact frozen-R33 operator/field
+files and retained native reference controls. Its new fixture covers48 cases:
+three directions, uniform/graded axes, sheet/volume footprints, matching-grid
+ordinary-Yee fields or actual internal refinement, and CPU/requested backend.
+The geometry-normalized resistor coefficients are compared with the actual
+ordinary operator's VV/VI coefficients, not a duplicated formula alone.
+Shared timesteps remain below both operators' CFL limits.
+
+All26 physical gates pass on RTX4090/RTX3080, including48 new port cases on
+each GPU and both pair orders. Maximum normalized coefficient, field and
+balance errors are2.027e-7,5.304e-7 and9.723e-8. The retained24 exact domain
+field cases, child-coordinate/loss controls and16 native Python TD/FD/U/I
+cases pass. Actual source/runtime hashes and terminal exit0/no-OOM were
+rechecked; CUDA libopenEMS SHA256 is
+`970f273bd64fe96721ea86c6fb9613b3ae015d3f59525f6ceb729b460bebbf59`.
+Evidence: the separately frozen `native-box-ports-r34-r03/` study.
+
+Earlier test-only compile, margin and collector-marker failures remain recorded;
+the accepted run uses a fresh source-before-build prefix. Metal, driven
+microstrip/Cu/PML composition, RF convergence, full-array memory and antenna
+qualification remain open. General path quadrature can retain roundoff-sized
+extra support at some graded cuts; the separately prepared R35 descriptor
+follow-up diagnoses that strict-admission limitation without changing R34's
+frozen inputs or relaxing numerical thresholds.

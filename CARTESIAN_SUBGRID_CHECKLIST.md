@@ -691,6 +691,10 @@ acceptance follows.
 | Pinned-master Cartesian parity | Full applicable feature/engine matrix and regression suites | Open |
 | Production multi-GPU subgridding | Relevant single-device physics qualified, then D01–D05 | Open |
 
+Native rectangular resistor preparation is separately qualified on CPU/CUDA;
+see the R34 completion row and [contract](CARTESIAN_SUBGRID_RUNTIME.md#native-rectangular-resistive-ports).
+Driven RF and representative PCB qualification remain open.
+
 Next implementation milestones: further interface scaling and required PCB
 CAD/material mapping, while structured interior field kernels remain open. Exact banded interface factors
 and the one-solve inverse bound have scoped CPU evidence. Exact translated
@@ -787,3 +791,5 @@ numerical change invalidates their prior qualification.
 | 2026-11-17 | Further partial C03/C05/D01/D05: metadata-only initial state | R32-r02, exact qualified source promoted | [Contract and preparation measurements](CARTESIAN_SUBGRID_DOMAINS.md#metadata-only-initial-state-preparation). CPU57/57,16 exact actual-R31 files,16 initial metadata/tail controls and22 physical CUDA gates pass on4090/3080 in both orders. Global FTZ bounds and local owned/ghost initial values remain exact. Interleaved peak RSS−2.73–6.05% against R31, whole setup+0.23–3.08%. Earlier original compile failure retained; Metal, full-array scaling and RF remain open. |
 
 | 2026-11-17 | Further partial C03/C05/D01/D05: immutable local owned ranks | R33, exact qualified source promoted | [Owned-index contract and storage](CARTESIAN_SUBGRID_DOMAINS.md#immutable-owned-local-ranks). CPU58/58,50 rank cases/five map oracles, ASan/UBSan,16 exact actual-R32 files and22 physical CUDA gates on4090/3080 in both orders. Interleaved peak RSS−2.43–5.98% against R32; whole setup−1.04% to+1.67%. Collector-only19/20-count failure preserved and corrected against the same archive without rerunning CPU. Metal, full-array scaling and RF remain open. |
+
+| 2026-11-17 | Further partial P01/P02/P05/G03/U04/U05: native rectangular resistors | R34-r03, exact qualified source promoted | [Port contract and evidence](CARTESIAN_SUBGRID_RUNTIME.md#native-rectangular-resistive-ports). CPU59/59,16 exact frozen-R33 files and26 physical CUDA gates pass on4090/3080 in both orders. New48-case geometry/coefficient/passive-field controls per lane retain native sheet/volume bounds and optional PEC end caps; retained domains/loss/PML/native observations pass. Earlier test/collector failures preserved without numerical reruns. Metal, driven RF, scaling and antenna acceptance remain open; guards unchanged. |

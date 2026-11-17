@@ -16,6 +16,11 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Added
 
+- Experimental native Cartesian-subgrid resistive ports accept resolved sheet
+  and volume boxes with geometry-normalized conductance and optional end caps.
+  Scoped CPU/CUDA controls pass; Metal, RF convergence and antenna qualification
+  remain pending. Rebuild C++ callers against matching headers.
+
 - Experimental streamed Cartesian-subgrid domain setup derives incoming curl
   rows locally instead of allocating a global incoming CSR. Scoped CPU/CUDA
   controls preserve exact rows/fields; measured peak memory is slightly lower

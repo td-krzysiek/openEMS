@@ -1844,6 +1844,151 @@ std::pair<double, double> CartesianSubgrid::DualBounds(unsigned int axis, const 
 	return {.5 * (left + point[axis]), .5 * (right + point[axis])};
 }
 
+std::vector<CartesianSubgrid::Resistor> CartesianSubgrid::DistributedResistor(
+	const Point &start, const Point &stop, unsigned int direction, double resistance) const
+{
+	Require(direction < 3 && resistance > 0 && std::isfinite(resistance),
+		"CartesianSubgrid: distributed resistor needs an axis and finite positive R");
+	Point lo, hi, tolerance;
+	for (unsigned int n = 0; n < 3; ++n)
+	{
+		Require(std::isfinite(start[n]) && std::isfinite(stop[n]),
+			"CartesianSubgrid: distributed resistor has nonfinite bounds");
+		lo[n] = std::min(start[n], stop[n]);
+		hi[n] = std::max(start[n], stop[n]);
+		tolerance[n] = 64 * std::numeric_limits<double>::epsilon() *
+			std::max({std::abs(lo[n]), std::abs(hi[n]), m_Lines[n].back() - m_Lines[n].front()});
+	}
+	Require(hi[direction] > lo[direction], "CartesianSubgrid: distributed resistor has zero length");
+	struct Selected
+	{
+		Point start, stop;
+		double metric = 0;
+	};
+	std::map<std::size_t, Selected> selected;
+	std::array<std::set<double>, 3> nodes;
+	std::map<double, double> planes;
+	for (std::size_t id = 0; id < m_Edges.size(); ++id)
+	{
+		const auto &edge = m_Edges[id];
+		if (unsigned(edge.axis) != direction)
+		{
+			continue;
+		}
+		const auto a = EdgePoint(edge, 0), b = EdgePoint(edge, 1);
+		bool inside = true;
+		for (unsigned int n = 0; n < 3; ++n)
+		{
+			inside = inside && a[n] >= lo[n] - tolerance[n] && b[n] <= hi[n] + tolerance[n];
+		}
+		if (!inside)
+		{
+			continue;
+		}
+		selected.emplace(id, Selected{a, b, 0});
+		for (unsigned int n = 0; n < 3; ++n)
+		{
+			nodes[n].insert(a[n]);
+			if (n == direction)
+			{
+				nodes[n].insert(b[n]);
+			}
+		}
+		const auto plane = planes.emplace(a[direction], b[direction]);
+		Require(plane.second || plane.first->second == b[direction],
+			"CartesianSubgrid: distributed resistor crosses incompatible local planes");
+	}
+	Require(!selected.empty(), "CartesianSubgrid: distributed resistor resolves no free local edges");
+	std::size_t expected = planes.size();
+	for (unsigned int n = 0; n < 3; ++n)
+	{
+		Require(!nodes[n].empty() && std::abs(*nodes[n].begin() - lo[n]) <= tolerance[n] &&
+			std::abs(*nodes[n].rbegin() - hi[n]) <= tolerance[n],
+			"CartesianSubgrid: distributed resistor bounds must match complete local nodes");
+		if (n != direction)
+		{
+			Require(expected <= std::numeric_limits<std::size_t>::max() / nodes[n].size(),
+				"CartesianSubgrid: distributed resistor edge count overflows");
+			expected *= nodes[n].size();
+		}
+	}
+	Require(selected.size() == expected,
+		"CartesianSubgrid: distributed resistor has missing, PEC or opaque support");
+	double previous = lo[direction];
+	for (const auto &plane : planes)
+	{
+		Require(std::abs(plane.first - previous) <= tolerance[direction],
+			"CartesianSubgrid: distributed resistor has an incomplete longitudinal path");
+		previous = plane.second;
+	}
+	Require(std::abs(previous - hi[direction]) <= tolerance[direction],
+		"CartesianSubgrid: distributed resistor has an incomplete final plane");
+	// Sum geometric dual volumes, without material epsilon. On independent
+	// tensor edges this is exactly the ordinary Yee dual area / edge length.
+	// Include adjacent leaves outside the primitive's transverse bounds: the
+	// edge's dual area is not clipped at the lumped-property boundary.
+	for (std::size_t cell = 0; cell < m_Leaves.size(); ++cell)
+	{
+		if (LeafIsOpaque(cell))
+		{
+			continue;
+		}
+		const auto &leaf = m_Leaves[cell];
+		const Point length{Length(leaf, 0), Length(leaf, 1), Length(leaf, 2)};
+		const double metric = length[0] * length[1] * length[2] /
+			(4 * length[direction] * length[direction]);
+		for (unsigned int i = 0; i < 2; ++i)
+		{
+			for (unsigned int j = 0; j < 2; ++j)
+			{
+				const auto local = LocalEdge(leaf, direction, i, j);
+				const auto trace = Restrict(local);
+				for (const auto &term : trace.weights)
+				{
+					auto found = selected.find(term.first);
+					if (found == selected.end())
+					{
+						continue;
+					}
+					const auto &master = m_Edges[term.first];
+					Require(trace.weights.size() == 1 && term.second == 1 && local.lo == master.lo &&
+						local.size == master.size,
+						"CartesianSubgrid: distributed resistor touches a hanging interface");
+					found->second.metric += metric;
+				}
+			}
+		}
+	}
+	std::map<double, double> parallel;
+	for (const auto &entry : selected)
+	{
+		const auto &edge = entry.second;
+		Require(edge.metric > 0 && std::isfinite(edge.metric),
+			"CartesianSubgrid: distributed resistor has invalid dual geometry");
+		parallel[edge.start[direction]] += edge.metric;
+	}
+	double series = 0;
+	for (const auto &plane : parallel)
+	{
+		Require(plane.second > 0 && std::isfinite(plane.second),
+			"CartesianSubgrid: distributed resistor parallel metric overflows");
+		series += 1 / plane.second;
+	}
+	Require(series > 0 && std::isfinite(series),
+		"CartesianSubgrid: distributed resistor series metric overflows");
+	std::vector<Resistor> result;
+	result.reserve(selected.size());
+	for (const auto &entry : selected)
+	{
+		const auto &edge = entry.second;
+		const double conductance = (series / resistance) * edge.metric;
+		Require(conductance > 0 && std::isfinite(conductance) && std::isfinite(1 / conductance),
+			"CartesianSubgrid: distributed resistor conductance is unrepresentable");
+		result.push_back({edge.start, edge.stop, 1 / conductance, 0});
+	}
+	return result;
+}
+
 void CartesianSubgrid::SetResistors(const std::vector<Resistor> &ports, double timestep)
 {
 	CheckStep(timestep);

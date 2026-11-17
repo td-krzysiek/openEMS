@@ -99,6 +99,12 @@ class CartesianSubgrid
 	bool IsLocalEdgePath(const Point &start, const Point &stop) const;
 	//! Ordered oriented whole-edge segments; empty means an invalid geometric path.
 	std::vector<std::pair<Point, Point>> LocalEdgePathSegments(const Point &start, const Point &stop) const;
+	//! Geometry-normalized per-edge R for a resolved tensor-product native box.
+	//! No hanging/missing edge, partial endpoint or opaque/PEC support is admitted.
+	//! Returned independent conductances are consumed by the paired loss extension,
+	//! not the bounded dense reference-port system in SetResistors.
+	std::vector<Resistor> DistributedResistor(const Point &start, const Point &stop,
+		unsigned int direction, double resistance) const;
 	//! Dual contour bounds around a zero-width, node-centred native probe.
 	std::pair<double, double> DualBounds(unsigned int axis, const Point &point) const;
 	//! Fixed-step, passive midpoint resistor coupling; at most 64 small reference ports.

@@ -48,7 +48,7 @@ class Operator_CartesianSubgrid : public Operator
 							  const std::vector<CartesianSubgrid::Index> &ratios);
 	void ValidateProperties() const;
 	void PrepareSources();
-	void PrepareResistors();
+	std::vector<CartesianSubgrid::Resistor> PrepareResistors();
 	std::vector<std::vector<double>> m_Boxes;
 	std::vector<CartesianSubgrid::Index> m_Ratios;
 	CartesianSubgrid::Axes m_ChildDrawingLines;
