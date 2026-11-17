@@ -1617,3 +1617,19 @@ Evidence: `representative-slab-mesh-r66/setup-failure-review-r01.json`,
 `representative-slab-mesh-r66/independent-preflight-r03.json`,
 `representative-slab-mesh-r66/setup-admission-r02.json`,
 `ordinary-metal-guard-r65/metal-headroom-r01.json`.
+
+R66's standalone read-only native inspector now passes bounded GPU-free
+CPU/reference-layout controls, including17 physical-Cu voltage/current probes,
+two resistors and sampled source-end contacts. All1303 sparse-report lines
+match exactly across layouts; the public control's114 lines also match.
+A source-only0.7mm off-copper derivative retains native operator support but
+is rejected by the explicit terminal-contact inspection after preparation.
+No fields/engine or dense diagnostic leaf snapshot is created; host field
+storage remains unchanged. Independent review rehashes21 artifacts. Full-board
+inspection is queued only after accepted completion of the live basic-layout
+setup, with the same XML and fresh64GiB/80GiB/reserve12GiB gates. It is not
+admitted yet and does not qualify full contacts, physical GPU, RAM or RF.
+The recent Metal headroom sample remains below its unchanged threshold.
+Evidence: `representative-slab-mesh-r66/audit-independent-r01.json`,
+`representative-slab-mesh-r66/full-audit-owner-r01.json`,
+`ordinary-metal-guard-r65/metal-headroom-r02.json`.
