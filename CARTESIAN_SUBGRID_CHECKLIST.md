@@ -1756,12 +1756,14 @@ Evidence: `cad-candidate-index-r70/DESIGN.md`,
 `cad-candidate-index-r70/cpu-preparation-r01.json`,
 `cad-candidate-index-r70/native-chain-r02.json`.
 
-R70's independent bounded metadata/field consumer and malformed-evidence
-self-tests are now prepared, with syntax inspection only. The consumer requires
-terminal native success, exact source/runtime/input identities, complete
-parent/candidate coefficients, finite leaf/CSR/PML data and nontrivial own-time
-port/HDF5 fields. Self-tests were not admitted under unchanged local memory
-reserve; neither linked-native acceptance nor speed evidence is claimed.
-Actual full-board R66 remains live and unchanged; its full native audit and
-first representative FDTD remain pending. Evidence:
-`cad-candidate-index-r70/reviewer-preparation-r01.json`.
+R70's independent bounded metadata/field consumer and R66's full sparse-report
+consumer now pass nine synthetic malformed-evidence controls after fresh
+unchanged local memory admission. Child peaks are49,020,928/26,656,768 bytes;
+source/log/receipt hashes and resource gates are independently reviewed. The
+consumers require terminal native success, exact source/runtime/input identities,
+complete coefficients, finite leaf/CSR/PML data, nontrivial own-time port/HDF5
+fields and the full probe/resistor/source-contact inventory. Actual linked
+index output and the full R66 audit remain pending; no native/GPU/RF or speed
+acceptance follows from these synthetic reader controls. Existing R66 and
+queued native chains remain unchanged. Evidence:
+`cad-candidate-index-r70/reviewer-independent-r01.json`.
