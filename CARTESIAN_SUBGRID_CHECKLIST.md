@@ -1,6 +1,6 @@
 # Cartesian subgridding — implementation and qualification checklist
 
-Last reviewed: **17 November 2026**.
+Last reviewed: **18 November 2026**.
 
 This is the canonical detailed checklist for extending the Cartesian subgridding prototype
 to the functionality of the regular Cartesian solver. Check an item only after
@@ -1926,3 +1926,46 @@ R66 and production/frozen runtimes remain unchanged. Evidence:
 `metal-curved-rf-r73/preparation-r01.json`,
 `metal-curved-rf-r73/owner-r01.json`,
 `metal-curved-rf-r73/review_r01.py`.
+
+R73's immutable PEC subset now passes separate raw RF review while copper
+continues. Across501 samples at24–24.25GHz, maximum Metal-versus-accepted-CUDA
+complex-Gamma/S21 phase/magnitude discrepancies are2.027e-8/1.664e-6deg/
+3.831e-8dB. Original late-prefix gates pass. This is the completed1ns PEC
+subset only; whole-R73/copper and representative antenna qualification remain
+pending. The running owner, inputs and runtime are unchanged. Evidence:
+`metal-curved-rf-r73/pec-independent-r01.json`.
+
+R74 adds an independent continuum modal reference for R72's closed vacuum XY
+packet. Basis/standing-mode/DC/boundary/integral controls and quadrature/modal
+convergence pass; independently projected coefficients and direct modal sums
+agree. All eight portable CLI cases preserve16,488 analytical values exactly.
+The standalone NumPy utility is `benchmark/subgrid_packet_cavity_reference.py`.
+
+This stronger reference retains four failed5% local-volume peak/L2 gates:
+TM30 nominal/half-step, broader TE30 and broader anisotropic TM45. Maximum
+local discrepancy is6.230%, versus at most4.466% on the globally fine grid.
+Original point-H failures remain. R72's relative local/fine acceptance is not
+an absolute continuum-accuracy acceptance. Initialization, spatial/time
+discretization and readout all contribute; this is not an established engine
+defect. R11 remains open. Evidence: `analytic-packet-reference-r74/independent-r01.json`,
+`analytic-packet-reference-r74/public-promotion-r01.json`.
+
+R75's 24 local-only CPU cases and independent modal review are complete.
+All eight N48 controls retain nine selected history columns exactly. With the
+same physical domain, refinement corners, source and observations, maximum
+volume peak error decreases 6.230% → 2.670% → 1.446% over the N48/N72/N96
+levels (139,264 / 470,016 / 1,114,112 leaves). Every case decreases in peak
+and L2 error across all three levels, and nominal/half-step controls pass the
+1% temporal gate. The N48 baseline error metrics reproduce R74 within
+4.86e-16. The observed combined space/time error order is 1.91–2.15; this is
+not a separate asymptotic spatial-order proof.
+
+N96 retains three failed point-observation gates (maximum peak 13.276%);
+volume convergence does not qualify point-H reconstruction or erase the four
+original N48 volume failures. The explicit fixture-only 1,200,000-leaf budget
+does not change global defaults. All 26 commands exit zero, with maximum
+child RSS 414.42 MiB; no numerical library is rebuilt or changed. Physical
+GPU, broader R11 and representative antenna qualification remain open. Evidence:
+`analytic-packet-mesh-r75/independent-r01.json`,
+`analytic-packet-mesh-r75/baseline-readback-r01.json`,
+`analytic-packet-mesh-r75/review-owner-r01.json`.
