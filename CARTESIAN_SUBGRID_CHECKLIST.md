@@ -1654,3 +1654,28 @@ Evidence: `setup-timing-r67/cpu-independent-r02.json`,
 `setup-timing-r67/promotion-r01.json`,
 `setup-timing-r67/timing-benchmark-failure-r01.json`,
 `setup-timing-r67/timing-benchmark-chain-r02.json`.
+
+R67's setup-only timing comparison now passes all nine balanced interleaved
+cases against the actual R65 parent: all complete native operator/probe/port
+reports are byte-identical, also to the independently accepted R66 small
+copper-reference report. Full reports contain1,304 lines, versus1,303 after
+excluding the GRID header; a local-only count adapter preserves the original
+review failure and all numeric/resource gates, without rerunning any case.
+Shared-host median inspector wall times are50.70/51.33/50.71s for parent,
+current-disabled/current-enabled. Three repeats establish neither zero overhead
+nor a speedup. Native grid and curl/stability phase medians are31.80/14.97s;
+these small timings do not locate a live full-board phase or predict its cost.
+Evidence: `setup-timing-r67/timing-benchmark-independent-r03.json`,
+`setup-timing-r67/timing-benchmark-review-adapter-r03.json`.
+
+R68 separately stages a reusable sorted curl-row accumulator over exact R67,
+retaining the original contribution order, positive-zero insertion, cancelled
+entries and ascending index traversal. It does not change update kernels or
+running/frozen runtimes. Its isolated GPU-free build passes; the direct map
+oracle passes33,024 exact additions with signed-zero/cancellation/large-key and
+capacity-reuse controls. Full CPU80/actual-parent replay is running; physical
+CUDA, recent Metal and interleaved setup timings remain separate. No candidate
+code is promoted or performance claim made at this stage.
+Evidence: `curl-row-accumulator-r68/preparation-r01.json`,
+`curl-row-accumulator-r68/build-admission-r01.json`,
+`curl-row-accumulator-r68/cpu-admission-r01.json`.

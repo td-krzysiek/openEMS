@@ -385,7 +385,19 @@ paused and actual-parent execution. The surface-field relative error remains
 are independently checked. Evidence: `setup-timing-r67/` in the project archive;
 core SHA256 `8f4d2097d750b8ff4a55a4682d713d96701a99cecba59bac0639da06d0b2709c`.
 
-An interleaved setup-only overhead measurement is separate and still pending;
-no speed or zero-overhead claim follows from equivalence. Recent Metal and
-representative antenna/resource acceptance remain open. Existing production,
-frozen RF and full-board preparation runtimes are unchanged.
+Three balanced interleaved repeats on a shared host now compare the accepted
+R65 parent, R67 disabled and R67 enabled on the same1,544,144-leaf native copper
+input. Setup-only inspector wall medians are50.70/51.33/50.71s; these include
+the unchanged read-only audit after operator preparation. All nine complete
+operator/port/contact reports match the independently accepted parent report
+exactly (1,304 lines, including one separate GRID header). The normalized sparse
+table has1,303 lines. A reviewer initially confused those counts; the named local
+adapter preserves the complete reports and strengthens their prior-byte check,
+without replaying any numerical case. Grid creation has a31.80s phase median;
+its largest individual interval is curl/stability preparation at14.97s.
+
+These three small shared-host repeats do not establish zero overhead, an FDTD
+speedup or full-board timings. Recent Metal and representative antenna/resource
+acceptance remain open. Existing production, frozen RF and full-board preparation
+runtimes are unchanged. Evidence: `timing-benchmark-independent-r03.json` and
+`timing-benchmark-review-adapter-r03.json` in the R67 project archive.
