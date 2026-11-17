@@ -1740,8 +1740,18 @@ R70 stages a conservative native CAD candidate index over accepted R67 source.
 Immutable ordered buckets narrow bounds/primitive lists while retaining exact
 CSXCAD membership, priorities, original material/axial validation and coefficient
 arithmetic. Multi-bin/outside/invalid queries and capped tables fall back to
-the original full list. Source and standalone controls are prepared only;
-not compiled, qualified, promoted or deployed. No large-model phase or speedup
-is inferred from code inspection. Existing R66 preparation is unchanged.
+the original full list. The standalone C++ control now passes100,680 exact
+ordered/support queries, including complete capped-table fallback, and the
+actual native adapter passes a syntax-only compile. Independent preliminary
+review rehashes source, binary and logs; compiler peaks are111.25/177.11MiB.
+These are not linked-operator, field, GPU/Metal or speed qualifications.
+Separate CPU-only parent/candidate builds and bounded native table/field
+controls are prepared and resource-queued; no source is promoted or deployed.
+No large-model phase or speedup is inferred. Existing R66 preparation and its
+full inspector remain unchanged; the new expanded small-case oracle has an
+explicit200,000-leaf limit. The full-model CAD-only reader does not build a
+grid or qualify contacts/RF. Metal retains its separate unchanged admission.
 Evidence: `cad-candidate-index-r70/DESIGN.md`,
-`cad-candidate-index-r70/staging-r01.json`.
+`cad-candidate-index-r70/preliminary-independent-r01.json`,
+`cad-candidate-index-r70/cpu-preparation-r01.json`,
+`cad-candidate-index-r70/native-chain-r02.json`.
