@@ -1623,3 +1623,13 @@ qualification includes17 controls and16 exact actual-parent native field/U/I
 arrays on one device. Logical domains in these controls do not establish
 physical multi-GPU scaling. CUDA, full representative antenna preparation/RF
 and setup-speed evidence remain separate; no production runtime is changed.
+
+
+## Oblique packet observation scope
+
+The [standalone oblique diagnostic](benchmark/subgrid_oblique_packet.md)
+compares point and common-volume E/H histories on local/globally fine grids.
+It preserves the failed point-H gates and distinguishes the local basis's
+transverse sampling from propagation/interface error. Scoped CPU mean-field
+convergence passes at 30/45 degrees; this does not complete R11, qualify an
+arbitrary-angle reflection coefficient, or change native field interpolation.

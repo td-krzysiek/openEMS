@@ -1860,3 +1860,22 @@ This is one GPU/public protocol fixture, not injected backend execution failure,
 antenna RF or physical multi-GPU qualification. Evidence:
 `metal-application-replay-r71/fault-independent-r01.json`,
 `metal-application-replay-r71/review_fault_r01.py`.
+
+
+R72 adds scoped oblique XY packet diagnostics without changing the solver.
+Both polarizations at 30/45 degrees and ratios 2/2/2 and 2/4/1 use matched
+local/globally fine grids. Point-H accuracy fails the original 5% gates: its
+transverse leaf-centre sampling causes a large grid-alignment contribution.
+An unfitted geometric offset diagnoses much of it; those failures remain.
+Eight affine/constant controls then check exact averages of the existing
+reconstruction over a common physical cube. All 16 original point histories
+remain exact. Separate mean-field peak/L2, spatial and time-step gates pass;
+maximum resolved mean error is 4.5482%, with 413,220,864 bytes peak child RSS.
+The exact generic diagnostic and its limitations are supplied in
+`benchmark/subgrid_oblique_packet.cpp` and `.md`. R11 stays incomplete:
+other planes/polarizations, independent ordinary/GPU, separated reflection,
+boundary/window sensitivity and representative antenna remain open. No
+production, frozen library, CAD or active R66 input/runtime is changed.
+Evidence: `oblique-interface-r72/independent-r01.json`,
+`oblique-interface-r72/point-sampling-offset-r01.json`,
+`oblique-interface-r72/independent-r02.json`.
