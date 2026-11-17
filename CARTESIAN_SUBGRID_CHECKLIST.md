@@ -59,8 +59,10 @@ fdtd.AddCartesianSubgrid(box=[7, 2, 2, 10, 6, 6], ratio=[4, 1, 2])
 
 `AddCartesianSubgrid` appends; `SetCartesianSubgrids([...])` replaces the list.
 Prototype guards currently allow 64 regions, factors 1/2/4/8/16 per axis,
-16,384 base intervals per axis, one million base cells, one million total leaves,
-and 16,384 coupled degrees of freedom per interface factor. Above 1,024 edges,
+16,384 base intervals per axis, default one-million base/total leaf counts,
+and 16,384 coupled degrees of freedom per interface factor. An explicit checked
+leaf-count budget can opt into larger counts; R50 characterizes15M homogeneous
+host leaves without qualifying antenna capacity or changing defaults. Above1,024 edges,
 half-bandwidth must be at most four and the one-RHS inverse bound must succeed. These are implementation guards, not
 universal limits of subgridding. A shared timestep is retained.
 
@@ -1073,8 +1075,11 @@ excluding unpromoted R51. Repeated epsilon/mu retain exact bits; homogeneous
 storage needs no leaf IDs, up to4096 pairs use32-bit IDs, then dense fallback
 bounds dictionary growth. The dictionary is discarded before field construction;
 fallback peak includes temporary IDs. Focused lifecycle, nextafter, copy/move,
-dense and1472-leaf sample controls pass; isolated build passes and CPU68 runs.
-Matched3.93M host characterization waits for CPU acceptance. Physical48 waits
+dense and1472-leaf sample controls pass; full CPU68/68 passes with16 exact frozen
+parent arrays. Matched3.93M host characterization also passes:62,914,424 fewer
+accounted bytes, peak RSS1711.08->1650.57MiB patterns /1632.61->1572.60MiB blocks
+(3.54/3.68%). Independent source/raw/terminal review is retained. These single
+homogeneous measurements are not variable-medium/native PCB/GPU capacity. Physical48 waits
 for R52 CPU acceptance AND accepted exact R51 physical terminal, then rechecks
 resource/identity guards. Metal and native PCB/antenna scaling remain open.
 No production/default guard change. Evidence: `material-palette-r52/`.
@@ -1088,6 +1093,9 @@ once per epoch, guarded for concurrent readers; raw setup Grid references are
 not live mirrors after opting into sealing. Initial double host fields still
 exist; prepared E/H/DFT gathering is required follow-up. A new12-case control
 covers single/two workers, all cuts, PML/bulk loss, U/I/SI functionals, scalar
-energy/cache accounting, exact full fields and concurrent fallback. Frozen build
-is running; CPU69/physical/Metal/native RF qualification remain pending.
+energy/cache accounting, exact full fields and concurrent fallback. Frozen build and12 focused reference cases pass: functional discrepancy0,
+maximum energy error7.60313e-9, no full reads across four processing batches,
+and exactly one refreshed full fallback per observed epoch under concurrent
+readers. Full CPU69 is running; physical/Metal/native RF remain pending. The
+host-observation byte counter excludes registry/reader/caller memory.
 Evidence: `native-sparse-observations-r53/`. No production runtime is changed.
