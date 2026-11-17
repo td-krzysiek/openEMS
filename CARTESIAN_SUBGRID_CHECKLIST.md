@@ -855,9 +855,12 @@ is no allocation-guard increase or production adoption.
 R41 prepares fixed-fine-XY Z sensitivity without increasing guards: eight
 dielectric plus two physical Cu interval midplanes raise587,384 to906,304
 local leaves. Both native PEC/Cu setups pass on accepted R35, with unchanged
-geometry, ports, current contours, XY,5fs timestep and2ns cap. Four new
-local/ordinary RF cases are queued behind R40 physical hardware release;
-results remain pending. This is neither an antenna launch nor asymptotic3D
+geometry, ports, current contours, XY,5fs timestep and2ns cap. All four new
+local/ordinary RF cases complete, exit0/noOOM, with independently rechecked
+raw/input/runtime and own-timestamp DFT. Same-level Z2 engine comparisons
+pass (copper0.001172 complexGamma/0.14678degree/0.000736dB), but Z1-to-Z2
+complexGamma0.011015–0.011168 fails the0.01 sensitivity gate in both engines
+and both conductors; late-time tails pass. RF convergence remains open. This is neither an antenna launch nor asymptotic3D
 convergence. Frozen R37 ratio16 is the separately hash-bound Z1 comparison.
 
 R42 is a separately frozen unpromoted candidate over R40: identical opposite
@@ -890,3 +893,19 @@ analytic fraction/energy and six native axis/unit/priority controls plus
 C++/Python/XML/Matlab interfaces are prepared; build and qualifications remain
 pending. Thin inclusions, quadrature/mesh RF convergence and actual shaped-
 material device/domain controls remain open. No full-array admission follows.
+
+R42's four-mode setup benchmark completes56 commands with four interleaved
+repetitions, retaining exact counts/curls/timestep and24 fewer logical metric
+bytes per leaf. Measured additional peakRSS reduction against consumed R40 is
+2.47–5.22%; native GPU steady RAM/FDTD/full-array savings are not established.
+Physical32 replay is now running after R41's actual terminal hardware release.
+
+R44's C++ candidate builds; the original Cython wrapper fails on the imported
+libcpp.bool shadowing the Python builtin and is preserved. Fresh R02 corrects
+only that wrapper. Its new analytic/native test detects a test-oracle constant
+mismatch even in air leaf0: hardcoded permeability differs from native MUE0 by
+4.48883e-10, above the unchanged2e-13 comparison. A diagnostic against unchanged
+R02 core reproduces zero epsilon error and exactly that mu discrepancy. R03
+uses native EPS0/MUE0 in the independent analytic CAD oracle, retaining the
+bound and numerical code, and is separately frozen/building. This does not
+qualify shaped-material physics, RF, CUDA/Metal or representative PCB use.
