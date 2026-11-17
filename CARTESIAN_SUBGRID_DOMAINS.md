@@ -770,3 +770,39 @@ read-only Mac check has12.87GiB available against the unchanged15.5GiB stable
 admission requirement/12.5GiB reserve, so no new compiler was started. Large
 arrays, curved RF convergence and representative antennas remain open; all
 allocation, interface, numerical and resource guards are unchanged.
+
+## Sequential numeric worker upload
+
+R40 finalizes all owned/ghost addresses, sender exports and transfers before
+preparing numeric packages. An optional C++ `UploadConsumer` borrows one
+complete domain at a time. Native execution creates its worker and performs
+a setup-only owning-device fence before the callback returns; the package
+is then released. No fence is added to the time loop. Loss/PML identities
+and immutable transport/observation layout remain. Without a consumer the
+constructor retains reusable packages; a consumed plan rejects reupload.
+Consumer failure aborts construction rather than continuing with empty data.
+Matching headers, library, callers and plugins must be rebuilt together.
+
+CPU62/62 and16 actual-R36 operator/field files pass. Physical32 gates pass on
+RTX4090/RTX3080 in both orders, including24 exact upload-consumer cases,
+24 retained exact domain cases, losses/PML and16 native Python cases. The
+qualified core is `a33489a3e4e4696c0c160c6c64f8ff7c8931b3d7b99d528c6121387bab33e3f6`.
+Terminal exit0/no OOM,385 archived files and759 source hashes were rechecked
+before exact source promotion. No production runtime changed.
+
+Three interleaved GPU-free preparation repetitions compare actual frozen R36,
+R40 retained and R40 consumed packages with equal counts/curls/timestep:
+
+| Leaves | R36 peak RSS | R40 retained | R40 consumed | Consumed change versus R36 |
+|---:|---:|---:|---:|---:|
+|491,520 uniform|261.707MiB|264.801MiB|232.297MiB|−11.24%|
+|61,440 graded|80.703MiB|81.695MiB|65.703MiB|−18.59%|
+|960,000 uniform|478.980MiB|484.465MiB|426.102MiB|−11.04%|
+
+These measure unprofiled host preparation and a CPU callback consuming its
+package, not GPU transfer latency, end-to-end FDTD RSS or full-array scaling.
+The reference control's plan-time medians change+0.82%,+9.75%,−13.07% on the
+shared host; no repeatable update speedup is inferred. Global topology, double
+field mirrors and processing costs remain. Metal/resource qualification,
+representative antenna RF and all existing allocation guards remain open.
+Project evidence: `experiments/openems-cartesian-local-subgrid-20261112/lossy-materials/streamed-worker-upload-r40/`.

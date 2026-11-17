@@ -43,6 +43,7 @@ set(TESTS
   test_cartesian_subgrid_device_patterns
   test_cartesian_subgrid_device_large
   test_cartesian_subgrid_device_domains
+  test_cartesian_subgrid_device_upload_consumer
   test_cartesian_subgrid_device_domain_ports
   test_cartesian_subgrid_device_domain_stream
   test_cartesian_subgrid_device_domain_loss

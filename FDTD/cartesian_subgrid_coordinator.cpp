@@ -39,8 +39,8 @@ void CheckWorkers(const CartesianSubgridDomainPlan &plan,
 			"CartesianSubgrid: worker PML preparation differs from ownership plan");
 		Require(workers[k]->Owned(Field::Electric) == d.ownedElectric &&
 			workers[k]->Owned(Field::Magnetic) == d.ownedMagnetic &&
-			workers[k]->Ghosts(Field::Electric) == d.fields.electric.size() - d.ownedElectric &&
-			workers[k]->Ghosts(Field::Magnetic) == d.fields.magnetic.size() - d.ownedMagnetic &&
+			workers[k]->Ghosts(Field::Electric) == d.globalElectric.size() - d.ownedElectric &&
+			workers[k]->Ghosts(Field::Magnetic) == d.globalMagnetic.size() - d.ownedMagnetic &&
 			workers[k]->Exports(Field::Electric) == d.sendElectric.size() &&
 			workers[k]->Exports(Field::Magnetic) == d.sendMagnetic.size(),
 			"CartesianSubgrid: worker storage differs from ownership plan");

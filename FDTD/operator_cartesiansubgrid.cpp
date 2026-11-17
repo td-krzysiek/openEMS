@@ -285,38 +285,44 @@ class Engine_CartesianSubgrid : public Engine
 				}
 				m_DomainPML = pml;
 			}
+			std::vector<std::unique_ptr<CartesianSubgridDomainWorker>> workers;
+			const auto consume = [&](std::size_t k, const CartesianSubgridDomainData &domain)
+			{
+				auto &backend = *m_DomainBackends.at(k);
+				std::cout << "CartesianSubgrid native domain " << k << ": " << backend.GetName() << std::endl;
+				workers.push_back(CreateCartesianSubgridWorker(backend, domain));
+				// Setup-only lifetime fence: async backends must finish borrowing
+				// this host package before the plan releases it.
+				backend.Activate();
+				backend.Synchronize();
+			};
+			using Preparation = CartesianSubgridDomainPlan::CurlPreparation;
 			std::shared_ptr<CartesianSubgridDomainPlan> plan;
 			if (loss && m_DomainPML)
 			{
-				plan = std::make_shared<CartesianSubgridDomainPlan>(*loss, *m_DomainPML, axis, cuts);
+				plan = std::make_shared<CartesianSubgridDomainPlan>(*loss, *m_DomainPML, axis, cuts, Preparation::Streamed, consume);
 			}
 			else if (loss)
 			{
-				plan = std::make_shared<CartesianSubgridDomainPlan>(*loss, axis, cuts);
+				plan = std::make_shared<CartesianSubgridDomainPlan>(*loss, axis, cuts, Preparation::Streamed, consume);
 			}
 			else if (m_DomainPML)
 			{
-				plan = std::make_shared<CartesianSubgridDomainPlan>(*m_DomainPML, axis, cuts);
+				plan = std::make_shared<CartesianSubgridDomainPlan>(*m_DomainPML, axis, cuts, Preparation::Streamed, consume);
 			}
 			else
 			{
-				plan = std::make_shared<CartesianSubgridDomainPlan>(op->Grid(), axis, cuts);
+				plan = std::make_shared<CartesianSubgridDomainPlan>(op->Grid(), axis, cuts, Preparation::Streamed, consume);
 			}
-			std::vector<GPU_Backend *> workers;
-			for (std::size_t k = 0; k < m_DomainBackends.size(); ++k)
-			{
-				auto &backend = m_DomainBackends[k];
-				std::cout << "CartesianSubgrid native domain " << k << ": " << backend->GetName() << std::endl;
-				workers.push_back(backend.get());
-			}
-			m_Device = CreateCartesianSubgridDomains(plan, workers);
+			auto transport = CreateCartesianSubgridHostTransport(plan, workers);
+			m_Device = CreateCartesianSubgridCoordinator(plan, std::move(workers), std::move(transport));
 			m_Device->RequireFixedTimestep(op->GetTimestep());
 			if (m_DomainPML)
 			{
 				m_DomainPML->BindDomainDevice(loss);
 			}
 			m_type = Engine::GPU;
-			std::cout << "CartesianSubgrid native domains: " << workers.size() << "; allocated "
+			std::cout << "CartesianSubgrid native domains: " << m_DomainBackends.size() << "; allocated "
 				<< m_Device->StorageBytes() << " bytes; host mirror at complete processing batches" << std::endl;
 		}
 		else if (m_Backend)

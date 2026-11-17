@@ -798,6 +798,8 @@ numerical change invalidates their prior qualification.
 
 | 2026-11-17 | Further partial P01/P02/P05: graded native line normalization | R36, exact qualified source promoted | [Physical-length contract](CARTESIAN_SUBGRID_RUNTIME.md#physical-length-native-line-normalization). CPU61/61,16 exact actual-R35 files and28 physical CUDA gates pass; the new12-case ordinary-coefficient oracle fails against the actual old library. Both4090/3080 orders,24 exact domains, losses/PML and16 native Python cases are retained. Metal, driven RF and representative antenna qualification remain open. |
 
+| 2026-11-17 | Further partial C03/C05/D01/D05: sequential worker uploads | R40, exact qualified source promoted | [Lifetime contract and measurements](CARTESIAN_SUBGRID_DOMAINS.md#sequential-numeric-worker-upload). CPU62/62,16 exact actual-R36 files and32 physical CUDA gates pass;24 new exact upload/lifetime cases, both pair orders, native observations and losses/PML remain. GPU-free preparation peak RSS falls11.04–18.59% in three interleaved controls. Metal, end-to-end native device RAM, full-array scaling and antenna RF remain open; no guard increase. |
+
 ### Pending port follow-ups — 17 November
 
 R35-r02 resolved local port descriptors pass CPU60/60,16 exact actual-parent
@@ -844,10 +846,11 @@ CPU61/61 and16 exact parent files pass, but three-repeat RSS changes against
 R36 are−0.26%,−0.21%,+0.34%; no useful memory reduction is established.
 R39 remains unpromoted. R40 separately implements
 final topology followed by one-domain prepare/upload/release, with retained
-C++ plans as the default independent path. Its build and six focused
-reference exact-field/lifetime cases pass; the full CPU62 replay, physical
-controls and memory measurement remain pending;
-no code promotion, resource-guard increase or production adoption is implied.
+C++ plans as the default independent path. CPU62/62,16 exact parent files
+and32 physical CUDA gates pass; exact source is promoted. Three-repeat
+GPU-free preparation peak RSS falls11.04–18.59% against actual R36. Metal,
+end-to-end native device RAM, full-array scaling and RF remain open; there
+is no allocation-guard increase or production adoption.
 
 R41 prepares fixed-fine-XY Z sensitivity without increasing guards: eight
 dielectric plus two physical Cu interval midplanes raise587,384 to906,304
@@ -856,3 +859,18 @@ geometry, ports, current contours, XY,5fs timestep and2ns cap. Four new
 local/ordinary RF cases are queued behind R40 physical hardware release;
 results remain pending. This is neither an antenna launch nor asymptotic3D
 convergence. Frozen R37 ratio16 is the separately hash-bound Z1 comparison.
+
+R42 is a separately frozen unpromoted candidate over R40: identical opposite
+face metric coefficients are stored once per pair while all six magnetic
+field/history states remain separate. Its build and independent face-view
+oracle pass; full CPU62/actual-parent fields, a four-mode resident-memory
+comparison and physical replay remain pending. It changes no equations,
+precision, mesh or size guards.
+
+R43 full-model type inventory identifies a separate required PCB-CAD gap:
+rounded laminate/backing volumes and cylindrical air bores are outside the
+native material adapter's strict box-only contract. Small unchanged-runtime
+box-positive/shaped-negative controls reproduce that explicit feature limit.
+Do not remove these shapes or silently use bounding boxes to admit an antenna.
+Shaped material integration, priority and convergence must be implemented and
+qualified separately; memory improvements alone do not make the model usable.

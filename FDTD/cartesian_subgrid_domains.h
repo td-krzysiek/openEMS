@@ -8,6 +8,7 @@
 #include <array>
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 #include <stdexcept>
 #include <memory>
 #include <vector>
@@ -39,20 +40,26 @@ class CartesianSubgridDomainPlan
   public:
 	//! Expanded preparation is retained as an independent setup oracle.
 	enum class CurlPreparation { Streamed, ExpandedOracle };
+	//! Called in domain order after all ownership/export maps are final. The
+	//! payload is borrowed only for this call. Complete uploads before returning;
+	//! afterwards the plan releases numeric arrays, retaining immutable layout.
+	//! Without a consumer the complete reusable preparation is retained.
+	using UploadConsumer = std::function<void(std::size_t, const CartesianSubgridDomainData &)>;
 	struct Transfer
 	{
 		std::uint32_t sender, sendOffset, receiver, receiveOffset;
 	};
 	//! Cuts are assignment planes, not new mesh faces. Leaves stay indivisible.
 	CartesianSubgridDomainPlan(const CartesianSubgrid &grid, unsigned int axis,
-		const std::vector<double> &cuts, CurlPreparation curls = CurlPreparation::Streamed);
+		const std::vector<double> &cuts, CurlPreparation curls = CurlPreparation::Streamed, const UploadConsumer &consume = {});
 	CartesianSubgridDomainPlan(const Engine_Ext_CartesianSubgrid_Conductivity &advance,
-		unsigned int axis, const std::vector<double> &cuts, CurlPreparation curls = CurlPreparation::Streamed);
+		unsigned int axis, const std::vector<double> &cuts, CurlPreparation curls = CurlPreparation::Streamed, const UploadConsumer &consume = {});
 	CartesianSubgridDomainPlan(const Engine_Ext_CartesianSubgrid_PML &pml,
-		unsigned int axis, const std::vector<double> &cuts, CurlPreparation curls = CurlPreparation::Streamed);
+		unsigned int axis, const std::vector<double> &cuts, CurlPreparation curls = CurlPreparation::Streamed, const UploadConsumer &consume = {});
 	CartesianSubgridDomainPlan(const Engine_Ext_CartesianSubgrid_Conductivity &advance,
-		const Engine_Ext_CartesianSubgrid_PML &pml, unsigned int axis, const std::vector<double> &cuts, CurlPreparation curls = CurlPreparation::Streamed);
+		const Engine_Ext_CartesianSubgrid_PML &pml, unsigned int axis, const std::vector<double> &cuts, CurlPreparation curls = CurlPreparation::Streamed, const UploadConsumer &consume = {});
 	const std::vector<CartesianSubgridDomainData> &Domains() const { return m_Domains; }
+	bool UploadsRetained() const { return m_UploadsRetained; }
 	const std::vector<Transfer> &Transfers(CartesianSubgridField field) const
 	{
 		if (field != CartesianSubgridField::Electric && field != CartesianSubgridField::Magnetic)
@@ -79,7 +86,8 @@ class CartesianSubgridDomainPlan
 		bool borrowedInitialState = false;
 	};
 	CartesianSubgridDomainPlan(const CartesianSubgrid &grid, unsigned int axis,
-		const std::vector<double> &cuts, Prepared prepared);
+		const std::vector<double> &cuts, Prepared prepared, const UploadConsumer &consume);
+	bool m_UploadsRetained = true;
 	std::vector<CartesianSubgridDomainData> m_Domains;
 	std::vector<Transfer> m_ElectricTransfers, m_MagneticTransfers;
 	std::size_t m_ElectricCount = 0, m_MagneticCount = 0, m_ReassignedElectric = 0;

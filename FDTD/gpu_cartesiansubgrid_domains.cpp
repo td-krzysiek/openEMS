@@ -227,7 +227,8 @@ std::unique_ptr<CartesianSubgridDomainWorker> CreateCartesianSubgridWorker(
 std::unique_ptr<GPU_CartesianSubgrid> CreateCartesianSubgridDomains(
 	std::shared_ptr<const CartesianSubgridDomainPlan> plan, const std::vector<GPU_Backend*> &backends)
 {
-	Require(bool(plan) && backends.size() == plan->Domains().size(), "CartesianSubgrid: invalid domain backends");
+	Require(bool(plan) && plan->UploadsRetained() && backends.size() == plan->Domains().size(),
+		"CartesianSubgrid: missing retained domain uploads or invalid backends");
 	std::vector<std::unique_ptr<CartesianSubgridDomainWorker>> workers;
 	for (std::size_t k = 0; k < backends.size(); ++k)
 	{

@@ -16,6 +16,11 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Added
 
+- Experimental native Cartesian-subgrid domain setup uploads one numeric
+  package at a time and releases it after upload completion. Explicit C++ plans
+  remain reusable by default. Scoped CPU/CUDA controls pass; Metal and full-array
+  scaling remain pending. Rebuild matching callers and plugins.
+
 - Experimental Cartesian-subgrid rectangular ports reuse verified local support
   during preparation, avoiding repeated general-path searches. Scoped CPU/CUDA
   controls retain conductances and fields; general quadrature stays available.

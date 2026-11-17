@@ -106,35 +106,36 @@ template <class Lookup> void Rows(const std::vector<Index> &owned, const std::ve
 }
 
 CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(const CartesianSubgrid &grid,
-	unsigned int axis, const std::vector<double> &cuts, CurlPreparation curls)
-	: CartesianSubgridDomainPlan(grid, axis, cuts, {{curls == CurlPreparation::ExpandedOracle ? grid.DeviceData() : grid.DeviceSetupMetadata(), {}}, {}, curls != CurlPreparation::ExpandedOracle})
+	unsigned int axis, const std::vector<double> &cuts, CurlPreparation curls, const UploadConsumer &consume)
+	: CartesianSubgridDomainPlan(grid, axis, cuts, {{curls == CurlPreparation::ExpandedOracle ? grid.DeviceData() : grid.DeviceSetupMetadata(), {}}, {}, curls != CurlPreparation::ExpandedOracle}, consume)
 {
 }
 
 CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(
 	const Engine_Ext_CartesianSubgrid_Conductivity &advance, unsigned int axis,
-	const std::vector<double> &cuts, CurlPreparation curls)
-	: CartesianSubgridDomainPlan(advance.Grid(), axis, cuts, {advance.PrepareDomainDataImpl(nullptr, curls == CurlPreparation::ExpandedOracle, curls == CurlPreparation::ExpandedOracle), {}, curls != CurlPreparation::ExpandedOracle})
+	const std::vector<double> &cuts, CurlPreparation curls, const UploadConsumer &consume)
+	: CartesianSubgridDomainPlan(advance.Grid(), axis, cuts, {advance.PrepareDomainDataImpl(nullptr, curls == CurlPreparation::ExpandedOracle, curls == CurlPreparation::ExpandedOracle), {}, curls != CurlPreparation::ExpandedOracle}, consume)
 {
 }
 
 CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(const Engine_Ext_CartesianSubgrid_PML &pml,
-	unsigned int axis, const std::vector<double> &cuts, CurlPreparation curls)
+	unsigned int axis, const std::vector<double> &cuts, CurlPreparation curls, const UploadConsumer &consume)
 	: CartesianSubgridDomainPlan(pml.Grid(), axis, cuts, {{curls == CurlPreparation::ExpandedOracle ? pml.Grid().DeviceData() : pml.Grid().DeviceSetupMetadata(), {}},
-		pml.PrepareDomainData(), curls != CurlPreparation::ExpandedOracle})
+		pml.PrepareDomainData(), curls != CurlPreparation::ExpandedOracle}, consume)
 {
 }
 
 CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(
 	const Engine_Ext_CartesianSubgrid_Conductivity &advance, const Engine_Ext_CartesianSubgrid_PML &pml,
-	unsigned int axis, const std::vector<double> &cuts, CurlPreparation curls)
+	unsigned int axis, const std::vector<double> &cuts, CurlPreparation curls, const UploadConsumer &consume)
 	: CartesianSubgridDomainPlan(advance.Grid(), axis, cuts,
-		{advance.PrepareDomainDataImpl(&pml, curls == CurlPreparation::ExpandedOracle, curls == CurlPreparation::ExpandedOracle), pml.PrepareDomainData(&advance), curls != CurlPreparation::ExpandedOracle})
+		{advance.PrepareDomainDataImpl(&pml, curls == CurlPreparation::ExpandedOracle, curls == CurlPreparation::ExpandedOracle), pml.PrepareDomainData(&advance), curls != CurlPreparation::ExpandedOracle}, consume)
 {
 }
 
 CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(const CartesianSubgrid &grid,
-	unsigned int axis, const std::vector<double> &cuts, Prepared prepared)
+	unsigned int axis, const std::vector<double> &cuts, Prepared prepared, const UploadConsumer &consume)
+	: m_UploadsRetained(!consume)
 {
 	Require(axis < 3 && cuts.size() < 64, "CartesianSubgrid: invalid domain cuts");
 	const auto &lines = grid.BaseLines()[axis];
@@ -352,15 +353,56 @@ CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(const CartesianSubgrid &g
 		}
 		domain.globalElectric.insert(domain.globalElectric.end(), ghostE.begin(), ghostE.end());
 		domain.globalMagnetic.insert(domain.globalMagnetic.end(), ghostH.begin(), ghostH.end());
+		for (Index k = 0; k < domain.globalElectric.size(); ++k)
+		{
+			eMaps[worker].emplace(domain.globalElectric[k], k);
+		}
+		for (Index k = 0; k < domain.globalMagnetic.size(); ++k)
+		{
+			hMaps[worker].emplace(domain.globalMagnetic[k], k);
+		}
+	}
+	// Resolve all export lists before preparing any numeric upload. Workers
+	// receive their final halo maps, including dependencies of later domains.
+	for (bool electric : {true, false})
+	{
+		std::vector<Map> sends(m_Domains.size());
+		auto &transfers = electric ? m_ElectricTransfers : m_MagneticTransfers;
+		const auto &owners = electric ? eOwners : hOwners;
+		const auto &maps = electric ? eMaps : hMaps;
+		for (Index receiver = 0; receiver < m_Domains.size(); ++receiver)
+		{
+			const auto &domain = m_Domains[receiver];
+			const auto &global = electric ? domain.globalElectric : domain.globalMagnetic;
+			const std::size_t owned = electric ? domain.ownedElectric : domain.ownedMagnetic;
+			for (Index k = static_cast<Index>(owned); k < global.size(); ++k)
+			{
+				const Index sender = owners[global[k]], source = maps[sender].at(global[k]);
+				auto &indices = electric ? m_Domains[sender].sendElectric : m_Domains[sender].sendMagnetic;
+				const auto inserted = sends[sender].emplace(source, static_cast<Index>(indices.size()));
+				if (inserted.second)
+				{
+					indices.push_back(source);
+				}
+				transfers.push_back({sender, inserted.first->second, receiver, k - static_cast<Index>(owned)});
+			}
+		}
+	}
+	for (Index worker = 0; worker < m_Domains.size(); ++worker)
+	{
+		auto &domain = m_Domains[worker];
+		auto &local = domain.fields;
+		const std::vector<Index> ownedE(domain.globalElectric.begin(),
+			domain.globalElectric.begin() + domain.ownedElectric);
+		const std::vector<Index> ownedH(domain.globalMagnetic.begin(),
+			domain.globalMagnetic.begin() + domain.ownedMagnetic);
 		for (Index global : domain.globalElectric)
 		{
-			eMaps[worker].emplace(global, static_cast<Index>(local.electric.size()));
 			local.electric.push_back(prepared.borrowedInitialState ?
 				CartesianSubgridFloat::StateValue(grid.m_Electric.at(global)) : data.electric[global]);
 		}
 		for (Index global : domain.globalMagnetic)
 		{
-			hMaps[worker].emplace(global, static_cast<Index>(local.magnetic.size()));
 			local.magnetic.push_back(prepared.borrowedInitialState ?
 				CartesianSubgridFloat::StateValue(grid.m_Magnetic.at(global)) : data.magnetic[global]);
 		}
@@ -566,28 +608,24 @@ CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(const CartesianSubgrid &g
 				ownedRows(source.surfaceHistory, ownedE, poleMap, loss.surfaceHistory);
 			}
 		}
-	}
-	for (bool electric : {true, false})
-	{
-		std::vector<Map> sends(m_Domains.size());
-		auto &transfers = electric ? m_ElectricTransfers : m_MagneticTransfers;
-		const auto &owners = electric ? eOwners : hOwners;
-		const auto &maps = electric ? eMaps : hMaps;
-		for (Index receiver = 0; receiver < m_Domains.size(); ++receiver)
+		if (consume)
 		{
-			const auto &domain = m_Domains[receiver];
-			const auto &global = electric ? domain.globalElectric : domain.globalMagnetic;
-			const std::size_t owned = electric ? domain.ownedElectric : domain.ownedMagnetic;
-			for (Index k = static_cast<Index>(owned); k < global.size(); ++k)
+			consume(worker, domain);
+			// No host payload may outlive the callback. Preserve only the
+			// recurrence identities used to validate the owning worker.
+			local = {};
+			domain.operators.reset();
+			if (domain.loss)
 			{
-				const Index sender = owners[global[k]], source = maps[sender].at(global[k]);
-				auto &indices = electric ? m_Domains[sender].sendElectric : m_Domains[sender].sendMagnetic;
-				const auto inserted = sends[sender].emplace(source, static_cast<Index>(indices.size()));
-				if (inserted.second)
-				{
-					indices.push_back(source);
-				}
-				transfers.push_back({sender, inserted.first->second, receiver, k - static_cast<Index>(owned)});
+				const double timestep = domain.loss->timestep;
+				domain.loss.emplace();
+				domain.loss->timestep = timestep;
+			}
+			if (domain.pml)
+			{
+				const double timestep = domain.pml->timestep;
+				domain.pml.emplace();
+				domain.pml->timestep = timestep;
 			}
 		}
 	}
