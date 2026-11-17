@@ -1467,3 +1467,29 @@ this homogeneous host result does not qualify native PCB/GPU/antenna capacity.
 Evidence: `packed-edge-addresses-r63/memory-independent-r01.json`,
 `packed-edge-addresses-r63/physical-preparation-r02.json`,
 `packed-edge-addresses-r63/physical-enumeration-r01.json`.
+
+
+R63 full GPU-free qualification now passes exit0/noOOM:77/77 CTest,51 scripted
+controls and16 exact actual-R61 operator/field arrays. Independent review
+rehashes819 source and532 archive files. With the separately accepted memory
+comparison this qualifies the scoped CPU/reference storage change; physical82
+still waits for accepted R62 RF release, and recent Metal remains unadmitted.
+The candidate code is not promoted and no antenna/scaling qualification follows.
+Evidence: `packed-edge-addresses-r63/cpu-independent-r01.json`.
+
+
+R62's unchanged native1,544,144-leaf smooth-copper U-line replay is now accepted
+on one4090 and the4090/3080 pair in both orders. Independent raw own-timestamp
+DFT over501 band points matches accepted R47 complexGamma within3.822e-16;
+fresh single/pair extractions are identical. Original1e-5Gamma/0.01deg/0.001dB
+runtime gates and1.5ns/2ns late-prefix gates pass;81 artifacts are rehashed.
+Single/pair/reverse wall times543.08/892.80/964.77s show no small-case speedup.
+This is fixed-XY/Z3 network evidence, not representative antenna convergence.
+
+After actual R62 terminal release and accepted R63 CPU77/memory receipts,
+R63 physical82 was admitted on GPU2RTX4090/GPU6RTX3080 as
+`e832c2b381fccf88ae8645dff1dd9db106c03f134cf8eee2d64156c9519fb508`.
+Source/storage code remains unpromoted until this gate and independent review
+pass. Recent Metal and representative antenna qualification stay open.
+Evidence: `pcb-pair-rf-r62/independent-review-r01.json`,
+`packed-edge-addresses-r63/cuda-owner-r01.json`.
