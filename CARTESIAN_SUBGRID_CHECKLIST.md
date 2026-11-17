@@ -1365,3 +1365,26 @@ Recent Metal, external application control R61 and antenna qualification remain
 open. The resource-only pair derivative does not change any source or gate.
 Evidence: `collective-fence-r60/independent-qualification-r01.json`,
 `collective-fence-r60/promotion-r01.json`.
+
+
+R61 isolated build passes. The first full CPU application attempt preserves a
+harness-only same-epoch assertion failure: queued manual and startup pauses
+correctly acknowledge epoch132. A named corrected harness permits equality and
+also checks post-pulse -10/-20 checkpoints. A separate small protocol fixture
+correctly rejected missing PML one-cell separation; R04 adds the required guard,
+without changing source/ports/metals/timestep/4000step count. Five3180-cell CPU/
+reference/ordinary protocol modes now pass with16 exact final arrays each.
+This small control does not replace the full RF fixture.
+
+Independent physical qualification uses the unchanged full152204-cell public
+dipole on one4090 and actual4090/3080 pair after accepted R60 physical80 and
+focused CPU protocols. Both lanes pass exit0/noOOM:160 final raw arrays each
+match uninterrupted execution AND accepted R59 arrays exactly. Repeated snapshots
+retain sample metadata; forged IDs reject.618 raw artifacts are rehashed.
+Full R61 CPU76/16 actual-parent replay remains running; code is not promoted.
+Timeout/stop/write-failure application checks, recent Metal, native PCB scaling
+and representative antenna acceptance remain open. No production changes.
+Evidence: `external-pause-r61/focused-protocols-r03.json`,
+`external-pause-r61/physical-application-independent-r01.json`,
+`external-pause-r61/application-failure-review-r01.json`,
+`external-pause-r61/protocol-fixture-r04.json`.
