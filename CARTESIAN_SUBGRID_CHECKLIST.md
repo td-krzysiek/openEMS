@@ -968,14 +968,17 @@ terminal exit0/noOOM, GPU UUID/model observations, source/core/binary identities
 and raw reviews are retained in the R44 study. These are small scalar-volume
 bulk-loss controls, not conductor-surface, RF or full-antenna acceptance.
 
-R46 is a separately frozen, unpromoted integration candidate: R42 metrics,
+R46 is a separately frozen, now CPU/CUDA-qualified integration: R42 metrics,
 R44 native shaped-material/bulk-loss support and R45 explicit count budget.
 The previous external R04/R07/R11 test corrections/controls are included as
 normal source, with a new combined API/XML/native setup regression. Both options
 retain their defaults and independent reset behavior; no production/frozen
-runtime changes. Its isolated build completes exit0/noOOM; own CPU 65 is running. Physical/Metal,
-resource scaling and representative RF qualification remain open. Parent
-acceptance does not qualify the combined binary.
+runtime changes. Its isolated build and CPU65/65 complete exit0/noOOM with16 exact frozen-R42
+operator/field files. All40 physical CUDA gates pass on4090/3080 in both orders,
+including sampled bulk losses, child knots and native TD/FD/ports/PML. Source/
+runtime and396 archived files were independently rehashed. Exact numerical/API/
+test source is now promoted; prior canonical evidence sections are preserved.
+Metal, native PCB resource scaling and representative RF remain open.
 
 
 R45 staged host characterization completes six GPU-free homogeneous-grid cases
@@ -988,3 +991,21 @@ under the unchanged6GiB external cap. Single observations do not establish
 statistical performance, long-time stability, device memory or native PCB/RF
 scaling. Larger/full-array admission remains open; do not extrapolate those
 numbers into accepted antenna resource requirements.
+
+
+R47 retains the failed native5fs Z3 copper setup: its requested timestep exceeds
+its coupled bound. A separate GPU-free setup-only diagnostic reports half-bound
+2.26377fs, motivating explicit4fs copper controls in both engines and both Z
+levels, with unchanged2ns duration. PEC/runtime5fs controls remain. The named
+R04 derivative must pass actual native setup before RF; no stability bound or
+RF acceptance threshold is weakened. This is not an RF acceptance result.
+
+R48 adds selected normalized-state readback and lazy complete-field host mirrors
+as a separately frozen, unpromoted candidate over R46. Its original port test
+used an independent FP32 oracle without resistor support; that same mismatch
+is reproduced on unchanged R46. Corrected tests retain source-only2e-6 and
+single/domain2e-6 gates, using the independent double reference for port solves
+under the established2e-4 bound. Original failure and test-only correction are
+retained. Fresh CPU66 completes exit0/noOOM; independent collection and physical
+qualification are in progress. Native processing still requests complete fields;
+no native DFT/RAM saving or representative antenna acceptance is claimed.

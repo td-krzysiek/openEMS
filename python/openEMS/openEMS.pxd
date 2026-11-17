@@ -40,6 +40,8 @@ cdef extern from "openEMS/openems.h":
         void SetupCartesianSubgrid(vector[double] box) except +
         void SetupCartesianSubgridRatio(vector[unsigned int] ratio) except +
         void SetupCartesianSubgridChildLines(vector[vector[double]] axes) except +
+        void SetupCartesianSubgridMaxLeaves(unsigned int count) except +
+        void SetupCartesianSubgridMaterialSamples(unsigned int samples) except +
         void SetupCartesianSubgrids(vector[vector[double]] boxes, vector[vector[unsigned int]] ratios) except +
         void AddCartesianSubgrid(vector[double] box, vector[unsigned int] ratio) except +
 

@@ -25,6 +25,7 @@
 #include "FDTD/operator_cylinder.h"
 #include "FDTD/operator_cylindermultigrid.h"
 #include "FDTD/operator_cartesiansubgrid.h"
+#include "FDTD/subgrid_allocation_limits.h"
 #include "FDTD/cartesian_subgrid_runtime.h"
 #include "FDTD/subgrid_interface_limits.h"
 #include <cmath>
@@ -140,6 +141,8 @@ void openEMS::Reset()
 	m_CartesianSubgridBoxes.clear();
 	m_CartesianSubgridRatios.clear();
 	m_CartesianSubgridChildLines = {};
+	m_CartesianSubgridMaxLeaves = CartesianSubgridDetail::DefaultLeafLimit;
+	m_CartesianSubgridMaterialSamples = 0;
 	m_CellConstantMaterial=false;
 	endCrit = 1e-6;
 	m_OverSampling = 4;
@@ -948,6 +951,21 @@ void openEMS::AddCartesianSubgrid(const std::vector<double> &box, const std::vec
 	SetupCartesianSubgrids(boxes, ratios);
 }
 
+void openEMS::SetupCartesianSubgridMaxLeaves(unsigned int count)
+{
+	CartesianSubgridDetail::ValidateLeafLimit(count);
+	m_CartesianSubgridMaxLeaves = count;
+}
+
+void openEMS::SetupCartesianSubgridMaterialSamples(unsigned int samples)
+{
+	if (samples != 0 && samples != 2 && samples != 4 && samples != 8)
+	{
+		throw std::invalid_argument("CartesianSubgrid: material samples must be 0, 2, 4 or 8 per axis");
+	}
+	m_CartesianSubgridMaterialSamples = samples;
+}
+
 void openEMS::SetupCartesianSubgridChildLines(const std::vector<std::vector<double>> &axes)
 {
 	if (axes.size() != 3)
@@ -1032,7 +1050,9 @@ bool openEMS::SetupOperator()
 	SetThreadLimit(m_engine_numThreads);
 	const bool childLines = std::any_of(m_CartesianSubgridChildLines.begin(), m_CartesianSubgridChildLines.end(),
 		[](const std::vector<double> &axis) { return !axis.empty(); });
-	if (childLines && m_CartesianSubgridBox.empty() && m_CartesianSubgridBoxes.empty())
+	if ((childLines || m_CartesianSubgridMaterialSamples ||
+		m_CartesianSubgridMaxLeaves != CartesianSubgridDetail::DefaultLeafLimit) &&
+		m_CartesianSubgridBox.empty() && m_CartesianSubgridBoxes.empty())
 	{
 		throw std::invalid_argument("CartesianSubgrid: child coordinates require refinement regions");
 	}
@@ -1129,6 +1149,17 @@ bool openEMS::SetupOperator()
 		FDTD_Op = Operator::New(m_engine_numThreads);
 	}
 	FDTD_Op->SetEngineType(type);
+	if (m_CartesianSubgridMaterialSamples ||
+		m_CartesianSubgridMaxLeaves != CartesianSubgridDetail::DefaultLeafLimit)
+	{
+		auto *compact = dynamic_cast<Operator_CartesianSubgrid *>(FDTD_Op);
+		if (!compact)
+		{
+			throw std::invalid_argument("CartesianSubgrid: settings require the Cartesian subgrid operator");
+		}
+		compact->SetMaxLeaves(m_CartesianSubgridMaxLeaves);
+		compact->SetMaterialSamples(m_CartesianSubgridMaterialSamples);
+	}
 	if (childLines)
 	{
 		auto *compact = dynamic_cast<Operator_CartesianSubgrid *>(FDTD_Op);
@@ -1287,6 +1318,19 @@ bool openEMS::Parse_XML_FDTDSetup(TiXmlElement* FDTD_Opts)
 			}
 			SetupCartesianSubgridRatio(ParseSubgridRatio(ratio));
 		}
+	}
+	if (const char *limit = FDTD_Opts->Attribute("CartesianSubgridMaxLeaves"))
+	{
+		SetupCartesianSubgridMaxLeaves(ParseSubgridValues<unsigned int>(limit, 1)[0]);
+	}
+	if (const char *samples = FDTD_Opts->Attribute("CartesianSubgridMaterialSamples"))
+	{
+		const auto values = ParseSubgridValues<double>(samples, 1);
+		if (values[0] != 0 && values[0] != 2 && values[0] != 4 && values[0] != 8)
+		{
+			throw std::invalid_argument("CartesianSubgrid: material samples must be 0, 2, 4 or 8 per axis");
+		}
+		SetupCartesianSubgridMaterialSamples(static_cast<unsigned int>(values[0]));
 	}
 	if (TiXmlElement *children = FDTD_Opts->FirstChildElement("CartesianSubgridChildLines"))
 	{
@@ -1475,6 +1519,14 @@ bool openEMS::Write2XML(TiXmlNode* rootNode)
 	{
 		fdtd.SetAttribute("CartesianSubgridBox", SubgridValues(m_CartesianSubgridBox));
 		fdtd.SetAttribute("CartesianSubgridRatio", SubgridValues(m_CartesianSubgridRatio));
+	}
+	if (m_CartesianSubgridMaxLeaves != CartesianSubgridDetail::DefaultLeafLimit)
+	{
+		fdtd.SetAttribute("CartesianSubgridMaxLeaves", m_CartesianSubgridMaxLeaves);
+	}
+	if (m_CartesianSubgridMaterialSamples)
+	{
+		fdtd.SetAttribute("CartesianSubgridMaterialSamples", m_CartesianSubgridMaterialSamples);
 	}
 	TiXmlElement childLines("CartesianSubgridChildLines");
 	for (unsigned int n = 0; n < 3; ++n)

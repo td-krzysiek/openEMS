@@ -20,6 +20,9 @@ class Operator_CartesianSubgrid : public Operator
 	~Operator_CartesianSubgrid() override;
 	void SetEngineType(Engine_Types::EngineType type) override;
 	void SetChildLines(const CartesianSubgrid::Axes &drawingLines);
+	//! Count-only opt-in budget; not a RAM estimate. Default remains one million.
+	void SetMaxLeaves(std::size_t count);
+	void SetMaterialSamples(unsigned int samples);
 	//! Fixed execution placement, separate from physical geometry and XML.
 	void SetDomainExecution(unsigned int axis, std::vector<double> drawingCuts,
 		std::vector<std::unique_ptr<GPU_Backend>> backends);
@@ -52,6 +55,8 @@ class Operator_CartesianSubgrid : public Operator
 	std::vector<std::vector<double>> m_Boxes;
 	std::vector<CartesianSubgrid::Index> m_Ratios;
 	CartesianSubgrid::Axes m_ChildDrawingLines;
+	std::size_t m_MaxLeaves = 1000000;
+	unsigned int m_MaterialSamples = 0;
 	std::unique_ptr<CartesianSubgrid> m_Grid;
 	unsigned int m_DomainAxis = 0;
 	std::vector<double> m_DomainCuts;

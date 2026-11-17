@@ -16,6 +16,12 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Added
 
+- Experimental Cartesian subgrids accept explicit scalar volume sampling for
+  extruded material polygons/axial cylinders, plus a checked opt-in leaf-count
+  budget. Defaults retain strict boxes and one million leaves. Scoped combined
+  CPU/CUDA controls pass; Metal, RF and full-antenna qualification remain open.
+  Rebuild solver, scripting callers and plugins together.
+
 - Experimental Cartesian subgrid preparation stores identical opposite-face
   metric coefficients once, retaining all six independent magnetic field and
   history states. Scoped CPU/CUDA controls pass; measured preparation RAM falls

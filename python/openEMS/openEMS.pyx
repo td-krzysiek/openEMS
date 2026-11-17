@@ -63,6 +63,9 @@ cdef class openEMS:
     :param MultiGrid:      define a cylindrical sub-grid radius
     :param CartesianSubgrids: list of independent {box: [...], ratio: [...]} refinement regions
     :param CartesianSubgridRatio: axis ratios [rx,ry,rz], powers of two 1..16 (default [2,2,2])
+    :param CartesianSubgridMaxLeaves: experimental count budget, default 1000000; not a RAM guarantee
+
+    :param CartesianSubgridMaterialSamples: explicit shaped-material volume samples per axis: 0 (strict boxes), 2, 4 or 8
     :param CartesianSubgridChildLines: optional [x,y,z] finest child coordinates in mesh units; empty axes retain equal subdivision
     :param CartesianSubgridBox: experimental local XYZ refinement [x0,y0,z0,x1,y1,z1]
     :param TimeStep:       force to use a given timestep (dangerous!)
@@ -124,6 +127,13 @@ cdef class openEMS:
         if 'CartesianSubgridRatio' in kw:
             self.SetCartesianSubgridRatio(kw['CartesianSubgridRatio'])
             del kw['CartesianSubgridRatio']
+        if 'CartesianSubgridMaxLeaves' in kw:
+            self.SetCartesianSubgridMaxLeaves(kw['CartesianSubgridMaxLeaves'])
+            del kw['CartesianSubgridMaxLeaves']
+
+        if 'CartesianSubgridMaterialSamples' in kw:
+            self.SetCartesianSubgridMaterialSamples(kw['CartesianSubgridMaterialSamples'])
+            del kw['CartesianSubgridMaterialSamples']
         if 'CartesianSubgridChildLines' in kw:
             self.SetCartesianSubgridChildLines(kw['CartesianSubgridChildLines'])
             del kw['CartesianSubgridChildLines']
@@ -281,6 +291,30 @@ cdef class openEMS:
         """Set independent X/Y/Z refinement ratios; 1 leaves an axis unchanged."""
         cdef vector[unsigned int] values = self._CartesianSubgridRatio(ratio)
         self.thisptr.SetupCartesianSubgridRatio(values)
+
+    def SetCartesianSubgridMaxLeaves(self, count):
+        """Set an explicit leaf-count budget; default remains one million.
+
+        This is not a RAM estimate or qualified problem-size guarantee. Enforce
+        process/device resource limits externally. Interface limits still apply.
+        """
+        if count is True or count is False or isinstance(count, np.bool_) or not isinstance(count, (int, np.integer)):
+            raise ValueError('CartesianSubgrid: leaf budget must be an integer')
+        if count < 1 or count > 357913941:
+            raise ValueError('CartesianSubgrid: leaf budget exceeds positive device-index range')
+        self.thisptr.SetupCartesianSubgridMaxLeaves(count)
+
+    def SetCartesianSubgridMaterialSamples(self, samples):
+        """Explicit midpoint volume quadrature for shaped isotropic materials.
+
+        0 retains strict aligned boxes (default). 2/4/8 samples per axis
+        average epsilon, mu and both bulk conductivities in intersecting leaves.
+        This is a scalar leaf-volume approximation, not conformal interface
+        integration. Qualify both quadrature and mesh convergence for RF use.
+        """
+        if (samples is True or samples is False or isinstance(samples, np.bool_)) or samples not in (0, 2, 4, 8):
+            raise ValueError('CartesianSubgrid: material samples must be 0, 2, 4 or 8 per axis')
+        self.thisptr.SetupCartesianSubgridMaterialSamples(samples)
 
     def SetCartesianSubgridChildLines(self, axes):
         """Retain exact finest-lattice coordinates rather than equal subdivisions.

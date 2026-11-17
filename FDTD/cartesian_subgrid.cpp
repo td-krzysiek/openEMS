@@ -4,6 +4,7 @@
 #include "subgrid_inverse_bound.h"
 #include "subgrid_device_precision.h"
 #include "subgrid_interface_limits.h"
+#include "subgrid_allocation_limits.h"
 
 #include <algorithm>
 #include <cmath>
@@ -84,10 +85,11 @@ CartesianSubgrid::CartesianSubgrid(const Axes &lines, double epsilon, double per
 								   const std::vector<Region> &regions, bool uniformFine,
 								   const MediumSampler &medium, const PECSelector &pec,
 								   const BoundaryConditions &boundaries, const OpaqueSelector &opaque, CurlLayout layout,
-								   const Axes &childLines)
+								   const Axes &childLines, std::size_t maxLeafCells)
 	: m_Ratio{1, 1, 1}, m_Boundaries(boundaries), m_Epsilon(epsilon), m_Mu(permeability),
 	  m_UniformFine(uniformFine), m_CurlLayout(layout)
 {
+	CartesianSubgridDetail::ValidateLeafLimit(maxLeafCells);
 	Require(layout == CurlLayout::Patterns || layout == CurlLayout::SpatialBlocks,
 		"CartesianSubgrid: unsupported curl storage policy");
 	for (BoundaryType boundary : m_Boundaries)
@@ -115,9 +117,8 @@ CartesianSubgrid::CartesianSubgrid(const Axes &lines, double epsilon, double per
 					"CartesianSubgrid: strictly increasing finite base intervals required");
 			CheckSubdivision(lines[n][i], lines[n][i + 1], 1);
 		}
-		count *= m_Cells[n];
+		count = CartesianSubgridDetail::LeafProduct(count, m_Cells[n], maxLeafCells);
 	}
-	Require(count <= 1000000, "CartesianSubgrid: prototype allocation guard exceeds one million leaf cells");
 	std::size_t leaves = count;
 	for (std::size_t i = 0; i < regions.size(); ++i)
 	{
@@ -148,14 +149,14 @@ CartesianSubgrid::CartesianSubgrid(const Axes &lines, double epsilon, double per
 							   "are unsupported");
 		}
 		const std::size_t children = std::size_t(region.ratio[0]) * region.ratio[1] * region.ratio[2];
-		// Divide before multiplying; the accumulated budget covers all regions.
-		Require(children - 1 <= (1000000 - leaves) / selected,
-				"CartesianSubgrid: prototype allocation guard exceeds one million leaf cells");
-		leaves += (children - 1) * selected;
+		// Checked before multiplication/allocation; summed across every region.
+		leaves = CartesianSubgridDetail::RefinedLeafCount(leaves, selected, children, maxLeafCells);
 	}
 	const std::size_t fineChildren = std::size_t(m_Ratio[0]) * m_Ratio[1] * m_Ratio[2];
-	Require(!uniformFine || count <= 1000000 / fineChildren,
-			"CartesianSubgrid: prototype allocation guard exceeds one million leaf cells");
+	if (uniformFine)
+	{
+		CartesianSubgridDetail::LeafProduct(count, fineChildren, maxLeafCells);
+	}
 	if (uniformFine)
 	{
 		for (unsigned int n = 0; n < 3; ++n)

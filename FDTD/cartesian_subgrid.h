@@ -139,7 +139,7 @@ class CartesianSubgrid
 					 const BoundaryConditions &boundaries = BoundaryConditions{},
 					 const OpaqueSelector &opaque = OpaqueSelector(),
 					 CurlLayout layout = CurlLayout::Patterns,
-					 const Axes &childLines = Axes{});
+					 const Axes &childLines = Axes{}, std::size_t maxLeafCells = 1000000);
 	//! Actual local edge classification, including dependent interface traces.
 	bool LeafEdgeIsPEC(std::size_t leaf, unsigned int axis, unsigned int first, unsigned int second) const;
 	std::size_t PECTraceCount() const

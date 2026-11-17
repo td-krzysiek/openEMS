@@ -83,6 +83,10 @@ public:
     void AddCartesianSubgrid(const std::vector<double> &box, const std::vector<unsigned int> &ratio);
 	//! Optional finest-lattice child coordinates in drawing units; empty axes use equal subdivision.
 	void SetupCartesianSubgridChildLines(const std::vector<std::vector<double>> &axes);
+	//! Experimental count guard only; larger models need external RAM admission.
+	void SetupCartesianSubgridMaxLeaves(unsigned int count);
+	//! Explicit isotropic leaf-volume approximation; zero retains strict boxes.
+	void SetupCartesianSubgridMaterialSamples(unsigned int samples);
 
 	void SetTimeStepMethod(int val) {m_TS_method=val;}
 	void SetTimeStep(double val) {m_TS=val;}
@@ -149,6 +153,8 @@ protected:
 	std::vector<std::vector<double>> m_CartesianSubgridBoxes;
 	std::vector<std::array<unsigned int, 3>> m_CartesianSubgridRatios;
 	std::array<std::vector<double>, 3> m_CartesianSubgridChildLines;
+	unsigned int m_CartesianSubgridMaxLeaves = 1000000;
+	unsigned int m_CartesianSubgridMaterialSamples = 0;
 
 	ContinuousStructure* m_CSX;
 

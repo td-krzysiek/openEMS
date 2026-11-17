@@ -1,5 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include "operator_cartesiansubgrid.h"
+#include "subgrid_allocation_limits.h"
+#include "subgrid_material_quadrature.h"
 #include "CSPrimBox.h"
 #include "CSPrimPolygon.h"
 #include "CSPrimLinPoly.h"
@@ -894,8 +896,38 @@ void Operator_CartesianSubgrid::ValidateProperties() const
 			}
 			if (type == CSProperties::MATERIAL && !dynamic_cast<CSPrimBox *>(primitive))
 			{
-				throw std::invalid_argument(
-					"CartesianSubgrid: material objects must use axis-aligned volume boxes");
+				if (!m_MaterialSamples)
+				{
+					throw std::invalid_argument(
+						"CartesianSubgrid: material objects must use axis-aligned volume boxes");
+				}
+				if (auto *polygon = dynamic_cast<CSPrimLinPoly *>(primitive))
+				{
+					ValidateSurfaceContour(*polygon);
+					if (polygon->GetNormDir() < 0 || polygon->GetNormDir() > 2 ||
+						!std::isfinite(polygon->GetElevation()) || !std::isfinite(polygon->GetLength()) ||
+						polygon->GetLength() == 0)
+					{
+						throw std::invalid_argument("CartesianSubgrid: sampled material polygon requires finite nonzero axial extrusion");
+					}
+				}
+				else if (auto *cylinder = dynamic_cast<CSPrimCylinder *>(primitive))
+				{
+					unsigned int directions = 0;
+					for (unsigned int n = 0; n < 3; ++n)
+					{
+						directions += cylinder->GetCoord(2 * n) != cylinder->GetCoord(2 * n + 1);
+					}
+					if (primitive->GetType() != CSPrimitives::CYLINDER || directions != 1 ||
+						!(cylinder->GetRadius() > 0) || !std::isfinite(cylinder->GetRadius()))
+					{
+						throw std::invalid_argument("CartesianSubgrid: sampled material cylinders require one axis and positive radius");
+					}
+				}
+				else
+				{
+					throw std::invalid_argument("CartesianSubgrid: sampled materials require linear polygons or axial cylinders");
+				}
 			}
 			if ((type == CSProperties::MATERIAL || type == CSProperties::METAL || type == SurfaceMetalType) &&
 				primitive->GetCoordinateSystem() != UNDEFINED_CS &&
@@ -946,6 +978,26 @@ void Operator_CartesianSubgrid::ValidateProperties() const
 			}
 		}
 	}
+}
+
+void Operator_CartesianSubgrid::SetMaxLeaves(std::size_t count)
+{
+	if (m_Grid)
+	{
+		throw std::logic_error("CartesianSubgrid: leaf budget must precede operator preparation");
+	}
+	CartesianSubgridDetail::ValidateLeafLimit(count);
+	m_MaxLeaves = count;
+}
+
+void Operator_CartesianSubgrid::SetMaterialSamples(unsigned int samples)
+{
+	if (m_Grid)
+	{
+		throw std::logic_error("CartesianSubgrid: material samples must precede operator preparation");
+	}
+	CartesianSubgridMaterialQuadrature::Validate(samples);
+	m_MaterialSamples = samples;
 }
 
 void Operator_CartesianSubgrid::SetChildLines(const CartesianSubgrid::Axes &drawingLines)
@@ -1074,6 +1126,78 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 		primitive->GetBoundBox(box.data());
 		bounds.push_back(box);
 	}
+	std::vector<std::array<double, 6>> shapedMaterialBounds;
+	std::size_t shapedMaterialCount = 0;
+	for (auto *primitive : primitives)
+	{
+		if (dynamic_cast<CSPrimBox *>(primitive))
+		{
+			continue;
+		}
+		++shapedMaterialCount;
+		std::array<double, 6> box;
+		primitive->GetBoundBox(box.data());
+		if (auto *polygon = dynamic_cast<CSPrimLinPoly *>(primitive))
+		{
+			// A simple contour cannot change membership within a leaf unless
+			// one of its boundary segments intersects that leaf. Keep segment
+			// bounds conservative; axial end cuts are rejected separately.
+			const auto count = polygon->GetQtyCoords();
+			const unsigned int axis = unsigned(polygon->GetNormDir());
+			const unsigned int a = (axis + 1) % 3, b = (axis + 2) % 3;
+			for (std::size_t k = 0; k < count; ++k)
+			{
+				const auto next = (k + 1) % count;
+				auto piece = box;
+				for (unsigned int n = 0; n < 2; ++n)
+				{
+					const unsigned int direction = n ? b : a;
+					const double start = polygon->GetCoord(int(2 * k + n));
+					const double stop = polygon->GetCoord(int(2 * next + n));
+					piece[2 * direction] = std::min(start, stop);
+					piece[2 * direction + 1] = std::max(start, stop);
+				}
+				shapedMaterialBounds.push_back(piece);
+			}
+		}
+		else
+		{
+			shapedMaterialBounds.push_back(box);
+		}
+	}
+	if (!shapedMaterialBounds.empty())
+	{
+		std::cout << "CartesianSubgrid shaped materials: " << shapedMaterialCount
+			<< " primitives; explicit isotropic volume quadrature " << m_MaterialSamples
+			<< " samples per axis; mesh and quadrature convergence required" << std::endl;
+	}
+	const auto materialSample = [this, primitives, shapedMaterialBounds](
+		const CartesianSubgrid::Point &start, const CartesianSubgrid::Point &stop)
+	{
+		CartesianSubgrid::Point lo, hi;
+		for (unsigned int n = 0; n < 3; ++n)
+		{
+			lo[n] = start[n] / gridDelta + discLines[n][0];
+			hi[n] = stop[n] / gridDelta + discLines[n][0];
+		}
+		const bool shaped = std::any_of(shapedMaterialBounds.begin(), shapedMaterialBounds.end(),
+			[&](const std::array<double, 6> &box)
+			{
+				return box[0] <= hi[0] && box[1] >= lo[0] && box[2] <= hi[1] &&
+					box[3] >= lo[1] && box[4] <= hi[2] && box[5] >= lo[2];
+			});
+		return CartesianSubgridMaterialQuadrature::Average(lo, hi, shaped ? m_MaterialSamples : 0,
+			[&](const CartesianSubgrid::Point &point)
+			{
+				double coordinate[3] = {point[0], point[1], point[2]};
+				auto *property = CSX->GetPropertyByCoordPriority(coordinate, primitives, true);
+				auto *material = property ? static_cast<CSPropMaterial *>(property) : nullptr;
+				return CartesianSubgridMaterialQuadrature::Values{
+					(material ? material->GetEpsilon() : GetBackgroundEpsR()) * EPS0,
+					(material ? material->GetMue() : GetBackgroundMueR()) * MUE0,
+					material ? material->GetKappa() : 0, material ? material->GetSigma() : 0};
+			});
+	};
 	auto sample = [&](const CartesianSubgrid::Point &start, const CartesianSubgrid::Point &stop)
 	{
 		double lo[3], hi[3], centre[3], tolerance[3];
@@ -1153,10 +1277,8 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 				}
 			}
 		}
-		auto *property = CSX->GetPropertyByCoordPriority(centre, primitives, true);
-		auto *material = property ? static_cast<CSPropMaterial *>(property) : nullptr;
-		return CartesianSubgrid::Medium{(material ? material->GetEpsilon() : GetBackgroundEpsR()) * EPS0,
-										(material ? material->GetMue() : GetBackgroundMueR()) * MUE0};
+		const auto value = materialSample(start, stop);
+		return CartesianSubgrid::Medium{value[0], value[1]};
 	};
 	auto pec = [&](unsigned int, const CartesianSubgrid::Point &start, const CartesianSubgrid::Point &stop)
 	{
@@ -1215,7 +1337,7 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 		hasMetal ? CartesianSubgrid::PECSelector(pec) : CartesianSubgrid::PECSelector(), boundaries,
 		hasSurfaceMetal ? CartesianSubgrid::OpaqueSelector(opaque) : CartesianSubgrid::OpaqueSelector(),
 		m_EngineType == Engine::GPU ? CartesianSubgrid::CurlLayout::SpatialBlocks : CartesianSubgrid::CurlLayout::Patterns,
-		childLines));
+		childLines, m_MaxLeaves));
 	const auto curlStorage = m_Grid->StructuredCurlStorage();
 	std::cout << "CartesianSubgrid curl storage: " << curlStorage.regularRows << " spatial rows, "
 		<< curlStorage.exceptionRows << " algebraic rows; " << curlStorage.bytes << " accounted bytes" << std::endl;
@@ -1252,18 +1374,11 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 	{
 		// Keep the sorted pointer snapshot alive through extension setup. Grid
 		// positions are SI offsets; CSXCAD membership uses drawing coordinates.
-		auto conductivity = [this, primitives](const CartesianSubgrid::Point &start,
+		auto conductivity = [materialSample](const CartesianSubgrid::Point &start,
 			const CartesianSubgrid::Point &stop)
 		{
-			double centre[3];
-			for (unsigned int n = 0; n < 3; ++n)
-			{
-				centre[n] = (start[n] + stop[n]) / (2 * gridDelta) + discLines[n][0];
-			}
-			auto *property = CSX->GetPropertyByCoordPriority(centre, primitives, true);
-			auto *material = property ? static_cast<CSPropMaterial *>(property) : nullptr;
-			return Operator_Ext_CartesianSubgrid_Conductivity::Coefficients{
-				material ? material->GetKappa() : 0, material ? material->GetSigma() : 0};
+			const auto value = materialSample(start, stop);
+			return Operator_Ext_CartesianSubgrid_Conductivity::Coefficients{value[2], value[3]};
 		};
 		auto extension = std::make_unique<Operator_Ext_CartesianSubgrid_Conductivity>(this, std::move(conductivity));
 		std::vector<Operator_Ext_CartesianSubgrid_Conductivity::SurfaceAdmittance> admittances;

@@ -313,3 +313,39 @@ is not a master-versus-branch FDTD benchmark, full-array wall-time prediction
 or evidence that all preparation is13x faster. The inherited no-port domain
 benchmark is not used to establish this gain. Evidence: the separately frozen
 `resolved-port-edges-r35-r02/` study and `port-benchmark-summary-r01.json`.
+
+
+## Explicit PCB material sampling and count budgets
+
+Python accepts `CartesianSubgridMaterialSamples=0/2/4/8` and
+`CartesianSubgridMaxLeaves=count`, or the corresponding `Set...` methods.
+Matlab/Octave helpers have the same names with `FDTD` as first argument.
+C++ uses `SetupCartesianSubgridMaterialSamples` and
+`SetupCartesianSubgridMaxLeaves`. XML attributes are optional; clear either
+option independently by restoring its default (0 samples / 1,000,000 leaves).
+Nondefault options require Cartesian refinement regions and matching rebuilt
+solver/scripting headers. These are experimental controls, not antenna approval.
+
+Zero samples retains strict aligned material boxes. Explicit 2/4/8 midpoint
+samples per axis average positive scalar epsilon/mu and nonnegative electric/
+magnetic conductivity in leaves intersecting native simple extruded polygons
+or axial cylinders. CAD priority is resolved per sample. Transforms, general
+anisotropy and other shapes remain rejected. This is a leaf-volume approximation,
+not conformal interface integration; thin unsampled features can be missed.
+Both material quadrature and spatial/RF convergence require separate checks.
+
+The default one-million-leaf count guard remains. An explicit larger budget
+uses checked products and summed region counts, retaining other factor/offset
+limits. The conservative 357,913,941 index ceiling is not a RAM estimate or a
+qualified usable size. External host/device admission is still required.
+GPU-free homogeneous controls reach 3,932,160 leaves, not a project antenna.
+
+The combined R46 binary passes 65/65 CPU tests, 16 exact frozen-R42 operator/
+field files and 40 physical CUDA gates on RTX4090/RTX3080 in both orders.
+Native sampled-material/bulk-loss, child coordinates, ports, PML and TD/FD
+observations are included. Core SHA256:
+`710cb05253a6b56cb25d61ef0bda35490a2bc05f798c2b6cd29c1a350d45a16c`.
+Exact numerical/API/test source is promoted; historical documentation is
+retained independently. Evidence: `combined-pcb-runtime-r46/` in the project
+experiment archive. Metal, large native PCB memory/interfaces, curved-conductor
+RF convergence, selective native DFT and collective pause remain open.
