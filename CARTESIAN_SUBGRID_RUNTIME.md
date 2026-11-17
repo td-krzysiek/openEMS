@@ -182,6 +182,6 @@ knots. All original field/ledger/passivity thresholds remain. Single/domain
 fields are exact; maximum double-field error is2.033e-6 and normalized energy
 balance error1.543e-7. Source/runtime/fixture/binary identities and terminal
 exit0/no-OOM are independently rechecked. This unchanged standalone fixture
-is now registered in CTest; a combined CTest replay of the new registration
-and physical Metal remain pending. It is not a PCB RF-convergence result.
+is now registered in CTest; the combined registration passes in R31's
+56-test superset. Physical Metal remains pending. It is not a PCB RF-convergence result.
 Allocation/interface guards remain unchanged.

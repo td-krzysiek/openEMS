@@ -322,8 +322,8 @@ Matlab/Octave remain unqualified. An additional standalone R30 composition
 fixture passes14 CPU/reference native-coordinate bulk/surface-loss/port/copper
 cases plus58 physical CUDA cases across each GPU and both orders, with exact
 single/domain fields and maximum double-field error2.033e-6. Its unchanged
-standalone test is now supplied and registered; a combined CTest replay of
-that registration and Metal for the composition remain open. The original
+standalone test is now supplied and registered; the combined registration passes in R31's56-test superset, while Metal for
+the composition remains open. The original
 degenerate field diagnostic and two R29 fixture failures remain retained.
 R29-r02 implements implicit incoming curl support without global incoming CSR.
 Its corrected24-case all-row oracle and full CPU54/54 pass, including16 exact
@@ -336,8 +336,16 @@ numerical/test source is now promoted; Metal remains open. See the
 [implicit incoming contract](CARTESIAN_SUBGRID_DOMAINS.md#implicit-incoming-curl-support).
 Separate frozen R31 compresses only
 worker ownership labels in256-state uniform/byte-mixed tiles, retaining the
-dense oracle. Thirty storage/address controls and early parent replay pass;
-full CPU56, measured RSS/setup and physical qualification remain pending.
+dense oracle. Thirty storage/address controls, full CPU56/56,16 exact parent
+files, native reference and the unified R30 test pass. Three interleaved
+repetitions reduce peak RSS2.90–5.41% against R29, with measured whole setup
++2.36–4.73%; physical22-gate qualification is running and Metal remains open.
+The numerical source is not yet promoted. Separate R32 metadata-only initial
+state preparation removes global FP32 E/H copies while preserving global FTZ
+qualification and constructor-local borrowing. Its original misplaced-flag
+compile failure is retained; R32-r02 corrects only the header placement and
+passes16 metadata/tail/domain-state controls, early actual-parent replay and
+streamed fields. Full CPU57, RSS/setup and physical qualification remain open.
 No full-PCB, guard increase or production adoption follows.
 
 - [ ] **U01** Define device-resident block fields, interface metadata and update
