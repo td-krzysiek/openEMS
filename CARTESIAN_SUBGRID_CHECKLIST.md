@@ -1326,3 +1326,30 @@ pause/resume/snapshot controls, full build/replay and physical/Metal gates remai
 required before any promotion. Production/frozen runtimes are unchanged.
 Evidence: `external-pause-r61/reuse-r01.json`, `external-pause-r61/DESIGN.md`,
 `external-pause-r61/request-helper-tests-r01.json`.
+
+
+R60 full GPU-free CPU76/76 now passes exit0/noOOM,42 commands and16 exact actual-
+R58 operator/field arrays. Independent review rehashes799 source files; focused
+six direct/twelve native fence controls include actual backend-completion calls,
+resumed fields/DFT and malformed/missing/failed acknowledgement guards.
+Initial physical admission held before docker run because GPU5 had57MiB free;
+no numerical R60 physical job ran there. A named resource-only R02 harness keeps
+all binaries/gates and uses measured GPU2RTX4090 plus free GPU6RTX3080, with exact
+accepted R58/R59 release and fresh guards. Physical80 is now running as
+818d3be7cad5d00fd9b712bbb8675dc4b9edbc40d63cc8db254070362b985470.
+No physical or Metal acceptance is inferred from CPU76.
+Evidence: `collective-fence-r60/independent-cpu-review-r01.json`,
+`collective-fence-r60/alternate-pair-r02.json`,
+`collective-fence-r60/alternate-pair-collector-review-r01.json`.
+
+R61 source811 files and its byte-exact public dipole/application harness are now
+frozen separately. The admitted GPU-free build waits for and follows actual R60
+CPU76 acceptance; build ID
+d72ab3674604205cccb7418e139712b0ea70a0ea5fbb31e9b857950f84628248.
+The new application controls cover native basic/reference/split-reference and
+ordinary basic/reference, startup/manual pause, repeated same-epoch snapshots,
+resumed final-array identity and forged controller IDs. Implementation and nine
+pure request-helper tests do not qualify the pending native application gates.
+Source, device controls, recent Metal and representative antenna remain separate.
+Evidence: `external-pause-r61/preparation-r01.json`,
+`external-pause-r61/application_control.py`.
