@@ -1633,3 +1633,24 @@ The recent Metal headroom sample remains below its unchanged threshold.
 Evidence: `representative-slab-mesh-r66/audit-independent-r01.json`,
 `representative-slab-mesh-r66/full-audit-owner-r01.json`,
 `ordinary-metal-guard-r65/metal-headroom-r02.json`.
+
+R67 adds opt-in host preparation phase timing with
+`OPENEMS_SUBGRID_SETUP_PROFILE=1`, disabled by default and absent from cell
+callbacks/time updates. Eight grid and five native intervals retain nested
+scope, completion markers and numerical exceptions even on stream failure.
+Removing diagnostics restores the exact qualified R65 numeric source.
+Independent CPU review accepts79/79 CTest,55 scripted commands and16 exact
+actual-parent files, also reproduced with timing enabled;822 source/553 archive
+files are rehashed. Focused physical RTX3080 review accepts three conductor
+controls and current/actual-R65 application lanes, with160 exact final arrays
+and624 rehashed archive files. Exact timing/test source is promoted; no
+production/frozen/R64/R66 runtime changes. Interleaved overhead measurement,
+recent Metal and representative antenna qualification remain separate.
+The first benchmark adapter failed before its first child because the image
+lacks `/usr/bin/time`; a named standard-library `wait4` derivative preserves
+all numeric gates, inputs and runtimes. No benchmark speed claim is made.
+Evidence: `setup-timing-r67/cpu-independent-r02.json`,
+`setup-timing-r67/physical-independent-r02.json`,
+`setup-timing-r67/promotion-r01.json`,
+`setup-timing-r67/timing-benchmark-failure-r01.json`,
+`setup-timing-r67/timing-benchmark-chain-r02.json`.

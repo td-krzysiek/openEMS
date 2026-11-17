@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include "operator_cartesiansubgrid.h"
+#include "subgrid_setup_timing.h"
 #include "subgrid_allocation_limits.h"
 #include "subgrid_observations.h"
 #include "gpu_cartesiansubgrid_dft.h"
@@ -1198,6 +1199,7 @@ void Operator_CartesianSubgrid::SetChildLines(const CartesianSubgrid::Axes &draw
 
 int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 {
+	CartesianSubgridSetupTiming timing("native");
 	if (flags != None)
 	{
 		throw std::invalid_argument("CartesianSubgrid: rectangular operator debug dumps are not supported");
@@ -1519,12 +1521,14 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 		boundaries[i] =
 			(m_BC[i] == 0 || m_BC[i] == 3) ? CartesianSubgrid::BoundaryType::PEC : CartesianSubgrid::BoundaryType::PMC;
 	}
+	timing.Phase("cad_preparation");
 	m_Grid.reset(new CartesianSubgrid(
 		lines, GetBackgroundEpsR() * EPS0, GetBackgroundMueR() * MUE0, regions, false, sample,
 		hasMetal ? CartesianSubgrid::PECSelector(pec) : CartesianSubgrid::PECSelector(), boundaries,
 		hasSurfaceMetal ? CartesianSubgrid::OpaqueSelector(opaque) : CartesianSubgrid::OpaqueSelector(),
 		m_EngineType == Engine::GPU ? CartesianSubgrid::CurlLayout::SpatialBlocks : CartesianSubgrid::CurlLayout::Patterns,
 		childLines, m_MaxLeaves));
+	timing.Phase("grid");
 	const auto curlStorage = m_Grid->StructuredCurlStorage();
 	std::cout << "CartesianSubgrid curl storage: " << curlStorage.regularRows << " spatial rows, "
 		<< curlStorage.exceptionRows << " algebraic rows; " << curlStorage.bytes << " accounted bytes" << std::endl;
@@ -1551,6 +1555,7 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 	m_Exc->Reset(dT);
 	const auto distributedResistors = PrepareResistors();
 	PrepareSources();
+	timing.Phase("ports_and_source");
 	bool hasConductivity = false;
 	for (CSProperties *property : CSX->GetPropertyByType(CSProperties::MATERIAL))
 	{
@@ -1617,6 +1622,7 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 		AddExtension(extension.get());
 		m_NativeConductivity = extension.release();
 	}
+	timing.Phase("surface_metal");
 	for (auto *extension : m_Op_exts)
 	{
 		if (!extension->BuildExtension())
@@ -1631,6 +1637,8 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 			advance->ValidatePreparedExtensions();
 		}
 	}
+	timing.Phase("extension_build");
+	timing.Complete();
 	return 0;
 }
 

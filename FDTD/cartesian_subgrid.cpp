@@ -5,6 +5,7 @@
 #include "subgrid_device_precision.h"
 #include "subgrid_interface_limits.h"
 #include "subgrid_allocation_limits.h"
+#include "subgrid_setup_timing.h"
 
 #include <algorithm>
 #include <cmath>
@@ -343,6 +344,7 @@ CartesianSubgrid::Trace CartesianSubgrid::Restrict(const Edge &edge, bool ignore
 void CartesianSubgrid::Build(const MediumSampler &medium, const PECSelector &pec,
 	const OpaqueSelector &opaque, std::size_t expectedLeaves)
 {
+	CartesianSubgridSetupTiming timing("grid");
 	std::vector<CartesianSubgridEdgeIndex::Region> addressRegions;
 	if (m_UniformFine)
 	{
@@ -390,6 +392,7 @@ void CartesianSubgrid::Build(const MediumSampler &medium, const PECSelector &pec
 		}
 	}
 	m_Leaves.Finish();
+	timing.Phase("leaf_addresses");
 	m_Media.Reserve(m_Leaves.size());
 	if (opaque)
 	{
@@ -414,6 +417,7 @@ void CartesianSubgrid::Build(const MediumSampler &medium, const PECSelector &pec
 		}
 	}
 	m_Media.Finish();
+	timing.Phase("leaf_materials_and_opaque");
 	if (opaque)
 	{
 		// Boundary traces remain free. Only edges whose incident leaves are
@@ -454,6 +458,7 @@ void CartesianSubgrid::Build(const MediumSampler &medium, const PECSelector &pec
 		}
 		m_PECEdges.insert(interior.begin(), interior.end());
 	}
+	timing.Phase("opaque_edge_elimination");
 	if (pec)
 	{
 		for (const Leaf &cell : m_Leaves)
@@ -474,6 +479,7 @@ void CartesianSubgrid::Build(const MediumSampler &medium, const PECSelector &pec
 			}
 		}
 	}
+	timing.Phase("pec_classification");
 	for (const Leaf &cell : m_Leaves)
 	{
 		for (unsigned int n = 0; n < 3; ++n)
@@ -518,6 +524,7 @@ void CartesianSubgrid::Build(const MediumSampler &medium, const PECSelector &pec
 			}
 		}
 	}
+	timing.Phase("master_edges_and_constraints");
 	// PMC leaves tangential E free. The one-sided boundary mass and the
 	// shared curl transpose enforce zero tangential H as a natural boundary
 	// condition at the outer physical face. No ghost-field time update is added.
@@ -568,7 +575,9 @@ void CartesianSubgrid::Build(const MediumSampler &medium, const PECSelector &pec
 		m_SqrtMass.push_back(std::sqrt(value));
 	}
 	std::vector<double>().swap(mass);
+	timing.Phase("electric_mass_assembly");
 	const double inverseMassBound = FactorMass(off);
+	timing.Phase("interface_factor");
 	off.clear();
 	std::vector<double> columns(m_Edges.size(), 0);
 	double maxRow = 0;
@@ -654,6 +663,8 @@ void CartesianSubgrid::Build(const MediumSampler &medium, const PECSelector &pec
 	m_StableStep = 1.98 / bound;
 	m_Electric.AssignZero(m_Edges.size());
 	m_Magnetic.AssignZero(6 * m_Leaves.size());
+	timing.Phase("curl_and_step_bound");
+	timing.Complete();
 	// CPU-only sweep work is allocated on first reference use. Device
 	// preparation and complete-batch field mirrors do not need it.
 }

@@ -349,3 +349,43 @@ Exact numerical/API/test source is promoted; historical documentation is
 retained independently. Evidence: `combined-pcb-runtime-r46/` in the project
 experiment archive. Metal, large native PCB memory/interfaces, curved-conductor
 RF convergence, selective native DFT and collective pause remain open.
+
+## Optional preparation phase timing
+
+Set `OPENEMS_SUBGRID_SETUP_PROFILE=1` before starting a Cartesian-subgrid
+preparation. For example:
+
+```sh
+OPENEMS_SUBGRID_SETUP_PROFILE=1 openEMS model.xml --no-simulation
+```
+
+The same process environment applies to native Python/Matlab launches. Absent,
+`0` or other values leave the diagnostics disabled. This is not an XML/API
+setting and does not add timers to field updates or per-cell callbacks.
+
+Eight grid intervals distinguish leaf addresses, material/opaque sampling,
+interior-metal elimination, PEC classification, master edges/constraints,
+electric mass, interface factor and curl/stability preparation. Five native
+intervals distinguish CAD, grid, ports/source, surface metal and extensions.
+The native grid interval contains the eight grid intervals: **do not add the
+two groups**. These are host elapsed times, including shared-host scheduling
+and diagnostic output, not device-clock kernel measurements. XML/CSX updates,
+engine creation and processing startup lie outside these intervals.
+
+Each group ends with `completed_stages` and `complete`; a failure retains an
+incomplete marker and the original numerical exception. Logging errors do not
+replace numerical failures. The setting does not enable a different numerical
+scheme or repair an invalid model.
+
+R67's exact source passes CPU79/79,55 scripted controls and16 exact actual-R65
+operator/field files, also with logging enabled. Focused RTX3080 conductor and
+native application controls preserve160 raw arrays across uninterrupted,
+paused and actual-parent execution. The surface-field relative error remains
+2.340e-6 against the unchanged2e-4 gate. Source/archive hashes and ELF resolution
+are independently checked. Evidence: `setup-timing-r67/` in the project archive;
+core SHA256 `8f4d2097d750b8ff4a55a4682d713d96701a99cecba59bac0639da06d0b2709c`.
+
+An interleaved setup-only overhead measurement is separate and still pending;
+no speed or zero-overhead claim follows from equivalence. Recent Metal and
+representative antenna/resource acceptance remain open. Existing production,
+frozen RF and full-board preparation runtimes are unchanged.

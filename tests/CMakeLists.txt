@@ -4,6 +4,7 @@
 # just built. Add a new one to TESTS below, no further wiring needed.
 
 set(TESTS
+  test_cartesian_subgrid_setup_timing
   test_cartesian_subgrid_child_api
   test_openems_surface_capability_guard
   test_cartesian_subgrid_device_child_knots

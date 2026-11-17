@@ -16,6 +16,11 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Added
 
+- Experimental Cartesian subgrids can report preparation phase wall times with
+  `OPENEMS_SUBGRID_SETUP_PROFILE=1`. Logging is off by default and does not run
+  in field updates. Scoped CPU/CUDA controls retain fields and port histories;
+  recent Metal and representative antenna qualification remain separate.
+
 - Experimental Cartesian subgrids store exact edge addresses more compactly.
   Scoped CPU/CUDA controls retain geometry and fields; interleaved host tests
   reduce measured preparation memory without a measured speedup. Rebuild
