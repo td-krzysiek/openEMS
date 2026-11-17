@@ -1147,3 +1147,19 @@ physical64 waits for CPU acceptance and the exact accepted R55 pair release.
 This remains an unqualified source, not a promoted solver fix or antenna build.
 Evidence: `native-field-gather-r56/build-failure-review-r01.json`,
 `native-field-gather-r56-r02/preparation-r01.json`.
+
+
+R56 R02's twelve focused reference cases pass with zero measured field/complex
+DFT discrepancy, but a separate minimal corner reproducer finds SIGSEGV when
+the raw region has no support. This is a new adapter defect, not an upstream
+FDTD defect. Only its waiting physical-admission watcher is held; CPU evidence
+continues unchanged. R03 keeps a budgeted one-float region sentinel and adds
+empty upper-E-cell/lower-H-node cases in each of twelve source/PML/loss/single/
+domain controls. Its isolated build passes; full CPU72 is running and physical64
+remains gated on acceptance and exact qualified R55 release. No R56 source is
+promoted. Evidence: `native-field-gather-r56-r02/zero-region-review-r01.json`,
+`native-field-gather-r56-r03/preparation-r01.json`.
+
+The exact independently compiled R55 memory driver and reproduction steps are
+also available in this fork as `benchmark/subgrid_initial_memory.{cpp,md}`;
+this is a host-memory characterization, not an FDTD speed benchmark.
