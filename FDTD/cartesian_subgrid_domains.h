@@ -76,6 +76,7 @@ class CartesianSubgridDomainPlan
 	{
 		CartesianSubgridConductivityPrepared advance;
 		std::optional<CartesianSubgridPMLData> pml;
+		bool borrowedInitialState = false;
 	};
 	CartesianSubgridDomainPlan(const CartesianSubgrid &grid, unsigned int axis,
 		const std::vector<double> &cuts, Prepared prepared);

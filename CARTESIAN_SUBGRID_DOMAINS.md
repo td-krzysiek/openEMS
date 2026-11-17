@@ -677,3 +677,45 @@ not FDTD speedups. Global owned-index arrays and initial host fields remain in
 this revision. Subsequent R32/R33 candidates require independent acceptance.
 Metal, full-array scaling, RF convergence and production adoption remain open;
 no allocation, interface, numerical or resource guard is increased.
+
+
+## Metadata-only initial state preparation
+
+R32-r02 removes global temporary FP32 E/H copies from streamed domain
+preparation. A metadata-only preparation scans the complete global electric
+then magnetic double state in the unchanged order, retaining identical
+underflow, maximum, L1, significant-tail and finite/range checks. It does not
+recompute a separate FTZ allowance per worker or double-count ghosts. A const
+constructor converts the existing double state directly into each owned/ghost
+package. The source grid remains unmodified; no borrowed state escapes the
+constructor. Expanded and single-device APIs retain their owning field copies.
+No field update, kernel, coefficient, timestep or source arithmetic changes.
+
+The original frozen R32 build failed because a boolean was placed in the
+public domain-data structure rather than private Prepared metadata. The
+separately frozen r02 changes only that header placement before building; the
+failed source and compile log remain preserved.
+
+Sixteen metadata/tail controls require exact owning-oracle metadata, global
+FTZ ledgers and per-domain initial values, including signed zero, tiny tails,
+all-underflow, overflow, nonfinite and half-step rejection. Full CPU57/57,16
+exact actual-R31 operator/field files and native observations pass. All22
+physical CUDA gates pass on the actual4090/3080 pair in both orders, including
+24 exact domain cases,48 child-coordinate cases,58 native child-loss
+compositions and16 native Python cases. Terminal exit0/no-OOM and actual
+source/runtime/raw identities were independently reviewed.
+
+Three interleaved repetitions compare actual R29/R31/R32-r02 prefixes. The
+table reports the immediately preceding R31. Permanent grid storage, field
+IDs, coefficients, owner choices, ghost counts and local term counts are equal.
+
+| Fixture leaves | R31 peak RSS, bytes | R32 peak RSS, bytes | RSS change | Whole setup change |
+|---:|---:|---:|---:|---:|
+|491,520 uniform|308965376|291012608|−5.81%|+0.23%|
+|61,440 graded|87764992|85372928|−2.73%|+0.34%|
+|960,000 uniform|569307136|534880256|−6.05%|+3.08%|
+
+These are preparation-memory measurements, not FDTD throughput claims. Full
+double host fields, global address storage and all local upload packages still
+exist. Metal, full-array memory/interface scaling, curved RF convergence and
+antenna qualification remain open. Allocation/resource guards stay unchanged.

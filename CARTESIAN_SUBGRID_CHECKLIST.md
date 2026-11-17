@@ -159,6 +159,16 @@ unaccounted minimum-spacing/timestep change.
 - [ ] **P05** Validate single- and multiport power balance, complex impedance,
   reflection/transmission and passive terminations against regular fine grids.
 
+A full-board input audit now confirms an additional native-port blocker:
+rectangular sheet resistors with transverse extent are rejected by the current
+line-path mapper. A minimal line-versus-sheet fixture reproduces the exact
+rejection on the unchanged R32 runtime. Native multi-edge line support does
+not qualify that distributed geometry. P04/P05 and representative-antenna
+admission remain open until the ordinary geometry-normalized per-edge G,
+cap electrodes, probe conventions, passive power and device/domain execution
+are independently qualified. Do not collapse the antenna port to a line or
+increase the64-resistor dense reference guard as a workaround.
+
 Acceptance: qualify a short 50-ohm transmission line before an antenna.
 Sampling reconstructed E/H on base observation coordinates is not, by itself,
 a qualified physical port. P01/P03/P05 are **partial**: source normalization,
@@ -343,18 +353,20 @@ repetitions reduce peak RSS2.90–5.41% against R29, with measured whole setup
 including24 exact domain cases,16 native Python cases and58 native-child loss
 compositions. Exact source is promoted; Metal remains open. See the
 [tiled-owner contract](CARTESIAN_SUBGRID_DOMAINS.md#tiled-domain-ownership-labels).
-Separate R32 metadata-only initial
+Qualified R32 metadata-only initial
 state preparation removes global FP32 E/H copies while preserving global FTZ
 qualification and constructor-local borrowing. Its original misplaced-flag
 compile failure is retained; R32-r02 corrects only the header placement and
 passes16 metadata/tail/domain-state controls, full CPU57/57,16 exact
 actual-parent files and native observations. Three interleaved measurements
 reduce peak RSS2.73–6.05% against R31, with whole setup+0.23–3.08%;
-physical22-gate qualification is running. Source is not promoted; Metal remains
-open. R33 owns finalized labels and precomputes canonical owned ranks using
+all22 physical CUDA gates pass on4090/3080 in both orders. Exact source is
+promoted; Metal remains open. See the [initial-state contract](CARTESIAN_SUBGRID_DOMAINS.md#metadata-only-initial-state-preparation).
+R33 owns finalized labels and precomputes canonical owned ranks using
 uniform-tile bases or exact mixed/dense uint32 ranks, removing mutable global
-address slots. Its frozen implementation/new oracle are building; no numerical,
-physical or memory qualification is claimed.
+address slots. Its frozen implementation builds successfully. Fifty rank size/pattern
+cases, five independent map comparisons and ASan/UBSan controls pass; full
+CPU58, physical and memory qualification remain pending.
 No full-PCB, guard increase or production adoption follows.
 
 - [ ] **U01** Define device-resident block fields, interface metadata and update
@@ -746,3 +758,5 @@ numerical change invalidates their prior qualification.
 | 2026-11-17 | Further partial C01/C03/C05/D01/D05: implicit incoming curl support | R29-r02, exact qualified source promoted | [Topology query and measured tradeoff](CARTESIAN_SUBGRID_DOMAINS.md#implicit-incoming-curl-support). CPU54/54,16 exact actual-R28 files,24 all-row controls and18 physical CUDA gates/24 exact domain cases/16 native cases pass. Interleaved peak RSS−2.28–3.82%, whole setup+8.84–18.90% against R28. Metal, large-array and RF convergence remain open; guards unchanged. |
 
 | 2026-11-17 | Further partial C03/C05/D01/D05: tiled domain ownership | R31, exact qualified source promoted | [Contract and measured storage](CARTESIAN_SUBGRID_DOMAINS.md#tiled-domain-ownership-labels). CPU56/56,30 storage/address controls,16 exact actual-parent files and22 physical CUDA gates pass on4090/3080 in both orders. Native child losses, TD/FD/ports and exact domain fields are retained. Interleaved peak RSS−2.90–5.41% against R29; whole setup+2.36–4.73%. Metal, full-array scaling and RF remain open; allocation guards unchanged. |
+
+| 2026-11-17 | Further partial C03/C05/D01/D05: metadata-only initial state | R32-r02, exact qualified source promoted | [Contract and preparation measurements](CARTESIAN_SUBGRID_DOMAINS.md#metadata-only-initial-state-preparation). CPU57/57,16 exact actual-R31 files,16 initial metadata/tail controls and22 physical CUDA gates pass on4090/3080 in both orders. Global FTZ bounds and local owned/ghost initial values remain exact. Interleaved peak RSS−2.73–6.05% against R31, whole setup+0.23–3.08%. Earlier original compile failure retained; Metal, full-array scaling and RF remain open. |

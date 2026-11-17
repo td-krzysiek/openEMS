@@ -31,6 +31,8 @@ class CartesianSubgrid
 	friend class Engine_Ext_CartesianSubgrid_PML;
 	friend class Operator_Ext_CartesianSubgrid_Conductivity;
 	friend class Engine_Ext_CartesianSubgrid_Conductivity;
+	// Domain preparation borrows normalized initial values only during its constructor.
+	friend class CartesianSubgridDomainPlan;
   public:
 	using Point = std::array<double, 3>;
 	using Index = std::array<unsigned int, 3>;
@@ -258,6 +260,8 @@ class CartesianSubgrid
 	CartesianSubgridDeviceData DeviceData() const;
 	//! Single-device preparation without the expanded curl/transpose oracle.
 	CartesianSubgridDeviceData DeviceStateData() const;
+	//! Checked domain metadata with global FTZ bounds, but no copied initial fields.
+	CartesianSubgridDeviceData DeviceSetupMetadata() const;
 	CartesianSubgridDeviceOperators DeviceCurls(bool spatialBlocks = true) const;
 	//! Read one canonical normalized row into reusable setup-only storage.
 	void CurlRow(std::size_t face, std::vector<std::pair<std::size_t, double>> &row) const;
@@ -268,7 +272,7 @@ class CartesianSubgrid
 							const float *magnetic, std::size_t magneticCount);
 
   private:
-	CartesianSubgridDeviceData PrepareDeviceData(bool includeCurls) const;
+	CartesianSubgridDeviceData PrepareDeviceData(bool includeCurls, bool includeFields = true) const;
 	struct Edge
 	{
 		int axis;

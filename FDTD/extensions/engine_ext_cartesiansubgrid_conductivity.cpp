@@ -167,6 +167,16 @@ void Engine_Ext_CartesianSubgrid_Conductivity::UpdateMagnetic(double timestep)
 CartesianSubgridConductivityPrepared Engine_Ext_CartesianSubgrid_Conductivity::PrepareDomainData(
 	const Engine_Ext_CartesianSubgrid_PML *pml, bool expandedCurls) const
 {
+	return PrepareDomainDataImpl(pml, expandedCurls, true);
+}
+
+CartesianSubgridConductivityPrepared Engine_Ext_CartesianSubgrid_Conductivity::PrepareDomainDataImpl(
+	const Engine_Ext_CartesianSubgrid_PML *pml, bool expandedCurls, bool includeFields) const
+{
+	if (expandedCurls && !includeFields)
+	{
+		throw std::invalid_argument("CartesianSubgrid: expanded domain oracle requires explicit initial fields");
+	}
 	if (m_Advanced || m_UsingDevice || m_Grid.m_PendingMagneticTimestep != 0)
 	{
 		throw std::invalid_argument("CartesianSubgrid: distributed conductivity requires cold constitutive histories");
@@ -186,12 +196,12 @@ CartesianSubgridConductivityPrepared Engine_Ext_CartesianSubgrid_Conductivity::P
 	m_Conductivity->ValidatePreparedExtensions();
 	if (!m_Conductivity->HasLoss())
 	{
-		return {expandedCurls ? m_Grid.DeviceData() : m_Grid.DeviceStateData(), {}};
+		return {includeFields ? (expandedCurls ? m_Grid.DeviceData() : m_Grid.DeviceStateData()) : m_Grid.DeviceSetupMetadata(), {}};
 	}
-	return PrepareDeviceData(expandedCurls);
+	return PrepareDeviceData(expandedCurls, includeFields);
 }
 
-CartesianSubgridConductivityPrepared Engine_Ext_CartesianSubgrid_Conductivity::PrepareDeviceData(bool expanded) const
+CartesianSubgridConductivityPrepared Engine_Ext_CartesianSubgrid_Conductivity::PrepareDeviceData(bool expanded, bool includeFields) const
 {
 	const auto &c = *m_Conductivity;
 	const auto index = [](std::size_t value)
@@ -212,7 +222,7 @@ CartesianSubgridConductivityPrepared Engine_Ext_CartesianSubgrid_Conductivity::P
 		}
 		return result;
 	};
-	auto data = expanded ? m_Grid.DeviceData() : m_Grid.DeviceStateData();
+	auto data = includeFields ? (expanded ? m_Grid.DeviceData() : m_Grid.DeviceStateData()) : m_Grid.DeviceSetupMetadata();
 	if (data.rootConductance.empty())
 	{
 		data.portTimestep = 0;

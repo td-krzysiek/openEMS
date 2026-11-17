@@ -17,35 +17,37 @@ struct TailInfo
 	double l1 = 0, relativeBound = 0;
 };
 
+//! Scalar conversion only; the complete state still requires StateTo's bound.
+inline float StateValue(double value)
+{
+	const float converted = static_cast<float>(value);
+	if (!std::isfinite(value) || !std::isfinite(converted))
+	{
+		throw std::invalid_argument("CartesianSubgrid: overflowing/nonfinite initial device state");
+	}
+	return value != 0 && std::abs(converted) < std::numeric_limits<float>::min() ? 0 : converted;
+}
+
 //! Normal initial fields plus explicitly bounded negligible FTZ tails.
 /*! Do not erase an entirely subnormal state. The summed dropped magnitude,
  *  relative to the original maximum, must be at most eps(float)^2. This makes
  *  compact Gaussian initial conditions usable without filtering resolved fields.
  */
-inline std::vector<float> State(const std::vector<double> &values, TailInfo &info)
+//! Preserve global scan order and FTZ qualification without requiring storage.
+template <class Sink> inline void StateTo(const std::vector<double> &values, TailInfo &info, Sink sink)
 {
-	std::vector<float> result;
-	result.reserve(values.size());
 	double maximum = 0;
 	TailInfo dropped;
 	for (double value : values)
 	{
-		const float converted = static_cast<float>(value);
-		if (!std::isfinite(value) || !std::isfinite(converted))
-		{
-			throw std::invalid_argument("CartesianSubgrid: overflowing/nonfinite initial device state");
-		}
+		const float converted = StateValue(value);
 		maximum = std::max(maximum, std::abs(value));
 		if (value != 0 && std::abs(converted) < std::numeric_limits<float>::min())
 		{
 			++dropped.terms;
 			dropped.l1 += std::abs(value);
-			result.push_back(0);
 		}
-		else
-		{
-			result.push_back(converted);
-		}
+		sink(converted);
 	}
 	dropped.relativeBound = maximum == 0 ? 0 : dropped.l1 / maximum;
 	const double epsilon = std::numeric_limits<float>::epsilon();
@@ -56,6 +58,13 @@ inline std::vector<float> State(const std::vector<double> &values, TailInfo &inf
 	info.terms += dropped.terms;
 	info.l1 += dropped.l1;
 	info.relativeBound = std::max(info.relativeBound, dropped.relativeBound);
+}
+
+inline std::vector<float> State(const std::vector<double> &values, TailInfo &info)
+{
+	std::vector<float> result;
+	result.reserve(values.size());
+	StateTo(values, info, [&](float value) { result.push_back(value); });
 	return result;
 }
 

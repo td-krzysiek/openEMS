@@ -26,9 +26,12 @@ class Engine_Ext_CartesianSubgrid_Conductivity : public Engine_Ext_CartesianSubg
 	const CartesianSubgrid &Grid() const { return m_Grid; }
 
   private:
+	friend class CartesianSubgridDomainPlan;
+	CartesianSubgridConductivityPrepared PrepareDomainDataImpl(
+		const Engine_Ext_CartesianSubgrid_PML *pml, bool expandedCurls, bool includeFields) const;
 	static void Add(std::array<double, 2> &sum, double value);
 	void Check(double timestep) const;
-	CartesianSubgridConductivityPrepared PrepareDeviceData(bool expanded) const;
+	CartesianSubgridConductivityPrepared PrepareDeviceData(bool expanded, bool includeFields = true) const;
 	Operator_Ext_CartesianSubgrid_Conductivity *m_Conductivity;
 	CartesianSubgrid &m_Grid;
 	std::vector<double> m_OldElectric, m_SourceCurl, m_Scratch;

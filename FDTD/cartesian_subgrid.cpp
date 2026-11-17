@@ -1979,8 +1979,15 @@ CartesianSubgridDeviceData CartesianSubgrid::DeviceStateData() const
 	return PrepareDeviceData(false);
 }
 
-CartesianSubgridDeviceData CartesianSubgrid::PrepareDeviceData(bool includeCurls) const
+CartesianSubgridDeviceData CartesianSubgrid::DeviceSetupMetadata() const
 {
+	return PrepareDeviceData(false, false);
+}
+
+CartesianSubgridDeviceData CartesianSubgrid::PrepareDeviceData(bool includeCurls, bool includeFields) const
+{
+	Require(!includeCurls || includeFields,
+		"CartesianSubgrid: expanded device preparation requires explicit initial fields");
 	Require(m_PendingMagneticTimestep == 0, "CartesianSubgrid: device upload requires a complete timestep");
 	const auto index = [](std::size_t value)
 	{
@@ -2003,8 +2010,18 @@ CartesianSubgridDeviceData CartesianSubgrid::PrepareDeviceData(bool includeCurls
 	CartesianSubgridDeviceData data;
 	data.streamCurls = !includeCurls;
 	data.stableTimestep = m_StableStep;
-	data.electric = CartesianSubgridFloat::State(m_Electric, data.stateTails);
-	data.magnetic = CartesianSubgridFloat::State(m_Magnetic, data.stateTails);
+	if (includeFields)
+	{
+		data.electric = CartesianSubgridFloat::State(m_Electric, data.stateTails);
+		data.magnetic = CartesianSubgridFloat::State(m_Magnetic, data.stateTails);
+	}
+	else
+	{
+		// Validate the same complete E/H states and retain the same FTZ ledger.
+		// Per-domain conversion must not recalculate a bound on smaller subsets.
+		CartesianSubgridFloat::StateTo(m_Electric, data.stateTails, [](float) {});
+		CartesianSubgridFloat::StateTo(m_Magnetic, data.stateTails, [](float) {});
+	}
 	if (includeCurls)
 	{
 		quantity = "curl coefficient";

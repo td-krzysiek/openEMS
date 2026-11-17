@@ -107,21 +107,21 @@ template <class Lookup> void Rows(const std::vector<Index> &owned, const std::ve
 
 CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(const CartesianSubgrid &grid,
 	unsigned int axis, const std::vector<double> &cuts, CurlPreparation curls)
-	: CartesianSubgridDomainPlan(grid, axis, cuts, {{curls == CurlPreparation::ExpandedOracle ? grid.DeviceData() : grid.DeviceStateData(), {}}, {}})
+	: CartesianSubgridDomainPlan(grid, axis, cuts, {{curls == CurlPreparation::ExpandedOracle ? grid.DeviceData() : grid.DeviceSetupMetadata(), {}}, {}, curls != CurlPreparation::ExpandedOracle})
 {
 }
 
 CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(
 	const Engine_Ext_CartesianSubgrid_Conductivity &advance, unsigned int axis,
 	const std::vector<double> &cuts, CurlPreparation curls)
-	: CartesianSubgridDomainPlan(advance.Grid(), axis, cuts, {advance.PrepareDomainData(nullptr, curls == CurlPreparation::ExpandedOracle), {}})
+	: CartesianSubgridDomainPlan(advance.Grid(), axis, cuts, {advance.PrepareDomainDataImpl(nullptr, curls == CurlPreparation::ExpandedOracle, curls == CurlPreparation::ExpandedOracle), {}, curls != CurlPreparation::ExpandedOracle})
 {
 }
 
 CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(const Engine_Ext_CartesianSubgrid_PML &pml,
 	unsigned int axis, const std::vector<double> &cuts, CurlPreparation curls)
-	: CartesianSubgridDomainPlan(pml.Grid(), axis, cuts, {{curls == CurlPreparation::ExpandedOracle ? pml.Grid().DeviceData() : pml.Grid().DeviceStateData(), {}},
-		pml.PrepareDomainData()})
+	: CartesianSubgridDomainPlan(pml.Grid(), axis, cuts, {{curls == CurlPreparation::ExpandedOracle ? pml.Grid().DeviceData() : pml.Grid().DeviceSetupMetadata(), {}},
+		pml.PrepareDomainData(), curls != CurlPreparation::ExpandedOracle})
 {
 }
 
@@ -129,7 +129,7 @@ CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(
 	const Engine_Ext_CartesianSubgrid_Conductivity &advance, const Engine_Ext_CartesianSubgrid_PML &pml,
 	unsigned int axis, const std::vector<double> &cuts, CurlPreparation curls)
 	: CartesianSubgridDomainPlan(advance.Grid(), axis, cuts,
-		{advance.PrepareDomainData(&pml, curls == CurlPreparation::ExpandedOracle), pml.PrepareDomainData(&advance)})
+		{advance.PrepareDomainDataImpl(&pml, curls == CurlPreparation::ExpandedOracle, curls == CurlPreparation::ExpandedOracle), pml.PrepareDomainData(&advance), curls != CurlPreparation::ExpandedOracle})
 {
 }
 
@@ -160,8 +160,11 @@ CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(const CartesianSubgrid &g
 		(m_PortStep == 0 || m_PMLStep == m_PortStep)), "CartesianSubgrid: invalid domain PML timestep");
 	m_FactorTails = data.factorTails;
 	m_StateTails = data.stateTails;
-	m_ElectricCount = data.electric.size();
-	m_MagneticCount = data.magnetic.size();
+	Require(!prepared.borrowedInitialState ||
+		(data.streamCurls && data.electric.empty() && data.magnetic.empty()),
+		"CartesianSubgrid: borrowed initial state requires checked metadata only");
+	m_ElectricCount = prepared.borrowedInitialState ? grid.EdgeCount() : data.electric.size();
+	m_MagneticCount = prepared.borrowedInitialState ? grid.FaceCount() : data.magnetic.size();
 	Require(m_MagneticCount == 6 * grid.CellCount(), "CartesianSubgrid: unexpected magnetic quadrature layout");
 	const auto owner = [&](double coordinate)
 	{
@@ -340,12 +343,14 @@ CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(const CartesianSubgrid &g
 		for (Index global : domain.globalElectric)
 		{
 			eMaps[worker].emplace(global, static_cast<Index>(local.electric.size()));
-			local.electric.push_back(data.electric[global]);
+			local.electric.push_back(prepared.borrowedInitialState ?
+				CartesianSubgridFloat::StateValue(grid.m_Electric.at(global)) : data.electric[global]);
 		}
 		for (Index global : domain.globalMagnetic)
 		{
 			hMaps[worker].emplace(global, static_cast<Index>(local.magnetic.size()));
-			local.magnetic.push_back(data.magnetic[global]);
+			local.magnetic.push_back(prepared.borrowedInitialState ?
+				CartesianSubgridFloat::StateValue(grid.m_Magnetic.at(global)) : data.magnetic[global]);
 		}
 		const auto rows = [&](bool transpose, const std::vector<Index> &owned, const CartesianSubgridDomainMap &input,
 			std::vector<Index> &starts, std::vector<Index> &columns,
