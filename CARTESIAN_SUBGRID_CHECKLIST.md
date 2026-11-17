@@ -1421,3 +1421,17 @@ Evidence: `external-pause-r61/cpu-independent-r03.json`,
 `external-pause-r61/fault-controls-independent-r01.json`,
 `external-pause-r61/physical-fault-independent-r02.json`,
 `external-pause-r61/promotion-r01.json`.
+
+
+R62 now executes the unchanged accepted R47 Z3/t4 native smooth-copper U-line
+(1,544,144 leaves,4fs,500k steps) on the exact R61 installed runtime: one
+RTX4090, then actual4090/3080 domains in both worker orders. Fresh4CPU/6GiB,
+80GiB project/12GiB reserve and physical VRAM checks pass; actual single-device
+FDTD progress is verified. The original observer quoting issue affected only
+status reads; its named replacement retains the same running container ID.
+Predeclared runtime/domain RF gates are complexGamma1e-5,S21 phase0.01deg and
+magnitude0.001dB over24.000–24.250GHz. Running is not numerical acceptance,
+and this small-network replay does not qualify a representative antenna,
+large-PCB resources or general three-dimensional curved convergence.
+Evidence: `pcb-pair-rf-r62/preparation-r01.json`, `pcb-pair-rf-r62/DESIGN.md`,
+`pcb-pair-rf-r62/admission-r01.json`, `pcb-pair-rf-r62/owner-r02.json`.
