@@ -1223,3 +1223,14 @@ also queued with the unchanged1GiB compiler/1.5GiB test,12.5GiB reserve and
 15.5GiB stable60s admission guards. No production/antenna runtime changes.
 Evidence: `native-device-dft-r58/preparation-r01.json`,
 `native-device-dft-r58/DESIGN.md`.
+
+
+R57 R02 now passes full CPU73/73 and16 exact actual-R56 operator/field arrays,
+exit0/noOOM. Independent review rehashes792 source files and the compact raw
+archive. Six focused DFT domain/port cases have maximum complex error
+1.35356e-14, with exact unchanged single-device fields; long cancellation and
+empty/duplicate/order/budget/epoch controls pass. Physical68 is running after
+the exact accepted R56 release. No R57 source is promoted yet. R58 native
+integration build is now running behind that accepted CPU parent, not yet
+qualified; recent Metal still waits for unchanged headroom admission.
+Evidence: `device-dft-r57-r02/independent-cpu-review-r01.json`.
