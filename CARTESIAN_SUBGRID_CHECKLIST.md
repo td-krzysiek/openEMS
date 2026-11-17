@@ -298,20 +298,21 @@ is implemented with Linux CPU48/48, exact operator/field and physical
 directory followup. Local Metal qualification is pending after two
 host-reserve build stops. Peak setup RSS falls1.60–3.41% in three bounded
 interleaved cases, with longer setup. C01/C03/C05 remain incomplete; no
-antenna or guard-increase acceptance follows. The unpromoted direct-row
+antenna or guard-increase acceptance follows. The direct-row R25
 candidate subsequently passes CPU49/49, sixteen exact operator/field files,
 twelve coefficient controls and native reference cases, plus thirteen physical
 CUDA gates with24 exact domain cases and16 native cases in both pair orders.
 Interleaved peak setup RSS falls18.64% on the graded case but grows
 3.25–3.79% on regular cases, so it is not adopted as a general memory win.
-The next isolated candidate compresses only exact incoming face IDs, with
+R26 compresses only exact incoming face IDs, with
 an allocation gate retaining raw CSR when smaller. Its Linux CPU50/50,
 sixteen exact frozen-parent files and native8-case controls pass. Three
 interleaved repetitions against R24 reduce peak RSS7.59%/22.63%/8.20% on
 uniform491,520/graded61,440/uniform960,000 leaves, with whole setup
-changes+10.92%/−11.92%/+2.39%. Physical CUDA review and Metal remain open;
-this is not a general speedup. Neither candidate is in this branch's
-numerical source yet. A further isolated native-child-coordinate prototype
+changes+10.92%/−11.92%/+2.39%. Thirteen physical CUDA gates pass on each GPU
+and in both pair orders, including24 exact domain and16 native Python cases.
+The exact R26 numerical/test bytes are now in this branch. Metal remains open;
+this is not a general speedup or full-PCB adoption. A further isolated native-child-coordinate prototype
 builds, but its first symmetric-field divergence metric is degenerate on
 both equal and native meshes. A separately corrected fixture passes12
 geometry/energy cases on unchanged core; a fresh full regression with device
@@ -703,3 +704,4 @@ numerical change invalidates their prior qualification.
 | 2026-11-17 | Further partial C03/C05/U04/D05: lazy CPU reference workspace | R22, parent `ef323a2` | [Workspace evidence](CARTESIAN_SUBGRID_DOMAINS.md#lazy-serial-reference-workspace): first-use/negative/capacity controls, reference/Metal exact metadata/fields, native8/16 and CTest47 pass. Interleaved cold-storage/RSS reductions only; physical14-gate/CTest47 replay passes in both pair orders after terminal review. No guard increase or production/antenna qualification. |
 
 | 2026-11-17 | Further partial C01/C03/C05: implicit leaf geometry | R24-r03, parent `c003761` | [Address/snapshot contract and evidence](CARTESIAN_SUBGRID_BLOCKS.md#implicit-rootchild-leaf-addresses). CPU48/48, sixteen exact operator/field files,126 address cases/723,354 cells,128 snapshot controls, twelve physical CUDA gates plus a separate corrected native16-case followup. Original TMPDIR collision and rejected R01/R02 prototypes retained. Peak RSS−1.60–3.41% with longer setup. Metal pending after resource stops; no scaling/antenna acceptance or guard increase. |
+| 2026-11-17 | Further partial C01/C03/C05/D01/D05: direct rows and integer incoming addresses | R26, following unpromoted R25 measurement | [Domain preparation and three-prefix measurements](CARTESIAN_SUBGRID_DOMAINS.md#direct-canonical-rows-and-incoming-face-addresses). CPU50/50,16 exact frozen-parent files,12 coefficient controls,13 physical CUDA gates/24 exact domain cases and16 native cases in both pair orders. Peak RSS−7.59–22.63% against R24; whole setup+10.92/−11.92/+2.39%. Exact numerical/test bytes promoted; Metal, full-array scaling and antenna RF remain open. |

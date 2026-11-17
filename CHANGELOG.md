@@ -16,6 +16,9 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Added
 
+- Experimental C++ Cartesian-subgrid diagnostics can read a normalized curl
+  row into reusable caller storage without creating full device operators.
+
 - Experimental native Cartesian-subgrid runs can select fixed local domains
   through CLI/Python options, with explicit device/reference workers and
   complete-batch host processing. Use `none` for a one-worker cut list.

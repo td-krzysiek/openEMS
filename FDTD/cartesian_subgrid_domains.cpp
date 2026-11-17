@@ -2,10 +2,12 @@
 #include "cartesian_subgrid_domains.h"
 #include "cartesian_subgrid.h"
 #include "subgrid_domain_map.h"
+#include "subgrid_incoming_faces.h"
 #include "extensions/engine_ext_cartesiansubgrid_conductivity.h"
 #include "extensions/engine_ext_cartesiansubgrid_pml.h"
 #include <algorithm>
 #include <cmath>
+#include <limits>
 #include <set>
 #include <stdexcept>
 #include <unordered_map>
@@ -14,42 +16,111 @@ namespace
 {
 using Index = std::uint32_t;
 using Map = std::unordered_map<Index, Index>;
+// Setup-only row reader. The numerical grid already owns the exact curl.
+// Keep only incoming face IDs for C^T instead of preparing global FP32 C/C^T.
+// Ascending face traversal retains the established transpose sum order.
 class CurlRows
 {
   public:
-	CurlRows(const CartesianSubgrid &grid, const CartesianSubgridDeviceData &data) : m_Data(data)
+	CurlRows(const CartesianSubgrid &grid, const CartesianSubgridDeviceData &data)
+		: m_Grid(grid), m_Data(data)
 	{
-		if (data.streamCurls)
+		if (!data.streamCurls)
 		{
-			m_Patterns = grid.DeviceCurls(false);
+			return;
 		}
+		m_Row.reserve(8);
+		std::vector<Index> incoming(data.electric.size() + 1, 0);
+		for (std::size_t face = 0; face < data.magnetic.size(); ++face)
+		{
+			grid.CurlRow(face, m_Row);
+			for (const auto &term : m_Row)
+			{
+				++incoming.at(term.first + 1);
+			}
+		}
+		for (std::size_t edge = 0; edge < data.electric.size(); ++edge)
+		{
+			const std::size_t total = std::size_t(incoming[edge]) + incoming[edge + 1];
+			if (total > std::numeric_limits<Index>::max())
+			{
+				throw std::invalid_argument("CartesianSubgrid: incoming curl count overflow");
+			}
+			incoming[edge + 1] = static_cast<Index>(total);
+		}
+		std::vector<Index> faces(incoming.back());
+		// Release the cursor before compressing incoming face addresses.
+		{
+			auto cursor = incoming;
+			for (std::size_t face = 0; face < data.magnetic.size(); ++face)
+			{
+				grid.CurlRow(face, m_Row);
+				for (const auto &term : m_Row)
+				{
+					faces[cursor[term.first]++] = static_cast<Index>(face);
+				}
+			}
+		}
+		m_Incoming.emplace(std::move(incoming), std::move(faces), data.magnetic.size());
 	}
 
 	template <class Visitor> void ForEach(bool transpose, Index row, Visitor visitor) const
 	{
-		if (m_Patterns)
+		if (!m_Data.streamCurls)
 		{
-			const auto &curl = transpose ? m_Patterns->transpose : m_Patterns->curl;
-			const Index pattern = curl.pattern.at(row), base = curl.base.at(row);
-			for (Index k = curl.start.at(pattern); k < curl.start.at(pattern + 1); ++k)
+			const auto &start = transpose ? m_Data.transposeStart : m_Data.curlStart;
+			const auto &column = transpose ? m_Data.transposeColumn : m_Data.curlColumn;
+			const auto &weight = transpose ? m_Data.transposeWeight : m_Data.curlWeight;
+			const auto &low = transpose ? m_Data.transposeLow : m_Data.curlLow;
+			for (Index k = start.at(row); k < start.at(std::size_t(row) + 1); ++k)
 			{
-				visitor(base + curl.offset[k], curl.weight[k], curl.residual[k]);
+				visitor(column[k], weight[k], low[k]);
 			}
 			return;
 		}
-		const auto &start = transpose ? m_Data.transposeStart : m_Data.curlStart;
-		const auto &column = transpose ? m_Data.transposeColumn : m_Data.curlColumn;
-		const auto &weight = transpose ? m_Data.transposeWeight : m_Data.curlWeight;
-		const auto &low = transpose ? m_Data.transposeLow : m_Data.curlLow;
-		for (Index k = start.at(row); k < start.at(row + 1); ++k)
+		if (!transpose)
 		{
-			visitor(column[k], weight[k], low[k]);
+			m_Grid.CurlRow(row, m_Row);
+			for (const auto &term : m_Row)
+			{
+				Emit(static_cast<Index>(term.first), term.second, visitor);
+			}
+			return;
 		}
+		m_Incoming->ForEach(row, [&](Index face)
+		{
+			m_Grid.CurlRow(face, m_Row);
+			const auto term = std::lower_bound(m_Row.begin(), m_Row.end(), row,
+				[](const auto &candidate, Index edge) { return candidate.first < edge; });
+			if (term == m_Row.end() || term->first != row)
+			{
+				throw std::logic_error("CartesianSubgrid: incoming face lost its canonical curl term");
+			}
+			Emit(face, term->second, visitor);
+		});
 	}
 
   private:
+	static float Scalar(double value)
+	{
+		const float converted = static_cast<float>(value);
+		if (!std::isfinite(value) || !std::isfinite(converted) ||
+			(value != 0 && std::abs(converted) < std::numeric_limits<float>::min()))
+		{
+			throw std::invalid_argument("CartesianSubgrid: nonrepresentable streamed curl coefficient");
+		}
+		return converted;
+	}
+	template <class Visitor> static void Emit(Index column, double value, const Visitor &visitor)
+	{
+		const float high = Scalar(value), low = Scalar(value - double(high));
+		visitor(column, high, low);
+	}
+	const CartesianSubgrid &m_Grid;
 	const CartesianSubgridDeviceData &m_Data;
-	std::optional<CartesianSubgridDeviceOperators> m_Patterns;
+	std::optional<CartesianSubgridIncomingFaces> m_Incoming;
+	// Private to one serial preparation object; never shared by worker threads.
+	mutable std::vector<std::pair<std::size_t, double>> m_Row;
 };
 void Require(bool condition, const char *message)
 {

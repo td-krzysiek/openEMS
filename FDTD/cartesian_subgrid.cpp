@@ -1999,6 +1999,22 @@ CartesianSubgridDeviceData CartesianSubgrid::PrepareDeviceData(bool includeCurls
 	return data;
 }
 
+void CartesianSubgrid::CurlRow(std::size_t face,
+	std::vector<std::pair<std::size_t, double>> &row) const
+{
+	Require(m_PendingMagneticTimestep == 0,
+		"CartesianSubgrid: curl-row access requires a complete timestep");
+	if (face >= m_Magnetic.size())
+	{
+		throw std::out_of_range("CartesianSubgrid: curl row is out of range");
+	}
+	row.clear();
+	m_CurlOperator.ForEach(face, [&](std::size_t edge, double value)
+	{
+		row.emplace_back(edge, value);
+	}, CurlMetrics());
+}
+
 CartesianSubgridDeviceOperators CartesianSubgrid::DeviceCurls(bool spatialBlocks) const
 {
 	Require(m_PendingMagneticTimestep == 0, "CartesianSubgrid: device curls require a complete timestep");

@@ -561,3 +561,38 @@ configuration, source/build identities, actual scripting/Metal/CLI/RF/NF2FF
 controls, the R02 `none` correction and pending physical CUDA qualification.
 This is local native execution; it does not add remote worker management,
 external collective pause or production/representative-array qualification.
+
+## Direct canonical rows and incoming-face addresses
+
+R26 removes the temporary global FP32 curl/transpose pair from streamed
+domain preparation. `CurlRow` reads the owning grid's canonical double row
+into reusable caller storage. A setup-only incoming-face index retains exact
+ascending transpose order with shared integer-offset patterns; an allocation
+gate keeps owned raw CSR instead when smaller. The temporary cursor and,
+when compressed, raw CSR are released before local packages are built.
+No coefficient is approximated, field/history ownership changed or kernel
+updated. The expanded path remains an independent oracle.
+
+Linux GPU-free controls pass CTest50/50,16 exact actual-parent operator and
+512-step field files,12 coefficient cases,6 exact domain cases and8 native
+TD/FD/U/I cases. Thirteen physical CUDA gates pass on the RTX4090/RTX3080
+pair:24 exact domain cases, both pair orders, retained loss/PML controls and
+16 native cases. Source/runtime hashes and actual exit0/no OOM are rechecked.
+CUDA core SHA256:
+`af2f565365bc1e8d1fee55ad43168f05821035b00da368f1333bfb4452b62610`.
+Metal remains pending; no platform pass is inferred from another backend.
+
+Three interleaved repetitions compare actual frozen R24, R25 and R26:
+
+| Case | R24 peak RSS | R25 peak RSS | R26 peak RSS | R26/R24 whole setup |
+|---|---:|---:|---:|---:|
+|Uniform491,520 leaves|364,580,864B|378,351,616B|336,912,384B|+10.92%|
+|Graded two-material61,440 leaves|118,181,888B|96,686,080B|91,443,200B|−11.92%|
+|Uniform960,000 leaves|681,447,424B|703,909,888B|625,590,272B|+2.39%|
+
+Whole setup uses medians of actual combined grid/plan intervals. R26 reduces
+peak RSS against both prefixes, but is not a general setup/FDTD speedup.
+Permanent grid bytes, local terms, owned/ghost counts and timestep agree.
+The earlier R25 memory regression and all frozen prefixes remain preserved.
+Actual full-array scaling, large interfaces, global fields/observations and
+production resource savings remain open; no allocation guard is increased.
