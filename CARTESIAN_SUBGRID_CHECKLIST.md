@@ -1014,22 +1014,38 @@ numerical/API/test promotion. Metal remains open. Native processing still reques
 no native DFT/RAM saving or representative antenna acceptance is claimed.
 
 
-R49 is a separately frozen, unpromoted physical-observation bridge over exact
-R48-r04. Owning E/H sample stencils retain existing interpolation, hanging traces,
-constitutive/mass normalization and positive-side material selection. The sparse
-reader also accepts existing U/I functionals; no field equation or native
-Processing/energy/DFT behavior changes. Isolated build passes; CPU67 has started,
-including independent analytic SI fields, direct reconstruction, complete-field
-and double/single/domain controls. Qualification remains pending; no native
-memory/transfer, RF or antenna gain is claimed. Exact source/build identities
-and gates are in `physical-observations-r49/` in the project evidence archive.
+R49's exact physical E/H/U/I bridge is now promoted after CPU67/67,16 exact
+frozen-R48 operator/field files and48 physical CUDA gates on4090/3080 and both
+pair orders. Direct reconstruction and selected/full single/domain values agree
+exactly; maximum relative independent-double difference is3.23037e-7. All773
+source and406 archived files were independently rehashed. Native Processing,
+energy and DFT still read complete fields; Metal/native savings remain open.
+Evidence: `physical-observations-r49/`.
 
+R49's external owner inspected an old completed container instead of R47.
+Small physical controls consequently overlapped our own RF series. Fresh VRAM/
+host guards still passed; independent numerical buffers were retained, with no
+foreign preemption. No performance/timing-isolation claim is accepted. Original
+owner/admission/audit remain immutable. The R51 successor now verifies exact
+container Name+ID before admission and again remotely; regression rejects old
+completed IDs, reused names, live/failed/OOM/dead predecessors.
 
-R50 extends the host characterization plan to3.93/7.68/15M leaves with both
-curl layouts on the accepted immutable R48-r04 core. One separately admitted
-GPU-free4CPU/12GiB container retains the80GiB project cap/12GiB host reserve.
-Default one-million rejection, exact region arithmetic/ownership, sampled
-curls/fields and one-step energy are required; failure never automatically
-raises the cap. Results remain pending. This is homogeneous setup/package
-characterization, not native PCB/GPU/antenna resource qualification or a change
-to the public default guard. Evidence: `scaling-budget-r50/` in the project archive.
+R50 completes all six GPU-free homogeneous controls at3.93/7.68/15M leaves on
+immutable R48-r04, under4CPU/12GiB and the unchanged80GiB cap/12GiB reserve.
+Actual terminal exit0/noOOM and raw source/runtime were reviewed. At15M leaves,
+peak RSS is6,047.98MiB for blocks /6,355.39MiB for patterns; corresponding grid
+setup is78.29/73.16s and four-worker planning146.24/75.27s. Exact ownership,
+64 curl/12 field samples per layout pair and first-step energy drift<=6.22e-15
+pass. These are single observations of homogeneous host preparation, not native
+PCB/GPU/RF/long-time or full-array admission. Public default remains1M.
+Evidence: `scaling-budget-r50/review-r01.json`.
+
+R51 is a separately frozen, unpromoted optional device field-energy candidate
+over R49. It includes off-diagonal Galerkin electric mass, unique owned states,
+scaled compensated reductions and complete-epoch guards; native processing is
+unchanged. The original test configured a resistor after unused soft sources
+and correctly rejected. A preserved test-only correction passes185 energy/
+loss/PML checks on the unchanged core, maximum relative error1.15141e-8. The
+fresh corrected build passes; CPU68 is running, then52 physical gates wait for
+actual CPU acceptance and exact R47/R49 release. Metal/native use remains open.
+Evidence: `device-energy-r51/`; R01 failure is not overwritten or solver-fixed.

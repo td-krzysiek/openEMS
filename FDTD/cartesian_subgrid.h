@@ -204,6 +204,11 @@ class CartesianSubgrid
 	void SetMagnetic(const Field &field);
 	double Electric(unsigned int component, const Point &position) const;
 	double Magnetic(unsigned int component, const Point &position) const;
+	//! Owning linear SI E/H sample stencils on the unchanged normalized state.
+	//! Setup-only reconstruction; includes hanging traces and local constitutive factors.
+	Integral ElectricSample(unsigned int component, const Point &position) const;
+	Integral MagneticSample(unsigned int component, const Point &position) const;
+
 	void AddElectric(std::size_t edge, double value);
 	Point EdgePosition(std::size_t edge) const;
 	unsigned int EdgeDirection(std::size_t edge) const;

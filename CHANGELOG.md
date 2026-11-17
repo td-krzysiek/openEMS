@@ -16,6 +16,11 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Added
 
+- Experimental C++ Cartesian-subgrid diagnostics can reconstruct physical E/H
+  and existing U/I functionals from startup-selected states. Scoped CPU/CUDA
+  controls pass; native processing still downloads full fields, and Metal
+  qualification remains open. Rebuild matching callers/plugins.
+
 - Experimental C++ Cartesian-subgrid workers can gather startup-selected
   normalized E/H states at complete epochs. Complete-field host mirrors now
   allocate on explicit read. Scoped CPU/CUDA controls pass; native processing

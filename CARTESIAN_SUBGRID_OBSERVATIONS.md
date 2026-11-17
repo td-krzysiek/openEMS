@@ -51,3 +51,31 @@ reference for port cases under the established2e-4 bound; source-only and
 single/domain FP32 gates remain2e-6. Original failure/diagnosis remain evidence,
 not a numerical code fix or relaxed solver threshold. Metal is still open;
 no native DFT/antenna/performance acceptance follows from these small controls.
+
+
+## Physical E/H/U/I observations — R49
+
+`ElectricSample` and `MagneticSample` build owning linear SI reconstruction
+stencils, preserving local interpolation, hanging traces, electric mass factors
+and leaf permeability. `CartesianSubgridObservations` accepts these and existing
+voltage-path/current-contour functionals, deduplicates state IDs at startup,
+and reconstructs ordered outputs from selected complete-epoch readbacks.
+The device must originate from the same unchanged grid and outlive the reader;
+count checks alone do not identify topology. No native Processing/energy/DFT
+readback behavior changes in this increment.
+
+Exact R49 source passes67/67 CPU tests,16 bit-identical frozen-R48 files and48
+physical CUDA gates on4090/3080 and both pair orders. The24 new physical controls
+include105 functionals/case, analytic SI normalization, opaque/material
+interfaces, direct reconstruction and independent double stepping. Maximum
+relative double-reference error is3.23037e-7; selected/complete and single/domain
+outputs agree exactly. Qualified core SHA256:
+`4f0d52ceb9c75d15be8d9ef4c404d77f7b8b16429af9a611ab00156f0f4df948`.
+Source and406 archived files were independently rehashed. Metal remains open.
+
+The external physical-test owner checked an older completed job instead of its
+intended RF predecessor. This harness defect allowed overlap with our own RF
+series; resource limits still passed and numerical cases used independent
+state. Preserve the original launch/audit and use no timing-isolation or
+performance claim from these controls. The next owner requires exact container
+name AND ID terminal checks twice, with positive/negative regression coverage.

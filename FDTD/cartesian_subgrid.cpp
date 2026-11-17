@@ -1428,6 +1428,51 @@ double CartesianSubgrid::Magnetic(unsigned int n, const Point &position) const
 		   (area * m_Media[index].permeability);
 }
 
+CartesianSubgrid::Integral CartesianSubgrid::ElectricSample(unsigned int n, const Point &position) const
+{
+	Require(n < 3, "CartesianSubgrid: invalid sample component");
+	const auto index = FindLeaf(position);
+	Integral result;
+	if (LeafIsOpaque(index))
+	{
+		return result;
+	}
+	const Leaf &cell = m_Leaves[index];
+	const unsigned int a = (n + 1) % 3, b = (n + 2) % 3;
+	const double u = LocalFraction(cell, a, position[a]);
+	const double v = LocalFraction(cell, b, position[b]);
+	for (unsigned int i = 0; i < 2; ++i)
+	{
+		for (unsigned int j = 0; j < 2; ++j)
+		{
+			const double weight = (i ? u : 1 - u) * (j ? v : 1 - v);
+			for (const auto &term : Restrict(LocalEdge(cell, n, i, j)).weights)
+			{
+				result.weights.emplace_back(term.first, weight * term.second / m_SqrtMass[term.first]);
+			}
+		}
+	}
+	return result;
+}
+
+CartesianSubgrid::Integral CartesianSubgrid::MagneticSample(unsigned int n, const Point &position) const
+{
+	Require(n < 3, "CartesianSubgrid: invalid sample component");
+	const auto index = FindLeaf(position);
+	const Leaf &cell = m_Leaves[index];
+	const double t = LocalFraction(cell, n, position[n]);
+	const double area = Length(cell, (n + 1) % 3) * Length(cell, (n + 2) % 3);
+	const std::size_t first = 6 * index + 2 * n;
+	Integral result;
+	result.magnetic = true;
+	for (unsigned int side = 0; side < 2; ++side)
+	{
+		result.weights.emplace_back(first + side,
+			(side ? t : 1 - t) / (m_SqrtReluctance[(first + side) / 2] * area * m_Media[index].permeability));
+	}
+	return result;
+}
+
 void CartesianSubgrid::AddElectric(std::size_t edge, double value)
 {
 	Require(std::isfinite(value), "CartesianSubgrid: nonfinite source");
