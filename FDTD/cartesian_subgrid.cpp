@@ -390,7 +390,7 @@ void CartesianSubgrid::Build(const MediumSampler &medium, const PECSelector &pec
 		}
 	}
 	m_Leaves.Finish();
-	m_Media.reserve(m_Leaves.size());
+	m_Media.Reserve(m_Leaves.size());
 	if (opaque)
 	{
 		m_OpaqueCells.reserve(m_Leaves.size());
@@ -407,12 +407,13 @@ void CartesianSubgrid::Build(const MediumSampler &medium, const PECSelector &pec
 		Require(value.epsilon > 0 && std::isfinite(value.epsilon) && value.permeability > 0 &&
 					std::isfinite(value.permeability),
 				"CartesianSubgrid: positive finite leaf epsilon and permeability required");
-		m_Media.push_back(value);
+		m_Media.Append(value);
 		if (opaque)
 		{
 			m_OpaqueCells.push_back(opaque(start, stop));
 		}
 	}
+	m_Media.Finish();
 	if (opaque)
 	{
 		// Boundary traces remain free. Only edges whose incident leaves are
@@ -1546,7 +1547,7 @@ std::size_t CartesianSubgrid::StorageBytes() const
 		bytes += axis.capacity() * sizeof(double);
 	}
 	bytes += m_Edges.capacity() * sizeof(Edge) +
-			 m_Regions.capacity() * sizeof(Region) + m_Media.capacity() * sizeof(Medium) + m_OpaqueCells.capacity();
+			 m_Regions.capacity() * sizeof(Region) + m_Media.StorageBytes() + m_OpaqueCells.capacity();
 	// Structured address buffers are counted by allocated capacity, not a tree-node estimate.
 	bytes += m_EdgeIndex->StorageBytes();
 	bytes += m_PECEdges.size() * (sizeof(Edge) + 4 * sizeof(void *)) + m_PECFaces.capacity();

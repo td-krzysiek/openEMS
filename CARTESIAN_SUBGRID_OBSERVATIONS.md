@@ -119,3 +119,20 @@ retain exact selected/full functional values, maximum relative energy error
 epoch under concurrent readers. Exact source is promoted; Metal, prepared
 E/H/DFT, PCB scaling and representative RF/antenna remain open. Evidence:
 `native-sparse-observations-r53/independent-qualification-r01.json`.
+
+
+## Qualified material/observation composition — R54
+
+R54 composes the exact bounded material palette with native selected probes
+and scalar energy. Exact repeated epsilon/mu retain their original bits;
+homogeneous media need no per-leaf IDs, up to4096 pairs use32-bit IDs, and
+fully varying media fall back to dense storage. Setup dictionary memory is
+released before field construction. CPU70/70,16 actual-R53 operator/field
+files and56 physical CUDA gates pass. Independently rehashed782 source and419
+archive files. Exact numerical/API/test source is promoted.
+
+R52's3.54–3.68% peak-RSS measurements remain separate homogeneous host evidence;
+they are not a native PCB or full-antenna capacity measurement for R54. Initial
+double fields and generic full fallback remain in this increment. R55 stages
+implicit zero fields separately; Metal, native PCB scaling, E/H/DFT and
+representative antenna acceptance remain open.

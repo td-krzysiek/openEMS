@@ -5,6 +5,7 @@
 #include "subgrid_curl.h"
 #include "subgrid_edge_index.h"
 #include "subgrid_leaf_index.h"
+#include "subgrid_material_palette.h"
 #include "gpu_cartesiansubgrid.h"
 #include <array>
 #include <cstddef>
@@ -363,7 +364,7 @@ class CartesianSubgrid
 	double m_StableStep = 0;
 	CartesianSubgridLeafIndex<Leaf> m_Leaves;
 	CartesianSubgridLeafSnapshot<Leaf> m_DiagnosticLeaves;
-	std::vector<Medium> m_Media;
+	CartesianSubgridMaterialPalette<Medium> m_Media;
 	std::vector<unsigned char> m_OpaqueCells;
 	std::optional<CartesianSubgridEdgeIndex> m_EdgeIndex;
 	std::set<Edge> m_PECEdges;

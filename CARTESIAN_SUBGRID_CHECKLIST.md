@@ -1082,8 +1082,9 @@ accounted bytes, peak RSS1711.08->1650.57MiB patterns /1632.61->1572.60MiB block
 homogeneous measurements are not variable-medium/native PCB/GPU capacity. All48 physical CUDA gates now pass exit0/noOOM on4090/3080 and both orders,
 with775 source and409 archive files independently rehashed. Exact R51 physical
 terminal and fresh resource/identity guards were checked before admission.
-This separately qualifies the R49-based candidate; composition with current
-R51/native-observation source needs its own replay before promotion. Metal and native PCB/antenna scaling remain open.
+This separately qualifies the R49-based candidate. R54 below completes its
+composition with current native observations before exact promotion. Metal
+and native PCB/antenna scaling remain open.
 No production/default guard change. Evidence: `material-palette-r52/`.
 
 
@@ -1104,11 +1105,12 @@ Evidence: `native-sparse-observations-r53/`. No production runtime is changed.
 
 
 R54 freezes the exact R53 native sparse observation/energy changes with the
-separately CPU/CUDA/RAM-qualified R52 material palette. The matching isolated
-build passes; CPU70 is running. Physical56 waits for CPU70 acceptance and the
-accepted exact R53 physical terminal, with fresh resource checks. No combined
-acceptance is inferred from component tests and no production runtime changes.
-Evidence: `native-material-composition-r54/`.
+separately CPU/CUDA/RAM-qualified R52 material palette. CPU70/70,16 exact
+actual-R53 files and56 physical CUDA gates pass exit0/noOOM. Independently
+rehashed782 source and419 archive files before exact numerical/API/test
+promotion. R52 memory numbers remain separately scoped homogeneous evidence;
+no combined native PCB/antenna capacity or Metal qualification is inferred.
+No production runtime changes. Evidence: `native-material-composition-r54/`.
 
 R55 separately freezes exact implicit initial +0 host E/H storage over R54.
 Logical field sizes and read semantics are retained; CPU writes and complete
@@ -1116,8 +1118,24 @@ device imports materialize dense arrays. CPU sweeps bind dense storage outside
 their value loops. The new focused test covers a billion logical zeros without
 a value allocation, copy/move/reset, signed zeros and FTZ rejection, metadata/
 domain preparation, exact CPU updates and six selected-observation/device-energy
-controls through explicit full import. Build/CPU71 waits for actual R54 CPU70
-acceptance; physical60 waits for R55 CPU and accepted exact R54 pair release.
+controls through explicit full import. The build and six focused CPU/device-reference
+cases pass, with exact fields/energy and lazy storage until full import. Full
+CPU71 is running; physical60 waits for CPU acceptance and accepted exact R54
+pair release.
 Four matched GPU-free3.93M zero-state memory controls are also queued behind CPU
 acceptance. Implementation is not numerical/RAM/Metal/antenna qualification.
 Evidence: `implicit-zero-state-r55/preparation-r01.json`.
+
+
+R56 separately stages native E/H dump gathers over frozen R55. It reuses the
+existing raw-region FDTD interpolator, with SI-to-raw float conversion before
+interpolation, bounded table preparation and once-per-epoch caches. Application
+sealing is after processing initialization; explicit manual sealing/eager full
+fallback remain. The new12-case control compares all modes, both fields,
+graded/unequal child coordinates, source/PML/loss, drawing transforms, four
+concurrent output partitions and complex DFT sums against direct full fields
+with a predeclared2e-6 gate. SI stencils can reassociate double operations; no
+bit-identity claim. CPU72 and physical64 are queued behind actual predecessor
+acceptance/release. Device DFT, generic E/H probes, Metal, collective pause,
+RF/NF2FF and antenna qualification remain open. No production runtime changes.
+Evidence: `native-field-gather-r56/preparation-r01.json`.

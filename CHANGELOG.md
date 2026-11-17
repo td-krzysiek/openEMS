@@ -16,6 +16,10 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Added
 
+- Experimental Cartesian subgrids share exactly repeated leaf material values,
+  with a bounded palette and dense fallback for fully varying media. Rebuild
+  matching callers; material values and field equations are unchanged.
+
 - Experimental native Cartesian-subgrid U/I probes and energy use selected
   complete-epoch device observations. Explicit whole-grid and generic field
   requests retain a fresh full fallback. Rebuild matching callers; raw setup
