@@ -1206,3 +1206,20 @@ numerical rerun or gate change. Metal, device DFT, collective pause, native RF
 and representative antenna acceptance remain open. Production is unchanged.
 Evidence: `native-field-gather-r56-r03/independent-qualification-r01.json`,
 `native-field-gather-r56-r03/promotion-r01.json`.
+
+
+R58 separately prepares native device FieldDFT over frozen R57 R02, retaining
+the existing ProcessFieldsFD API/weights/scheduling. Owning recipes reconstruct
+complex raw regions from owned-state sums; dedicated device-only recipe IDs
+are filtered from batch host selection, with genuine U/I/TD support retained.
+Explicit later TD access uses live full fallback. Whole-budget rejection is
+pre-upload; identity/shape/frequency/epoch checks and failed-state propagation
+are explicit. Twelve new native controls cover all modes, E/H, child transforms,
+source/PML/loss, single/domains, tiny timestep-scaled weights, empty support and
+repeated snapshots. Source794 files is frozen; build/CPU74 waits for actual
+R57 CPU73 acceptance, physical72 for exact accepted R57 physical68 release.
+Implementation is staged, not qualified or promoted. Recent Metal replay is
+also queued with the unchanged1GiB compiler/1.5GiB test,12.5GiB reserve and
+15.5GiB stable60s admission guards. No production/antenna runtime changes.
+Evidence: `native-device-dft-r58/preparation-r01.json`,
+`native-device-dft-r58/DESIGN.md`.
