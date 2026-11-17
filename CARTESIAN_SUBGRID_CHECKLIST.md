@@ -324,9 +324,14 @@ frozen-parent files. Core SHA256:
 Physical Metal/CUDA remains open. A separate R28 native API/XML successor
 builds with matching Cython bindings and passes11 Python tests, two exact
 drawing-unit/native-manual controls, three native E/H runs and two negative
-mesh setups. Full CTest53 and actual Matlab/Octave execution remain pending.
-Neither native-child prototype is in this branch's numerical source yet;
-no full-PCB, guard increase or qualified scripting support follows.
+mesh setups. Its completed Linux CPU suite passes53/53, including16 exact
+actual-R26 operator/field files and eight native reference cases. Physical
+4090/3080 qualification is running; Metal and actual Matlab/Octave execution
+remain pending. Neither native-child prototype is in this branch's numerical
+source yet. A separate frozen R29 candidate removes the global incoming CSR
+from streamed domain preparation using an implicit local-support query; its
+build, exact all-row controls, memory/setup and physical qualification are
+pending. No full-PCB, guard increase or qualified scripting support follows.
 
 - [ ] **U01** Define device-resident block fields, interface metadata and update
   scheduling within the existing GPU execution architecture.
