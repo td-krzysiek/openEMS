@@ -828,8 +828,6 @@ Coarse copper misses complexGamma (0.015748), as does local copper two-level
 sensitivity (0.013325). Time-prefix tails are negligible. The full RF gate
 remains failed; fixed Z and two XY levels do not qualify 3D or antenna convergence.
 
-
-
 ### Current scaling and RF follow-ups
 
 R37 finite-width U-line controls improve the former point-launch sensitivity,
@@ -842,7 +840,11 @@ R38 profiles the unchanged R35 library's C++ allocations on three bounded
 cases. A960k-leaf grid plus three-domain plan requests about528MB; requested
 capacity includes uncommitted pages and is not measured antenna RAM. R39
 tests cold capacity reduction with an interleaved resident-memory benchmark;
-CPU qualification/actual RSS benefit are pending. R40 separately implements
+CPU61/61 and16 exact parent files pass, but three-repeat RSS changes against
+R36 are−0.26%,−0.21%,+0.34%; no useful memory reduction is established.
+R39 remains unpromoted. R40 separately implements
 final topology followed by one-domain prepare/upload/release, with retained
-C++ plans as the default independent path. Its build/CPU62 replay are pending;
+C++ plans as the default independent path. Its build and six focused
+reference exact-field/lifetime cases pass; the full CPU62 replay, physical
+controls and memory measurement remain pending;
 no code promotion, resource-guard increase or production adoption is implied.
