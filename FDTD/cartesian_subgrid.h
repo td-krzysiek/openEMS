@@ -4,6 +4,7 @@
 
 #include "subgrid_curl.h"
 #include "subgrid_edge_index.h"
+#include "subgrid_leaf_index.h"
 #include "gpu_cartesiansubgrid.h"
 #include <array>
 #include <cstddef>
@@ -225,7 +226,24 @@ class CartesianSubgrid
 		std::size_t inverseBoundSolves = 0, bipartiteBoundBlocks = 0;
 	};
 	InterfaceStorageInfo InterfaceStorage() const;
+	//! Legacy diagnostic snapshot; materialized only when explicitly requested.
+	//! Immutable shared storage keeps existing vector-reference callers valid.
 	const std::vector<Leaf> &Leaves() const
+	{
+		auto cached = m_DiagnosticLeaves.Load();
+		if (!cached)
+		{
+			std::shared_ptr<const std::vector<Leaf>> built =
+				std::make_shared<std::vector<Leaf>>(m_Leaves.begin(), m_Leaves.end());
+			if (m_DiagnosticLeaves.Publish(cached, built))
+			{
+				return *built;
+			}
+		}
+		return *cached;
+	}
+	//! Compact diagnostics without materializing the legacy coordinate vector.
+	const CartesianSubgridLeafIndex<Leaf> &LeafAddresses() const
 	{
 		return m_Leaves;
 	}
@@ -274,7 +292,7 @@ class CartesianSubgrid
 	std::size_t RootIndex(const Index &cell) const;
 	std::size_t FindLeaf(const Point &position) const;
 	double TraceValue(const Trace &trace, const std::vector<double> &amplitude) const;
-	void Build(const MediumSampler &medium, const PECSelector &pec, const OpaqueSelector &opaque);
+	void Build(const MediumSampler &medium, const PECSelector &pec, const OpaqueSelector &opaque, std::size_t expectedLeaves);
 	void ConfigureRegularCurl();
 	CartesianSubgridMetricView CurlMetrics() const
 	{
@@ -304,11 +322,10 @@ class CartesianSubgrid
 	bool m_UniformFine;
 	CurlLayout m_CurlLayout;
 	double m_StableStep = 0;
-	std::vector<Leaf> m_Leaves;
+	CartesianSubgridLeafIndex<Leaf> m_Leaves;
+	CartesianSubgridLeafSnapshot<Leaf> m_DiagnosticLeaves;
 	std::vector<Medium> m_Media;
 	std::vector<unsigned char> m_OpaqueCells;
-	std::vector<std::size_t> m_RootLeaves;
-	std::vector<Index> m_RootRatios;
 	std::optional<CartesianSubgridEdgeIndex> m_EdgeIndex;
 	std::set<Edge> m_PECEdges;
 	std::vector<unsigned char> m_PECFaces;

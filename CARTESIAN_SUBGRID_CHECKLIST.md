@@ -292,6 +292,17 @@ this bounded memory result.
 
 ## 6. One GPU through the existing backends
 
+Current C01/C03 preparation increment: [implicit leaf addresses](CARTESIAN_SUBGRID_BLOCKS.md#implicit-rootchild-leaf-addresses)
+is implemented with Linux CPU48/48, exact operator/field and physical
+4090/3080 controls, including a separately corrected native16-case temporary
+directory followup. Local Metal qualification is pending after two
+host-reserve build stops. Peak setup RSS falls1.60–3.41% in three bounded
+interleaved cases, with longer setup. C01/C03/C05 remain incomplete; no
+antenna or guard-increase acceptance follows. A subsequent unpromoted
+direct-row preparation candidate has a successful isolated build and twelve
+exact coefficient controls; full CPU/device review and memory measurements
+are pending. It is not part of this branch's numerical source yet.
+
 - [ ] **U01** Define device-resident block fields, interface metadata and update
   scheduling within the existing GPU execution architecture.
 - [ ] **U02** Implement regular interior updates and the constrained interface
@@ -665,3 +676,5 @@ numerical change invalidates their prior qualification.
 | 2026-11-17 | Further partial C03/C05/D01/D05: shared owned-state domain addresses | R21, parent `648683d` | [Address/storage evidence](CARTESIAN_SUBGRID_DOMAINS.md#shared-owned-state-domain-addresses): focused sanitized map oracle, exact reference/Metal metadata/fields, native8/16 and CTest46 pass. Interleaved RSS/setup gains only; physical14-gate/CTest46 replay passes on4090/3080 in both orders, with native observations. No guard increase, antenna or production qualification. |
 
 | 2026-11-17 | Further partial C03/C05/U04/D05: lazy CPU reference workspace | R22, parent `ef323a2` | [Workspace evidence](CARTESIAN_SUBGRID_DOMAINS.md#lazy-serial-reference-workspace): first-use/negative/capacity controls, reference/Metal exact metadata/fields, native8/16 and CTest47 pass. Interleaved cold-storage/RSS reductions only; physical14-gate/CTest47 replay passes in both pair orders after terminal review. No guard increase or production/antenna qualification. |
+
+| 2026-11-17 | Further partial C01/C03/C05: implicit leaf geometry | R24-r03, parent `c003761` | [Address/snapshot contract and evidence](CARTESIAN_SUBGRID_BLOCKS.md#implicit-rootchild-leaf-addresses). CPU48/48, sixteen exact operator/field files,126 address cases/723,354 cells,128 snapshot controls, twelve physical CUDA gates plus a separate corrected native16-case followup. Original TMPDIR collision and rejected R01/R02 prototypes retained. Peak RSS−1.60–3.41% with longer setup. Metal pending after resource stops; no scaling/antenna acceptance or guard increase. |

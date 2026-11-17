@@ -136,6 +136,48 @@ The native replay is a correctness suite, not a CPU speed benchmark; its
 reference-backend timings need separate controlled review before performance
 adoption. No allocation guard has been raised.
 
+## Implicit root/child leaf addresses
+
+R24 replaces the six stored integers per leaf with an owning root/child
+index: an 8-byte root descriptor and one uint32 root ID per leaf. Identity
+grids need no dynamic address arrays. Integer reconstruction retains exact
+coordinates and canonical X/Y/Z traversal with Z fastest. No physical
+coordinate, field, material history, quadrature or update kernel changes.
+The existing `Leaves()` vector-reference diagnostic lazily materializes an
+immutable snapshot; `LeafAddresses()` reads without expanding it. Snapshot
+publication/copy is atomic; moved-from address objects are empty and checked.
+Snapshot memory is included in `StorageBytes()` when explicitly requested.
+
+Linux CPU qualification passes CTest48/48, sixteen exact operator/512-step
+field files against actual frozen R22, six exact domain cases, eight native
+TD/FD/U/I cases,126 address cases/723,354 exact cells and128 concurrent
+snapshot/copy controls. The standalone header also passes ASan/UBSan;
+no ThreadSanitizer qualification is claimed.
+
+Physical RTX4090/RTX3080 qualification passes twelve retained field/port/loss/
+PML gates in both pair orders and a separate sixteen-case native followup on
+the same source/runtime. The original final native command failed before
+solver startup because its TMPDIR collided with CPU outputs. That exit1 and
+log remain preserved; the followup changes only its temporary directory.
+Source/runtime and actual terminal states are independently rechecked.
+
+Three interleaved GPU-free Linux repetitions against the actual frozen R22
+core measure setup only:
+
+| Case | R22 peak RSS | R24 peak RSS | Peak change | Whole setup change |
+|---|---:|---:|---:|---:|
+| Uniform491,520 leaves |377,561,088B|364,670,976B|−3.41%|+2.34%|
+| Graded two-material61,440 leaves |119,808,000B|117,886,976B|−1.60%|+4.38%|
+| Uniform960,000 leaves |704,540,672B|681,140,224B|−3.32%|+7.22%|
+
+Permanent accounted cold-grid storage falls7.51%/4.62%/7.64%. This is a
+memory tradeoff, not a setup or FDTD speedup; total setup medians are measured
+directly. Other shared-host work was not preempted. CUDA core SHA256:
+`0d465f20f68d5a985a53b666ee0c08c1f7eacf1fdbfa5ae13ef33ae4264ab5d3`.
+Both local Metal build attempts were stopped by the existing host reserve,
+not compiler diagnostics; R24 Metal acceptance remains open. No allocation
+guard or production runtime is changed, and the full PCB is not qualified.
+
 ## Remaining work
 
 Expanded CSR remains the independent oracle; default single-device, global

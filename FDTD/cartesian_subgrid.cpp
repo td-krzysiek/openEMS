@@ -167,7 +167,7 @@ CartesianSubgrid::CartesianSubgrid(const Axes &lines, double epsilon, double per
 	}
 	m_Regions = regions;
 	m_Lines = lines;
-	Build(medium, pec, opaque);
+	Build(medium, pec, opaque, uniformFine ? count * fineChildren : leaves);
 }
 
 void CartesianSubgrid::ValidateRatio(const Index &ratio)
@@ -305,7 +305,8 @@ CartesianSubgrid::Trace CartesianSubgrid::Restrict(const Edge &edge, bool ignore
 	return trace;
 }
 
-void CartesianSubgrid::Build(const MediumSampler &medium, const PECSelector &pec, const OpaqueSelector &opaque)
+void CartesianSubgrid::Build(const MediumSampler &medium, const PECSelector &pec,
+	const OpaqueSelector &opaque, std::size_t expectedLeaves)
 {
 	std::vector<CartesianSubgridEdgeIndex::Region> addressRegions;
 	if (m_UniformFine)
@@ -320,9 +321,7 @@ void CartesianSubgrid::Build(const MediumSampler &medium, const PECSelector &pec
 		}
 	}
 	m_EdgeIndex.emplace(m_Cells, m_Ratio, addressRegions);
-	const std::size_t roots = std::size_t(m_Cells[0]) * m_Cells[1] * m_Cells[2];
-	m_RootLeaves.resize(roots);
-	m_RootRatios.resize(roots, Index{1, 1, 1});
+	m_Leaves = CartesianSubgridLeafIndex<Leaf>(m_Cells, m_Ratio, expectedLeaves);
 	for (unsigned int x = 0; x < m_Cells[0]; ++x)
 	{
 		for (unsigned int y = 0; y < m_Cells[1]; ++y)
@@ -351,27 +350,11 @@ void CartesianSubgrid::Build(const MediumSampler &medium, const PECSelector &pec
 						}
 					}
 				}
-				const std::size_t index = RootIndex(root);
-				m_RootLeaves[index] = m_Leaves.size();
-				m_RootRatios[index] = ratio;
-				const std::array<int, 3> size{int(m_Ratio[0] / ratio[0]), int(m_Ratio[1] / ratio[1]),
-											  int(m_Ratio[2] / ratio[2])};
-				for (unsigned int i = 0; i < ratio[0]; ++i)
-				{
-					for (unsigned int j = 0; j < ratio[1]; ++j)
-					{
-						for (unsigned int k = 0; k < ratio[2]; ++k)
-						{
-							m_Leaves.push_back(
-								{{int(m_Ratio[0] * x) + int(i) * size[0], int(m_Ratio[1] * y) + int(j) * size[1],
-								  int(m_Ratio[2] * z) + int(k) * size[2]},
-								 size});
-						}
-					}
-				}
+				m_Leaves.AppendRoot(root, ratio);
 			}
 		}
 	}
+	m_Leaves.Finish();
 	m_Media.reserve(m_Leaves.size());
 	if (opaque)
 	{
@@ -1255,8 +1238,8 @@ std::size_t CartesianSubgrid::FindLeaf(const Point &position) const
 		}
 	}
 	const std::size_t index = RootIndex(root);
-	const std::size_t first = m_RootLeaves[index];
-	const Index &ratio = m_RootRatios[index];
+	const std::size_t first = m_Leaves.First(index);
+	const Index ratio = m_Leaves.Ratio(index);
 	Index child;
 	for (unsigned int n = 0; n < 3; ++n)
 	{
@@ -1382,13 +1365,16 @@ double CartesianSubgrid::CurlDivergenceResidual(const Field &field) const
 
 std::size_t CartesianSubgrid::StorageBytes() const
 {
-	std::size_t bytes =
-		sizeof(*this) + m_Leaves.capacity() * sizeof(Leaf) + m_RootLeaves.capacity() * sizeof(std::size_t);
+	std::size_t bytes = sizeof(*this) + m_Leaves.AllocationBytes();
+	if (const auto diagnostic = m_DiagnosticLeaves.Load())
+	{
+		bytes += sizeof(*diagnostic) + diagnostic->capacity() * sizeof(Leaf);
+	}
 	for (const auto &axis : m_Lines)
 	{
 		bytes += axis.capacity() * sizeof(double);
 	}
-	bytes += m_Edges.capacity() * sizeof(Edge) + m_RootRatios.capacity() * sizeof(Index) +
+	bytes += m_Edges.capacity() * sizeof(Edge) +
 			 m_Regions.capacity() * sizeof(Region) + m_Media.capacity() * sizeof(Medium) + m_OpaqueCells.capacity();
 	// Structured address buffers are counted by allocated capacity, not a tree-node estimate.
 	bytes += m_EdgeIndex->StorageBytes();

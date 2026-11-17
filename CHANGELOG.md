@@ -135,6 +135,12 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Changed
 
+- Experimental Cartesian-subgrid geometry uses implicit root/child addresses
+  instead of storing every leaf's six coordinates. The existing `Leaves()`
+  diagnostic materializes a retained immutable snapshot on demand;
+  `LeafAddresses()` avoids that allocation. Rebuild C++ callers and backend
+  plugins together. Representative antenna and Metal qualification remain open.
+
 - Experimental Cartesian-subgrid domains now prepare compressed local operator
   packages directly, avoiding expanded per-worker copies and backend repacking.
   Malformed packages reject before device allocation; numerical kernels and
