@@ -1,6 +1,7 @@
 """Bounded application failure/timeout semantics on the frozen R61 executable.
 
-Arguments: solver, guarded public protocol XML, new output directory, mode.
+Arguments: solver, guarded public protocol XML, new output directory,
+cpu|reference-two|cuda-two|metal.
 This driver owns only the children it starts. It never launches containers or
 changes engine source, physical device selection, or production runs.
 """
@@ -22,7 +23,7 @@ SOLVER = Path(sys.argv[1]).resolve()
 XML = Path(sys.argv[2]).resolve()
 OUT = Path(sys.argv[3]).resolve()
 MODE = sys.argv[4]
-assert MODE in ["cpu", "reference-two", "cuda-two"]
+assert MODE in ["cpu", "reference-two", "cuda-two", "metal"]
 OUT.mkdir(exist_ok=False)
 SOURCE = Path(os.environ["SUBGRID_TEST_SOURCE"])
 
@@ -38,7 +39,7 @@ control = load("run_control")
 startup = load("startup_gate")
 snapshots = load("snapshots")
 sha = lambda p: hashlib.sha256(p.read_bytes()).hexdigest()
-workers = 1 if MODE == "cpu" else 2
+workers = 1 if MODE in ["cpu", "metal"] else 2
 flags = ["--engine=basic" if MODE == "cpu" else "--engine=gpu-reference" if MODE == "reference-two" else "--engine=gpu", "--numThreads=1", "--exact-endcriteria"]
 if workers == 2:
     flags += ["--subgrid-domain-axis=x", "--subgrid-domain-cuts=0", "--subgrid-domain-workers=" + ("reference,reference" if MODE == "reference-two" else "auto@0,auto@1")]

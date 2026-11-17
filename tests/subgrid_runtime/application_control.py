@@ -1,7 +1,7 @@
 """Staged matched application test; run only inside a separately admitted build.
 
 Arguments: solver, byte-exact public native XML, fresh output directory,
-cpu|reference|reference-two|cuda|cuda-two. No launch/admission or device selection is implicit.
+cpu|reference|reference-two|cuda|cuda-two|metal. No launch/admission or device selection is implicit.
 """
 from pathlib import Path
 import hashlib,importlib.util,json,os,re,subprocess,sys,time,xml.etree.ElementTree as ET
@@ -9,7 +9,7 @@ import numpy as np
 import h5py
 
 SOLVER=Path(sys.argv[1]).resolve();XML=Path(sys.argv[2]).resolve();OUT=Path(sys.argv[3]).resolve();MODE=sys.argv[4]
-assert MODE in ['cpu','reference','reference-two','cuda','cuda-two','ordinary-cpu','ordinary-reference']
+assert MODE in ['cpu','reference','reference-two','cuda','cuda-two','metal','ordinary-cpu','ordinary-reference']
 assert 'dipole' in XML.read_text() and 'CartesianSubgrid' in XML.read_text()
 OUT.mkdir(exist_ok=False)
 input_bytes=XML.read_bytes()

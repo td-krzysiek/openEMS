@@ -1832,3 +1832,31 @@ R66 preparation remains unchanged. Physical CUDA/multi-device, full native
 antenna/contact/capacity and RF qualifications remain open. Evidence:
 `cad-candidate-index-r70/setup-benchmark-independent-r01.json`,
 `cad-candidate-index-r70/review_setup_benchmark_r01.py`.
+
+
+R71 now independently accepts the full public native application replay on one
+physical Apple M5 Pro Metal device using the frozen R70 parent/candidate builds.
+Eight solver invocations retain160 exact parent/control/paused raw arrays.
+Ten DFT snapshots preserve complete-epoch acknowledgement and repeated sums;
+foreign startup/manual IDs reject with their expected native cause. The4000-step
+fixture is a bounded control, not an antenna convergence result. The explicit
+`metal` option is added to the existing reproduction driver; no solver binary,
+frozen input or production runtime changes. Metal timeout/I/O recovery is qualified below; backend
+failure injection, physical multi-device and representative antenna qualification
+remain separate. Evidence:
+`metal-application-replay-r71/independent-r01.json`,
+`metal-application-replay-r71/owner-r01.json`.
+
+
+R71 additionally accepts ten single-Metal controller/recovery cases: automatic
+runtime-timeout resume, requested stop at epoch132, startup reject/timeout,
+four stale-file rejections and reused-ID/blocked-staging snapshot recovery.
+Resumed runs preserve16 final arrays exactly; recovered snapshots preserve12
+DFT arrays without modifying the existing snapshot or foreign staging file.
+Stopped output is explicitly unconverged. Independent review checks the real
+Metal/core witnesses, input/source identities, native exit causes and unchanged
+resource guards. Explicit `metal` mode is added to the existing fault driver.
+This is one GPU/public protocol fixture, not injected backend execution failure,
+antenna RF or physical multi-GPU qualification. Evidence:
+`metal-application-replay-r71/fault-independent-r01.json`,
+`metal-application-replay-r71/review_fault_r01.py`.
