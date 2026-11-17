@@ -1601,3 +1601,19 @@ reserve. Actual operator/contact/interface/CFL/resource acceptance is pending.
 Historical contours are unchanged and this is not a fabrication derivative.
 Evidence: `representative-slab-mesh-r66/independent-preflight-r02.json`,
 `representative-slab-mesh-r66/setup-admission-r01.json`.
+
+R66's first native preparation rejected after21.33s/1,780,276KiB child peak,
+without OOM or FDTD: three FR4 boxes extended below the refined slab and their
+XY faces were child knots rather than coarse anchors. This is a mesh proposal
+defect caught by the existing box-cut guard, not an engine defect. R03 retains
+the guard and adds exact parent anchors; all nonmesh XML is independently
+identical, including geometry/materials/ports/waveform/boundaries. Corrected
+predictions are101,570,826 /127,266,062 /140,113,680 leaves. The first corrected
+case is now in CPU-only preparation under the same64GiB/no-swap bounds; no
+native completion, capacity, timestep or RF acceptance is claimed. Recent
+Metal remains unadmitted (fresh available13.606GiB <15.5GiB unchanged guard).
+Evidence: `representative-slab-mesh-r66/setup-failure-review-r01.json`,
+`representative-slab-mesh-r66/mesh-correction-r03.json`,
+`representative-slab-mesh-r66/independent-preflight-r03.json`,
+`representative-slab-mesh-r66/setup-admission-r02.json`,
+`ordinary-metal-guard-r65/metal-headroom-r01.json`.
