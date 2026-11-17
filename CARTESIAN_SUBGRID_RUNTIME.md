@@ -222,3 +222,27 @@ qualification remain open. General path quadrature can retain roundoff-sized
 extra support at some graded cuts; the separately prepared R35 descriptor
 follow-up diagnoses that strict-admission limitation without changing R34's
 frozen inputs or relaxing numerical thresholds.
+
+
+## Retained native line normalization diagnosis
+
+The earlier native one-dimensional mapper's equalR/N assignment is not
+ordinary-Yee parity on graded longitudinal intervals. A minimal GPU-free
+comparison against actual ordinary `(1-VV)/VI` coefficients reproduces a
+maximum relative per-cell conductance difference0.53846154 in six graded
+cases (three axes, both orientations), while six uniform controls differ
+only1.355e-8 after FP32 metadata conversion. Both operators use identical
+knots and a valid shared timestep; no FDTD or RF accuracy follows from this
+coefficient-only test. This is an experimental adapter discrepancy, not an
+upstream engine defect or a53.85% antenna-impedance prediction.
+
+The native finite-width rectangular path above is separate. Frozen curved
+R23 line ports span eight uniformZ intervals inside constantXY refinement;
+read-only XML checks therefore do not support assigning their spatial RF
+failure to this graded-longitudinal counterexample. Preserve those failures.
+A separately frozen R36 candidate distributes lineR by physical segment
+length, retaining local voltage functionals, reference-port limits and the
+explicit C++ circuit API. It is being built/tested, not promoted. Required
+checks include actual-old-library failure, ordinary coefficients, retained
+interface/passivity/partial-edge controls and physical backends. Evidence:
+`native-line-normalization-r36-diagnosis/`; canonical acceptance remains open.

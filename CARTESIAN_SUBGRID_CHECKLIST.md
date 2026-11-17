@@ -793,3 +793,21 @@ numerical change invalidates their prior qualification.
 | 2026-11-17 | Further partial C03/C05/D01/D05: immutable local owned ranks | R33, exact qualified source promoted | [Owned-index contract and storage](CARTESIAN_SUBGRID_DOMAINS.md#immutable-owned-local-ranks). CPU58/58,50 rank cases/five map oracles, ASan/UBSan,16 exact actual-R32 files and22 physical CUDA gates on4090/3080 in both orders. Interleaved peak RSS−2.43–5.98% against R32; whole setup−1.04% to+1.67%. Collector-only19/20-count failure preserved and corrected against the same archive without rerunning CPU. Metal, full-array scaling and RF remain open. |
 
 | 2026-11-17 | Further partial P01/P02/P05/G03/U04/U05: native rectangular resistors | R34-r03, exact qualified source promoted | [Port contract and evidence](CARTESIAN_SUBGRID_RUNTIME.md#native-rectangular-resistive-ports). CPU59/59,16 exact frozen-R33 files and26 physical CUDA gates pass on4090/3080 in both orders. New48-case geometry/coefficient/passive-field controls per lane retain native sheet/volume bounds and optional PEC end caps; retained domains/loss/PML/native observations pass. Earlier test/collector failures preserved without numerical reruns. Metal, driven RF, scaling and antenna acceptance remain open; guards unchanged. |
+
+
+### Pending port follow-ups — 17 November
+
+R35-r02 resolved local port descriptors pass CPU60/60 and16 exact actual-parent
+files; physical26-gate replay is separately running. An actual native-port
+setup benchmark on read-only R34/R35 libraries times complete preparation,
+with294 traces and identical prepared-coefficient fingerprints:16,192leaves
+2.803563s→0.218491s and118,720leaves20.918891s→1.580225s (three interleaved
+repetitions). These12.83x/13.24x small-case setup ratios do not establish
+full-array or FDTD speedup; source promotion awaits terminal physical review.
+Metal and representative RF/scaling remain open.
+
+The [retained line-adapter diagnosis](CARTESIAN_SUBGRID_RUNTIME.md#retained-native-line-normalization-diagnosis)
+reproduces graded longitudinal R/N normalization error against actual ordinary
+coefficients. A separately frozen physical-length correction R36 is being
+built. No frozen result, production runtime or allocation guard changed; no
+existing curved RF failure is erased.
