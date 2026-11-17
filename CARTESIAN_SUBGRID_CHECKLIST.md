@@ -794,6 +794,7 @@ numerical change invalidates their prior qualification.
 
 | 2026-11-17 | Further partial P01/P02/P05/G03/U04/U05: native rectangular resistors | R34-r03, exact qualified source promoted | [Port contract and evidence](CARTESIAN_SUBGRID_RUNTIME.md#native-rectangular-resistive-ports). CPU59/59,16 exact frozen-R33 files and26 physical CUDA gates pass on4090/3080 in both orders. New48-case geometry/coefficient/passive-field controls per lane retain native sheet/volume bounds and optional PEC end caps; retained domains/loss/PML/native observations pass. Earlier test/collector failures preserved without numerical reruns. Metal, driven RF, scaling and antenna acceptance remain open; guards unchanged. |
 
+| 2026-11-17 | Further partial P01/P02/P05/C05/U04/U05: resolved native port support | R35-r02, exact qualified source promoted | [Descriptor contract, diagnosis and measurements](CARTESIAN_SUBGRID_RUNTIME.md#reusing-resolved-native-port-support). CPU60/60,48 descriptor controls,16 exact actual-R34 files and26 physical CUDA gates on4090/3080 in both orders pass. Original support-cardinality test failure retained; unchanged2e-14 complete-functional bound and wrong-support negatives pass. Actual native294-trace setup improves12.83x/13.24x at16,192/118,720leaves with identical prepared fingerprints. This is scoped setup timing, not full-array/FDTD speedup. Metal, RF and scaling remain open; guards unchanged. |
 
 ### Pending port follow-ups — 17 November
 
@@ -812,5 +813,11 @@ coefficients. A separately frozen physical-length correction R36 is being
 built. No frozen result, production runtime or allocation guard changed; no
 existing curved RF failure is erased.
 
-
-| 2026-11-17 | Further partial P01/P02/P05/C05/U04/U05: resolved native port support | R35-r02, exact qualified source promoted | [Descriptor contract, diagnosis and measurements](CARTESIAN_SUBGRID_RUNTIME.md#reusing-resolved-native-port-support). CPU60/60,48 descriptor controls,16 exact actual-R34 files and26 physical CUDA gates on4090/3080 in both orders pass. Original support-cardinality test failure retained; unchanged2e-14 complete-functional bound and wrong-support negatives pass. Actual native294-trace setup improves12.83x/13.24x at16,192/118,720leaves with identical prepared fingerprints. This is scoped setup timing, not full-array/FDTD speedup. Metal, RF and scaling remain open; guards unchanged. |
+R37 prepares four native finite-width Cu18/PEC U-line models at8/8/1 and
+16/16/1, preserving the previous copper, grids and2ns cap while deliberately
+replacing point launches with full-strip-width sheets and broad fixed current
+contours. All four native setups pass without FDTD; expected CLI setup-only
+exit1 is checked with completed-operator diagnostics, not accepted by itself.
+Eight local/ordinary RF controls are now running on one authorized4090 using
+actual accepted R35 and frozen ordinary PR242. Original band/time/spatial gates
+remain; no RF result or antenna readiness is inferred from preparation.
