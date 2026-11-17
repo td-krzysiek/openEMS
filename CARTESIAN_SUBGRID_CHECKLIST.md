@@ -1969,3 +1969,14 @@ GPU, broader R11 and representative antenna qualification remain open. Evidence:
 `analytic-packet-mesh-r75/independent-r01.json`,
 `analytic-packet-mesh-r75/baseline-readback-r01.json`,
 `analytic-packet-mesh-r75/review-owner-r01.json`.
+
+R70's independent CUDA build-review component is now prepared, with 16 local
+synthetic guard controls passing (3.91 s, 26.72 MiB peak). It requires the exact
+825-file snapshot, all 81 individual CPU test witnesses, actual runtime/ELF
+dependencies, pinned compiler/flags and recorded GPU-free container/resource
+evidence. The CLI rejects synthetic input before writing an acceptance. These
+controls do not qualify a CUDA build or physical execution. Host launch and
+independent numerical replay remain pending; no shared guard, foreign job or
+production/frozen runtime changes. Evidence:
+`cad-candidate-index-r70/cuda-build-review-controls-r01.json`,
+`cad-candidate-index-r70/cuda-build-review-policy-r01.json`.
