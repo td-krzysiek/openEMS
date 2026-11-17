@@ -1880,6 +1880,15 @@ Evidence: `oblique-interface-r72/independent-r01.json`,
 `oblique-interface-r72/point-sampling-offset-r01.json`,
 `oblique-interface-r72/independent-r02.json`.
 
+R72's separate duration-only80ps extension retains all15 original columns
+exactly in eight resolved histories. Extended peak/L2 and half-step gates
+remain accepted, without changing the original peak denominator; maximum
+peak error remains4.5482%. The later tail is non-negligible, so pulse completion,
+boundary/reflection separation and broader R11 qualification remain open.
+Original point-H failures are retained. No solver or frozen runtime changes.
+Evidence: `oblique-interface-r72/independent-r03.json`,
+`oblique-interface-r72/review_r03.py`.
+
 
 R73 prepares a same-input Metal replay of the accepted R64 coarse native PEC
 and smooth-copper curved lines: 1,544,144 leaves, common 1 fs / 1 ns, unchanged

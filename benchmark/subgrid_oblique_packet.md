@@ -70,3 +70,11 @@ observed child RSS is 413,220,864 bytes on Apple M5 Pro. No performance claim
 or antenna/device admission follows. Other planes/polarizations, broader ratio
 families, separated reflection, independent-reference and physical GPU replay,
 boundary/window sensitivity and representative antenna checks remain open.
+
+A separately reviewed duration-only extension from about60 to80ps preserves all
+15 original columns exactly in eight resolved histories. Extended peak/L2
+errors remain below5%, normalized by the original reference peak; maximum peak
+error is still4.5482%. Half-step changes remain below1%. The added tail reaches
+17–26.5% of the original peak, so this is later-signal agreement, not pulse
+completion or separated boundary reflection. The reproduction driver above
+retains its original60ps duration; point-H failures and broader R11 gaps remain.
