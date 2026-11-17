@@ -909,3 +909,20 @@ R02 core reproduces zero epsilon error and exactly that mu discrepancy. R03
 uses native EPS0/MUE0 in the independent analytic CAD oracle, retaining the
 bound and numerical code, and is separately frozen/building. This does not
 qualify shaped-material physics, RF, CUDA/Metal or representative PCB use.
+
+R44 current scoped evidence: R03 builds successfully and its six native
+polygon/priority-air fixtures pass across all axes, mm/micrometre units and
+reversed contours/extrusions. A small octagon-minus-bore volume differs0.051052%
+from analytic CAD;2000-step energy drift is1.55431e-15. R04 corrects only the
+external XML-test fixture's missing excitation/CSX and both API tests pass on
+unchanged R03 library/bindings. Full same-build CPU63 remains running.
+
+R06 independently reviewed reference-device controls pass12 native material
+cases (six geometries on one/three logical workers),256steps each. FP32 fields
+are identical; maximum normalized difference from double is5.79308e-7 under
+retained2e-4/2e-6 double/FP32 gates. Test-only missing-header/oracle/API failures
+are preserved. R07 adds actual backend observations and queues36 new material
+field cases plus32 retained same-build CUDA gates after accepted CPU63 and
+actual R42 physical release. No material source is promoted yet; sampled-loss,
+Metal, mesh/RF, resource/scaling and representative antenna acceptance remain
+open. The production runtime and frozen antenna inputs remain unchanged.
