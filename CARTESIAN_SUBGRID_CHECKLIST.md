@@ -298,10 +298,14 @@ is implemented with Linux CPU48/48, exact operator/field and physical
 directory followup. Local Metal qualification is pending after two
 host-reserve build stops. Peak setup RSS falls1.60–3.41% in three bounded
 interleaved cases, with longer setup. C01/C03/C05 remain incomplete; no
-antenna or guard-increase acceptance follows. A subsequent unpromoted
-direct-row preparation candidate has a successful isolated build and twelve
-exact coefficient controls; full CPU/device review and memory measurements
-are pending. It is not part of this branch's numerical source yet.
+antenna or guard-increase acceptance follows. The unpromoted direct-row
+candidate subsequently passes CPU49/49, sixteen exact operator/field files,
+twelve coefficient controls and native reference cases; physical review is
+pending. Interleaved peak setup RSS falls18.64% on the graded case but grows
+3.25–3.79% on regular cases, so it is not adopted as a general memory win.
+The next isolated candidate compresses only exact incoming face IDs, with
+an allocation gate retaining raw CSR when smaller. Its build/CPU50 controls
+are pending. Neither candidate is in this branch's numerical source yet.
 
 - [ ] **U01** Define device-resident block fields, interface metadata and update
   scheduling within the existing GPU execution architecture.
