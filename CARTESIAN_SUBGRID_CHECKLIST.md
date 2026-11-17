@@ -1046,6 +1046,31 @@ scaled compensated reductions and complete-epoch guards; native processing is
 unchanged. The original test configured a resistor after unused soft sources
 and correctly rejected. A preserved test-only correction passes185 energy/
 loss/PML checks on the unchanged core, maximum relative error1.15141e-8. The
-fresh corrected build passes; CPU68 is running, then52 physical gates wait for
-actual CPU acceptance and exact R47/R49 release. Metal/native use remains open.
+fresh corrected build and CPU68/68 pass, with16 bit-identical actual-R49 arrays
+and779 source hashes rechecked. The52 physical gates have started after exact
+R47/R49 release and fresh admission checks. Metal/native use remains open.
 Evidence: `device-energy-r51/`; R01 failure is not overwritten or solver-fixed.
+
+
+R47 R04 now completes all eight matched-step/runtime cases exit0/noOOM and passes
+its original scoped fixed-XY RF gates. Independently rehashed228 raw files and
+17-point own-timestamp DFT across12 cases reproduce spectra within6.02e-16;
+primary temporal/band analysis covers501 frequencies. At Z3, local/ordinary
+complexGamma difference is0.006073 PEC /0.000939 copper, S21 phase0.01791/
+0.13811deg and magnitude0.03493/0.00334dB. Local Z2-to-Z3 differences are0.004142/
+0.004038 complexGamma, under0.01. Runtime replay, late prefixes and5-to4fs
+sensitivity also pass. R37/R41 failures remain; fixed fine XY/two finer Z
+levels do not prove asymptotic3D, distributed RF or antenna acceptance. Original
+5fs Z3 copper setup rejection remains. No isolated timing claim after R49
+control overlap. Evidence: `finite-width-z3-r47/review-r05.json`.
+
+R52 separately freezes an exact bounded host material palette over promoted R49,
+excluding unpromoted R51. Repeated epsilon/mu retain exact bits; homogeneous
+storage needs no leaf IDs, up to4096 pairs use32-bit IDs, then dense fallback
+bounds dictionary growth. The dictionary is discarded before field construction;
+fallback peak includes temporary IDs. Focused lifecycle, nextafter, copy/move,
+dense and1472-leaf sample controls pass; isolated build passes and CPU68 runs.
+Matched3.93M host characterization waits for CPU acceptance. Physical48 waits
+for R52 CPU acceptance AND accepted exact R51 physical terminal, then rechecks
+resource/identity guards. Metal and native PCB/antenna scaling remain open.
+No production/default guard change. Evidence: `material-palette-r52/`.
