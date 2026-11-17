@@ -1546,3 +1546,32 @@ separately qualified R63 candidate; no production binary is modified.
 Evidence: `curved-xy-refinement-r64/DESIGN.md`,
 `curved-xy-refinement-r64/preparation-r01.json`,
 `curved-xy-refinement-r64/setup-admission-r01.json`.
+
+
+R64 common1fs native preparation passes four PEC/copper old/refined cases.
+The two initial ordinary preparations used R63's regular path, which lacks
+LossyMetal; their mere completed setup did not qualify a lossy reference.
+The R02 RF diagnostic was explicitly stopped during its first native case
+(exit130), preserving partial data and claiming no RF acceptance. R03 retains
+all XML/grid/material/port bytes and restores the actual pinned PR242 ordinary
+runtime. Both fresh ordinary setups now pass, with119 actual conductor fits
+for copper; linked runtime and conductor-provider witnesses are mandatory.
+Fresh RF runs on GPU2RTX4090 as
+`d66abb78a0e5bcc7485c76ec00899fc05d20b6cc4833708dfa2daca22c2f2a8f`.
+No RF or antenna acceptance follows from these setup/process results.
+Evidence: `curved-xy-refinement-r64/reference-audit-stop-r01.json`,
+`curved-xy-refinement-r64/reference-correction-r03.json`,
+`curved-xy-refinement-r64/reference-setup-review-r01.json`,
+`curved-xy-refinement-r64/rf-admission-r03.json`.
+
+R65 independently stages an orchestration-only capability guard over exact
+qualified R63: reject optional LossyMetal on this branch's unsupported regular
+path before operator/backend creation; supported native and legacy PEC remain.
+No update equation, kernel or production runtime changes. Focused eight negative
+and four supported operator cases, actual R63 failure reproduction, CPU78 and
+16 unchanged parent arrays are required before promotion. The isolated
+4CPU/6GiB GPU-free build is running; no implementation/qualification completion
+is inferred from source inspection. Recent Metal/physical acceptance remains
+separate. Evidence: `ordinary-metal-guard-r65/DESIGN.md`,
+`ordinary-metal-guard-r65/preparation-r01.json`,
+`ordinary-metal-guard-r65/cuda-snapshot-r01.json`.
