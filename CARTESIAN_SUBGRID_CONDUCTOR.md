@@ -275,3 +275,35 @@ That backend agreement is distinct from local-versus-ordinary RF accuracy.
 Point-line launches are not calibrated characteristic-Z ports; conductor
 boundary/fit and spatial convergence remain open. No antenna qualification,
 production speedup or relaxed acceptance threshold is claimed.
+
+## Compact curved-line two-resolution diagnosis
+
+R23 retains a separate public terminal-scale U: physical Cu18,139.105um
+width,250um centreline radius,0.5mm legs, fixed Z and400,000steps/5fs.
+All eight frozen native inputs complete on one physical RTX4090. Local
+execution uses qualified frozen R22 core SHA256
+`778c6ee7478fc284889a0c26acc5a4f233cc06a0486b8d37c39c10f25db7fb14`;
+the ordinary control uses its own pinned PR242 CLI/CSXCAD/plugin, retaining
+LossyMetal. Input, runtime,152 raw-trace hashes and terminal exit0/no OOM are
+independently checked. DFT reconstructs each trace at its own E/H timestamps;
+the two half-weight current files are summed once.
+
+| XY refinement | Conductor | Max band complex S11 difference | S21 phase | S21 magnitude | Original band gates |
+|---|---|---:|---:|---:|---|
+|8/8/1|PEC|0.001069911|0.006005deg|0.004534dB|Pass|
+|8/8/1|Smooth copper|0.010262262|0.037780deg|0.051395dB|Fail S11|
+|16/16/1|PEC|0.001264785|0.005358deg|0.005079dB|Pass|
+|16/16/1|Smooth copper|0.006944176|0.008171deg|0.034716dB|Pass|
+
+The original gates remain complex S11<0.01, phase<1deg and magnitude<0.1dB
+over24.000–24.250GHz. Although the finer copper comparison passes, changing
+XY resolution8→16 changes phase3.37–3.43deg and complex S11 by0.0308–0.0331
+in both local and ordinary engines. All four two-level spatial-sensitivity
+gates fail. The1.5ns-to-full2ns complex-S11 change is at most2.44e-8; every
+late-prefix gate passes. The observed tail does not explain the spatial
+change. This is unresolved curved-boundary/mesh/point-port sensitivity,
+not an established backend defect or asymptotic convergence result.
+
+These are capped diagnostic runs with fixed Z, not energy-converged antenna
+qualification. The larger R15 failure is retained. No conductor/antenna
+milestone is completed or threshold weakened by this additional evidence.

@@ -300,12 +300,26 @@ host-reserve build stops. Peak setup RSS falls1.60–3.41% in three bounded
 interleaved cases, with longer setup. C01/C03/C05 remain incomplete; no
 antenna or guard-increase acceptance follows. The unpromoted direct-row
 candidate subsequently passes CPU49/49, sixteen exact operator/field files,
-twelve coefficient controls and native reference cases; physical review is
-pending. Interleaved peak setup RSS falls18.64% on the graded case but grows
+twelve coefficient controls and native reference cases, plus thirteen physical
+CUDA gates with24 exact domain cases and16 native cases in both pair orders.
+Interleaved peak setup RSS falls18.64% on the graded case but grows
 3.25–3.79% on regular cases, so it is not adopted as a general memory win.
 The next isolated candidate compresses only exact incoming face IDs, with
-an allocation gate retaining raw CSR when smaller. Its build/CPU50 controls
-are pending. Neither candidate is in this branch's numerical source yet.
+an allocation gate retaining raw CSR when smaller. Its Linux CPU50/50,
+sixteen exact frozen-parent files and native8-case controls pass. Three
+interleaved repetitions against R24 reduce peak RSS7.59%/22.63%/8.20% on
+uniform491,520/graded61,440/uniform960,000 leaves, with whole setup
+changes+10.92%/−11.92%/+2.39%. Physical CUDA review and Metal remain open;
+this is not a general speedup. Neither candidate is in this branch's
+numerical source yet. A further isolated native-child-coordinate prototype
+builds, but its first symmetric-field divergence metric is degenerate on
+both equal and native meshes. A separately corrected fixture passes12
+geometry/energy cases on unchanged core; a fresh full regression with device
+controls remains pending. The fresh prefix has already passed twelve
+single/domain reference cases (including resistors), six independent FP32
+no-port comparisons and sixteen unchanged frozen-parent files. Full CTest52,
+physical Metal/CUDA and native scripting for child coordinates remain open.
+No full-PCB, guard or scripting support follows.
 
 - [ ] **U01** Define device-resident block fields, interface metadata and update
   scheduling within the existing GPU execution architecture.
@@ -519,6 +533,13 @@ ordinary reference; the0.01 S11 gate is missed. The recorded1-to-2ns tail is
 negligible, but spatial/conductor accuracy is not yet accepted. Physical
 CUDA/Metal agreement on the same local copper input is separately verified.
 No F02 or representative-antenna item is completed by these controls.
+
+The separate [compact two-resolution U diagnosis](CARTESIAN_SUBGRID_CONDUCTOR.md#compact-curved-line-two-resolution-diagnosis)
+completes eight physical CUDA cases with unchanged predeclared gates. At
+16/16/1, local/ordinary copper complex-S11 difference falls to0.006944;
+the8/8/1 copper case still misses0.01. Both engines change phase by about
+3.4deg across those XY levels, so spatial convergence remains unqualified
+despite negligible recorded late-time tails. F02/A01–A07 remain open.
 
 Further partial D01/D04/D05/P05/B04/U05: the [native local-domain adapter](CARTESIAN_SUBGRID_RUNTIME.md)
 connects normal CLI/Python runs to cold loss/PML domains and complete-batch
