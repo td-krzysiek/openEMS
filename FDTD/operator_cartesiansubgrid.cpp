@@ -362,6 +362,24 @@ class Engine_CartesianSubgrid : public Engine
 		}
 	}
 
+	std::size_t FenceObservationEpoch(std::size_t expected)
+	{
+		CheckAdvanceState();
+		if (expected != numTS)
+		{
+			throw std::invalid_argument("CartesianSubgrid: native fence epoch differs from engine");
+		}
+		try
+		{
+			return m_Device ? m_Device->FenceObservationEpoch(expected) : 1;
+		}
+		catch (...)
+		{
+			m_AdvanceFailed = true;
+			m_Operator->InvalidateObservations();
+			throw;
+		}
+	}
 	bool HasDevice() const { return bool(m_Device); }
 	std::size_t AddFieldDFT(bool electric, const std::vector<std::uint32_t> &indices,
 		std::size_t frequencies, std::size_t budget)
@@ -1742,6 +1760,16 @@ double Operator_CartesianSubgrid::EvaluateObservation(std::size_t id) const
 		return engine->SelectedObservation(id);
 	}
 	return ObservationGrid().Evaluate(functional);
+}
+
+std::size_t Operator_CartesianSubgrid::FenceObservationEpoch(std::size_t expected) const
+{
+	auto *engine = dynamic_cast<Engine_CartesianSubgrid *>(m_Engine);
+	if (!engine || !m_ObservationsValid)
+	{
+		throw std::logic_error("CartesianSubgrid: no valid native engine for collective fence");
+	}
+	return engine->FenceObservationEpoch(expected);
 }
 
 void Operator_CartesianSubgrid::SetFieldDFTBudget(std::size_t bytes)

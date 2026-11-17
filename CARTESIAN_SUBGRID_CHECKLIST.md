@@ -1353,3 +1353,15 @@ pure request-helper tests do not qualify the pending native application gates.
 Source, device controls, recent Metal and representative antenna remain separate.
 Evidence: `external-pause-r61/preparation-r01.json`,
 `external-pause-r61/application_control.py`.
+
+
+R60 physical80/80 now passes exit0/noOOM on measured GPU2RTX4090/GPU6RTX3080,
+including both pair orders. Combined with CPU76/76 and16 exact actual-parent
+arrays, independent review rehashes799 source/449 archived files.24 physical
+direct fence cases verify completion waits before returning;48 native cases
+preserve resumed fields/DFT exactly with no fence downloads. Exact qualified
+core/API/test files are promoted after complete source/build comparison.
+Recent Metal, external application control R61 and antenna qualification remain
+open. The resource-only pair derivative does not change any source or gate.
+Evidence: `collective-fence-r60/independent-qualification-r01.json`,
+`collective-fence-r60/promotion-r01.json`.

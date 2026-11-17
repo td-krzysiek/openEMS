@@ -497,6 +497,21 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 		return result;
 	}
 
+	std::size_t FenceObservationEpoch(std::size_t expected) override
+	{
+		if (m_PendingStep != 0 || expected != m_Epoch || m_DFTFailed)
+		{
+			throw std::logic_error("CartesianSubgrid: fence requires a valid exact complete epoch");
+		}
+		if (m_Recurrence)
+		{
+			m_Recurrence->CheckObservation();
+		}
+		m_Backend.Activate();
+		m_Backend.Synchronize();
+		return 1;
+	}
+
 	std::size_t HostObservationStorageBytes() const override
 	{
 		return (m_Electric.capacity() + m_Magnetic.capacity()) * sizeof(float);

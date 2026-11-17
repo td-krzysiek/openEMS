@@ -63,6 +63,9 @@ class Operator_CartesianSubgrid : public Operator
 	const CartesianSubgrid &ObservationGrid() const;
 	void InvalidateObservations() const { m_ObservationsValid = false; }
 	bool ObservationStateValid() const { return m_ObservationsValid; }
+	//! Owner/processing thread only, after draining asynchronous readers and
+	//! before publishing a paused witness. Returns logical worker acknowledgements.
+	std::size_t FenceObservationEpoch(std::size_t expected) const;
 	bool SetGeometryCSX(ContinuousStructure *geometry) override;
 	void SetBoundaryCondition(int *conditions) override;
 	void AddExtension(Operator_Extension *extension) override;

@@ -149,6 +149,12 @@ class CartesianSubgridDomainWorker
 		throw std::logic_error("CartesianSubgrid: worker device DFT read unavailable");
 	}
 	virtual std::uint64_t ObservationDFTDownloadBytes() const { return 0; }
+	//! Block until this worker's exact completed epoch is physically finished;
+	//! return the acknowledged epoch for coordinator validation.
+	virtual std::size_t FenceObservationEpoch(std::size_t)
+	{
+		throw std::logic_error("CartesianSubgrid: worker complete-epoch fence unavailable");
+	}
 
 	virtual std::array<double, 2> ReadAdvanceLedger(std::size_t)
 	{

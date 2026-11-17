@@ -151,6 +151,13 @@ class GPU_CartesianSubgrid
 		throw std::logic_error("CartesianSubgrid: device DFT read unavailable");
 	}
 	virtual std::uint64_t ObservationDFTDownloadBytes() const { return 0; }
+	//! Owner-thread collective fence at an exact completed E/H epoch. Blocks until
+	//! queued work is complete; returns acknowledged logical workers, not GPU count.
+	//! No reads, field migration or implicit synchronization during ordinary steps.
+	virtual std::size_t FenceObservationEpoch(std::size_t)
+	{
+		throw std::logic_error("CartesianSubgrid: complete-epoch fence unavailable");
+	}
 
 	//! Owned host observation buffers only, excluding device and global-grid storage.
 	virtual std::size_t HostObservationStorageBytes() const { return 0; }

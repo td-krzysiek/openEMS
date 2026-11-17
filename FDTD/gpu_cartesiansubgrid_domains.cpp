@@ -206,6 +206,14 @@ class LocalWorker : public CartesianSubgridDomainWorker
 		return m_Execution->ObservationDFTDownloadBytes();
 	}
 
+	std::size_t FenceObservationEpoch(std::size_t expected) override
+	{
+		Require(!m_Pending && expected == m_Epoch, "CartesianSubgrid: mixed worker fence epoch");
+		Require(m_Execution->FenceObservationEpoch(expected) == 1,
+			"CartesianSubgrid: local worker fence acknowledgement differs");
+		return m_Epoch;
+	}
+
 	std::size_t StorageBytes() const override
 	{
 		return m_StorageBytes + m_Execution->StorageBytes() + (m_PML ? m_PML->StorageBytes() : 0);

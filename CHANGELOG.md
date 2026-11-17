@@ -16,6 +16,12 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Added
 
+- Experimental C++ Cartesian-subgrid callers can explicitly fence one complete
+  observation epoch across all local domain workers, without downloading fields
+  or sums. Mixed/failed worker acknowledgements reject continuation. This is a
+  blocking owner-thread boundary; application pause control remains separate.
+  Rebuild matching callers and backend plugins.
+
 - Experimental native Cartesian-subgrid frequency-domain dumps can accumulate
   selected owned states on the device and reconstruct the existing raw-region
   output at readback. Dedicated DFT supports no longer require host field reads

@@ -488,6 +488,26 @@ class Coordinator : public GPU_CartesianSubgrid
 		return bytes;
 	}
 
+	std::size_t FenceObservationEpoch(std::size_t expected) override
+	{
+		Healthy();
+		Require(!m_Pending && expected == m_Epoch, "CartesianSubgrid: collective fence requires exact complete epoch");
+		try
+		{
+			for (auto &worker : m_Workers)
+			{
+				Require(worker->FenceObservationEpoch(expected) == expected,
+					"CartesianSubgrid: mixed collective fence acknowledgement");
+			}
+		}
+		catch (...)
+		{
+			m_Failed = true;
+			throw;
+		}
+		return m_Workers.size();
+	}
+
 	std::size_t HostObservationStorageBytes() const override
 	{
 		std::size_t bytes = (m_Electric.capacity() + m_Magnetic.capacity() +
