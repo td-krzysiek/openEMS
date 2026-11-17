@@ -68,3 +68,14 @@ Independent review rehashes794 source/439 archived files. This qualifies these
 small array/lifecycle controls, not recent Metal, native RF/NF2FF, collective
 pause or a representative antenna. Production and frozen prefixes are unchanged.
 Project evidence: `native-device-dft-r58/independent-qualification-r01.json`.
+
+
+The separate R59 R06 public1GHz PEC dipole comparison now passes with the
+same native XML, one RTX4090 and a mixed RTX4090/RTX3080 pair, host versus
+device DFT. Port U/I/Z/Gamma are exact; largest relative complex far-field
+error is1.80653e-7, near-field2.15114e-7 and derived radiation quantities below
+8.067e-8. Both NF2FF enclosures and retained public dipole/power/contact gates
+pass. Single versus pair exports are exact. Independent review covers172 raw
+artifacts. This is small-fixture radiation evidence, not Metal, PCB/copper RF
+convergence, a speed benchmark or representative antenna acceptance.
+Evidence: `native-dft-radiation-r59-r06/independent-qualification-r01.json`.

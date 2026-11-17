@@ -1299,3 +1299,30 @@ Evidence: `native-device-dft-r58/independent-qualification-r01.json`,
 `native-device-dft-r58/promotion-r01.json`,
 `native-dft-radiation-r59-r03/failure-review-r01.json`,
 `collective-fence-r60/focused-reference-r01.json`.
+
+
+R59 R06 matched native RF/NF2FF now passes all four actual4000-step public-dipole
+runs and independent raw review, wrapperexit0/noOOM. Same byte-exact native XML,
+qualified R58 library, one4090 and mixed4090/3080 pair, each host/device DFT.
+Port U/I/Z/Gamma are exact; maximum relative far field1.80653e-7, near field
+2.15114e-7 and radiation quantities8.067e-8. Single/pair exports are exact.
+Independent review rehashes172 raw artifacts and retains both enclosing surfaces
+and public power/pattern/contact checks. Earlier harness failures are preserved:
+external link, constructor-before-parser order, and an overstrict random-display-
+colour identity gate. R05 independently passes unchanged numerical gates; R06
+also restores the original strict byte gate with deterministic display XML.
+None was an established solver defect. Physical R60 remains gated by fullCPU76;
+its waiting owner now requires actual accepted R58 and R59 R06 identities.
+Evidence: `native-dft-radiation-r59-r06/independent-qualification-r01.json`,
+`native-dft-radiation-r59-r06/README.md`,
+`native-dft-radiation-r59-r05/independent-qualification-r02.json`.
+
+R61 is separately staged, unbuilt and unfrozen over R60: it reuses the existing
+runtime/startup/snapshot file protocol and Python/Matlab request helpers. Native
+workers are fenced after processing drains and before paused/snapshot publication;
+acknowledged logical-worker count/epoch are recorded. Nine pure Python request
+helper tests pass, but establish no native runtime qualification. Matched actual
+pause/resume/snapshot controls, full build/replay and physical/Metal gates remain
+required before any promotion. Production/frozen runtimes are unchanged.
+Evidence: `external-pause-r61/reuse-r01.json`, `external-pause-r61/DESIGN.md`,
+`external-pause-r61/request-helper-tests-r01.json`.
