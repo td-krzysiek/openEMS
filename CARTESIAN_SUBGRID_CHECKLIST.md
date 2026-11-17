@@ -315,12 +315,18 @@ The exact R26 numerical/test bytes are now in this branch. Metal remains open;
 this is not a general speedup or full-PCB adoption. A further isolated native-child-coordinate prototype
 builds, but its first symmetric-field divergence metric is degenerate on
 both equal and native meshes. A separately corrected fixture passes12
-geometry/energy cases on unchanged core; a fresh full regression with device
-controls remains pending. The fresh prefix has already passed twelve
+geometry/energy cases on unchanged core. Its fresh R27-r02 prefix passes
+CPU CTest52/52 with twelve
 single/domain reference cases (including resistors), six independent FP32
-no-port comparisons and sixteen unchanged frozen-parent files. Full CTest52,
-physical Metal/CUDA and native scripting for child coordinates remain open.
-No full-PCB, guard or scripting support follows.
+no-port comparisons, eight native reference cases and sixteen unchanged
+frozen-parent files. Core SHA256:
+`20d49491cfae90b18556ab2dc17fc38ffebae2c0230bb0c1e66a1e8b214fa811`.
+Physical Metal/CUDA remains open. A separate R28 native API/XML successor
+builds with matching Cython bindings and passes11 Python tests, two exact
+drawing-unit/native-manual controls, three native E/H runs and two negative
+mesh setups. Full CTest53 and actual Matlab/Octave execution remain pending.
+Neither native-child prototype is in this branch's numerical source yet;
+no full-PCB, guard increase or qualified scripting support follows.
 
 - [ ] **U01** Define device-resident block fields, interface metadata and update
   scheduling within the existing GPU execution architecture.
