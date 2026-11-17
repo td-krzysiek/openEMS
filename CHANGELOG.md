@@ -16,6 +16,12 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Added
 
+- Experimental native Cartesian subgrids reuse startup/runtime pauses and
+  accumulated DFT snapshots. A paused witness follows complete-epoch worker
+  acknowledgement; resuming preserves fields and histories. Scoped CPU/CUDA
+  controls pass. Recent Metal and representative antenna qualification remain
+  separate; snapshots are not restart checkpoints.
+
 - Experimental C++ Cartesian-subgrid callers can explicitly fence one complete
   observation epoch across all local domain workers, without downloading fields
   or sums. Mixed/failed worker acknowledgements reject continuation. This is a

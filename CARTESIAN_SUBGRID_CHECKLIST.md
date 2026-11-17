@@ -1388,3 +1388,36 @@ Evidence: `external-pause-r61/focused-protocols-r03.json`,
 `external-pause-r61/physical-application-independent-r01.json`,
 `external-pause-r61/application-failure-review-r01.json`,
 `external-pause-r61/protocol-fixture-r04.json`.
+
+
+R61 full GPU-free replay now passes exit0/noOOM:76/76 CTest,50 scripted
+commands,16 exact actual-R60 arrays,811 frozen source files and531 archived
+files independently rehashed. Five protocol modes preserve startup/manual/
+post-pulse checkpoints and repeated DFT metadata. Full152204-cell public dipole
+controls on one4090 and an actual4090/3080 pair preserve160 final raw arrays
+per lane, including accepted R59 outputs. No new RF extraction is inferred.
+
+Additional failure controls pass10 child cases each on native CPU, two logical
+reference workers and the actual physical pair. Runtime timeout resumes exactly;
+graceful stop acknowledges epoch132 without convergence; startup reject/timeout
+fail; stale control files reject before operator creation. Reused snapshot IDs
+and blocked staging do not overwrite published data, do not publish partial
+results, and allow a fresh same-epoch request followed by exact resumed arrays.
+198 CPU/reference and342 physical raw artifacts are independently rehashed.
+The initial physical fault launcher hit an existing name before any test
+started; the named R02 admission changes only its fresh directory/container name.
+The background CPU owner fetched first; a second observer's exclusive-output
+rejection did not rerun or replace numerical evidence.
+
+Exact R61 core/API/helper/test bytes are promoted after whole-code comparison.
+Public reproduction drivers/fixtures and semantics are in
+[CARTESIAN_SUBGRID_RUN_CONTROL.md](CARTESIAN_SUBGRID_RUN_CONTROL.md). This extends
+partial D04/U04 only. Recent Metal, application-level backend-fault injection,
+opt-in overhead, native PCB scaling and representative antenna acceptance
+remain open; no production/frozen runtime changes. R60 core failure guards do
+not substitute for application fault injection.
+Evidence: `external-pause-r61/cpu-independent-r03.json`,
+`external-pause-r61/physical-application-independent-r01.json`,
+`external-pause-r61/fault-controls-independent-r01.json`,
+`external-pause-r61/physical-fault-independent-r02.json`,
+`external-pause-r61/promotion-r01.json`.
