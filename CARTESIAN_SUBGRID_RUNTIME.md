@@ -246,3 +246,48 @@ explicit C++ circuit API. It is being built/tested, not promoted. Required
 checks include actual-old-library failure, ordinary coefficients, retained
 interface/passivity/partial-edge controls and physical backends. Evidence:
 `native-line-normalization-r36-diagnosis/`; canonical acceptance remains open.
+
+
+## Reusing resolved native port support
+
+R35-r02 retains each already verified native rectangular-port edge ID, one
+incident leaf and its local edge coordinates. Overlap checks and admittance
+preparation use this immutable support rather than repeating the general
+full-leaf voltage-path integration for every edge. Resistance, order, physical
+endpoints, source geometry and numerical update kernels remain unchanged;
+the older owning `DistributedResistor` API remains available. Rebuild C++
+callers against the matching headers. Descriptors require unchanged topology.
+
+The original test incorrectly required the general integrator to have exactly
+one support term. An unchanged-library diagnosis finds an extra quadrature
+term3.6266e-16 relative to the identical main coefficient at a rounded cut.
+Fresh r02 changes only the test oracle: keep the original2e-14 bound on the
+complete functional's relativeL1 difference, with wrong-main/wrong-support
+negative controls. Exact direct topology and all hanging/missing-edge guards
+remain. This avoids a strict-cardinality false rejection, rather than silently
+admitting unsupported geometry. Original failure and diagnostic are retained.
+
+CPU60/60,48 new descriptor controls,16 exact actual-R34 frozen files and all26
+physical CUDA gates pass on4090/3080 in both orders. These include48 new
+native-box cases per hardware lane,24 exact domain metadata/field cases,
+retained child loss/PML and16 native Python observations. The actual library
+SHA256 is `a94dd254ddffb78c38988e4f290cd679f04539378ed7334786376465871894be`.
+Terminal exit0/no-OOM and all377archived files/source identities are rechecked.
+Metal, driven RF, full-array memory and antenna acceptance remain open.
+
+A GPU-free native294-trace port benchmark uses identical binary-exact geometry
+on the actual frozen R34/R35 libraries. Three interleaved repetitions time
+complete CalcECOperator, before untimed prepared-loss fingerprint extraction:
+
+| Leaves | R34 median | R35 median | Preparation ratio |
+|---|---:|---:|---:|
+|16,192|2.803563s|0.218491s|12.83x|
+|118,720|20.918891s|1.580225s|13.24x|
+
+Within each size, prepared row/rate/timestep fingerprints and counts are exact
+across libraries/repetitions; source/runtime/binary hashes are bound separately.
+PeakRSS is nearly unchanged. This shared-load small native setup comparison
+is not a master-versus-branch FDTD benchmark, full-array wall-time prediction
+or evidence that all preparation is13x faster. The inherited no-port domain
+benchmark is not used to establish this gain. Evidence: the separately frozen
+`resolved-port-edges-r35-r02/` study and `port-benchmark-summary-r01.json`.

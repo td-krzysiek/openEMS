@@ -105,6 +105,16 @@ class CartesianSubgrid
 	//! not the bounded dense reference-port system in SetResistors.
 	std::vector<Resistor> DistributedResistor(const Point &start, const Point &stop,
 		unsigned int direction, double resistance) const;
+	struct ResolvedResistor
+	{
+		Resistor resistor;
+		std::size_t edge = 0, leaf = 0;
+		unsigned int first = 0, second = 0;
+	};
+	//! Same geometry/normalization, retaining its already verified local support.
+	//! Grid topology must remain unchanged while these setup descriptors are used.
+	std::vector<ResolvedResistor> PrepareDistributedResistor(const Point &start, const Point &stop,
+		unsigned int direction, double resistance) const;
 	//! Dual contour bounds around a zero-width, node-centred native probe.
 	std::pair<double, double> DualBounds(unsigned int axis, const Point &point) const;
 	//! Fixed-step, passive midpoint resistor coupling; at most 64 small reference ports.

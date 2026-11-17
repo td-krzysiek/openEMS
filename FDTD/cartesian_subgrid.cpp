@@ -1847,6 +1847,19 @@ std::pair<double, double> CartesianSubgrid::DualBounds(unsigned int axis, const 
 std::vector<CartesianSubgrid::Resistor> CartesianSubgrid::DistributedResistor(
 	const Point &start, const Point &stop, unsigned int direction, double resistance) const
 {
+	const auto prepared = PrepareDistributedResistor(start, stop, direction, resistance);
+	std::vector<Resistor> result;
+	result.reserve(prepared.size());
+	for (const auto &entry : prepared)
+	{
+		result.push_back(entry.resistor);
+	}
+	return result;
+}
+
+std::vector<CartesianSubgrid::ResolvedResistor> CartesianSubgrid::PrepareDistributedResistor(
+	const Point &start, const Point &stop, unsigned int direction, double resistance) const
+{
 	Require(direction < 3 && resistance > 0 && std::isfinite(resistance),
 		"CartesianSubgrid: distributed resistor needs an axis and finite positive R");
 	Point lo, hi, tolerance;
@@ -1864,6 +1877,8 @@ std::vector<CartesianSubgrid::Resistor> CartesianSubgrid::DistributedResistor(
 	{
 		Point start, stop;
 		double metric = 0;
+		std::size_t leaf = std::numeric_limits<std::size_t>::max();
+		unsigned int first = 0, second = 0;
 	};
 	std::map<std::size_t, Selected> selected;
 	std::array<std::set<double>, 3> nodes;
@@ -1955,6 +1970,12 @@ std::vector<CartesianSubgrid::Resistor> CartesianSubgrid::DistributedResistor(
 						local.size == master.size,
 						"CartesianSubgrid: distributed resistor touches a hanging interface");
 					found->second.metric += metric;
+					if (found->second.leaf == std::numeric_limits<std::size_t>::max())
+					{
+						found->second.leaf = cell;
+						found->second.first = i;
+						found->second.second = j;
+					}
 				}
 			}
 		}
@@ -1976,7 +1997,7 @@ std::vector<CartesianSubgrid::Resistor> CartesianSubgrid::DistributedResistor(
 	}
 	Require(series > 0 && std::isfinite(series),
 		"CartesianSubgrid: distributed resistor series metric overflows");
-	std::vector<Resistor> result;
+	std::vector<ResolvedResistor> result;
 	result.reserve(selected.size());
 	for (const auto &entry : selected)
 	{
@@ -1984,7 +2005,10 @@ std::vector<CartesianSubgrid::Resistor> CartesianSubgrid::DistributedResistor(
 		const double conductance = (series / resistance) * edge.metric;
 		Require(conductance > 0 && std::isfinite(conductance) && std::isfinite(1 / conductance),
 			"CartesianSubgrid: distributed resistor conductance is unrepresentable");
-		result.push_back({edge.start, edge.stop, 1 / conductance, 0});
+		Require(edge.leaf != std::numeric_limits<std::size_t>::max(),
+			"CartesianSubgrid: distributed resistor has no resolved leaf support");
+		result.push_back({{edge.start, edge.stop, 1 / conductance, 0}, entry.first,
+			edge.leaf, edge.first, edge.second});
 	}
 	return result;
 }

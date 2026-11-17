@@ -1264,9 +1264,11 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 		for (const auto &resistor : distributedResistors)
 		{
 			Operator_Ext_CartesianSubgrid_Conductivity::SurfaceAdmittance admittance;
-			admittance.start = resistor.start;
-			admittance.stop = resistor.stop;
-			admittance.conductance = 1 / resistor.resistance;
+			admittance.localEdge = Operator_Ext_CartesianSubgrid_Conductivity::SurfaceAdmittance::LocalEdge{
+				resistor.leaf, m_Grid->EdgeDirection(resistor.edge), resistor.first, resistor.second};
+			admittance.start = resistor.resistor.start;
+			admittance.stop = resistor.resistor.stop;
+			admittance.conductance = 1 / resistor.resistor.resistance;
 			admittances.push_back(std::move(admittance));
 		}
 		if (hasSurfaceMetal)
@@ -1481,10 +1483,10 @@ CartesianSubgrid::Point Operator_CartesianSubgrid::DrawingPoint(const double *dr
 	return point;
 }
 
-std::vector<CartesianSubgrid::Resistor> Operator_CartesianSubgrid::PrepareResistors()
+std::vector<CartesianSubgrid::ResolvedResistor> Operator_CartesianSubgrid::PrepareResistors()
 {
 	std::vector<CartesianSubgrid::Resistor> ports;
-	std::vector<CartesianSubgrid::Resistor> distributed;
+	std::vector<CartesianSubgrid::ResolvedResistor> distributed;
 	std::set<std::size_t> occupied;
 	for (auto *property : CSX->GetPropertyByType(CSProperties::LUMPED_ELEMENT))
 	{
@@ -1503,11 +1505,10 @@ std::vector<CartesianSubgrid::Resistor> Operator_CartesianSubgrid::PrepareResist
 			const auto a = DrawingPoint(start), b = DrawingPoint(stop);
 			if (transverse)
 			{
-				auto resolved = m_Grid->DistributedResistor(a, b, unsigned(resistor->GetDirection()), resistor->GetResistance());
+				auto resolved = m_Grid->PrepareDistributedResistor(a, b, unsigned(resistor->GetDirection()), resistor->GetResistance());
 				for (const auto &edge : resolved)
 				{
-					const auto path = m_Grid->VoltagePath(edge.start, edge.stop);
-					if (path.weights.size() != 1 || !occupied.insert(path.weights.front().first).second)
+					if (!occupied.insert(edge.edge).second)
 					{
 						throw std::invalid_argument("CartesianSubgrid: overlapping or unresolved distributed resistor");
 					}

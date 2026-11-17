@@ -797,13 +797,13 @@ numerical change invalidates their prior qualification.
 
 ### Pending port follow-ups — 17 November
 
-R35-r02 resolved local port descriptors pass CPU60/60 and16 exact actual-parent
-files; physical26-gate replay is separately running. An actual native-port
+R35-r02 resolved local port descriptors pass CPU60/60,16 exact actual-parent
+files and all26 physical CUDA gates after terminal/source/runtime review. An actual native-port
 setup benchmark on read-only R34/R35 libraries times complete preparation,
 with294 traces and identical prepared-coefficient fingerprints:16,192leaves
 2.803563s→0.218491s and118,720leaves20.918891s→1.580225s (three interleaved
 repetitions). These12.83x/13.24x small-case setup ratios do not establish
-full-array or FDTD speedup; source promotion awaits terminal physical review.
+full-array or FDTD speedup. Exact qualified R35 source is now promoted.
 Metal and representative RF/scaling remain open.
 
 The [retained line-adapter diagnosis](CARTESIAN_SUBGRID_RUNTIME.md#retained-native-line-normalization-diagnosis)
@@ -811,3 +811,6 @@ reproduces graded longitudinal R/N normalization error against actual ordinary
 coefficients. A separately frozen physical-length correction R36 is being
 built. No frozen result, production runtime or allocation guard changed; no
 existing curved RF failure is erased.
+
+
+| 2026-11-17 | Further partial P01/P02/P05/C05/U04/U05: resolved native port support | R35-r02, exact qualified source promoted | [Descriptor contract, diagnosis and measurements](CARTESIAN_SUBGRID_RUNTIME.md#reusing-resolved-native-port-support). CPU60/60,48 descriptor controls,16 exact actual-R34 files and26 physical CUDA gates on4090/3080 in both orders pass. Original support-cardinality test failure retained; unchanged2e-14 complete-functional bound and wrong-support negatives pass. Actual native294-trace setup improves12.83x/13.24x at16,192/118,720leaves with identical prepared fingerprints. This is scoped setup timing, not full-array/FDTD speedup. Metal, RF and scaling remain open; guards unchanged. |

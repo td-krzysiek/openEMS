@@ -16,6 +16,11 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Added
 
+- Experimental Cartesian-subgrid rectangular ports reuse verified local support
+  during preparation, avoiding repeated general-path searches. Scoped CPU/CUDA
+  controls retain conductances and fields; general quadrature stays available.
+  Metal and representative RF/scaling qualification remain pending.
+
 - Experimental native Cartesian-subgrid resistive ports accept resolved sheet
   and volume boxes with geometry-normalized conductance and optional end caps.
   Scoped CPU/CUDA controls pass; Metal, RF convergence and antenna qualification
