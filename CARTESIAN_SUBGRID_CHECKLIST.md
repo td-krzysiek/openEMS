@@ -325,11 +325,17 @@ single/domain fields and maximum double-field error2.033e-6. Its unchanged
 standalone test is now supplied and registered; a combined CTest replay of
 that registration and Metal for the composition remain open. The original
 degenerate field diagnostic and two R29 fixture failures remain retained.
-R29-r02 implements implicit incoming curl support without global incoming CSR;
-its corrected24-case all-row oracle passes against unchanged R29 core, and
-full CPU54, setup/RSS and physical qualification are running or pending.
-Its numerical source is not yet promoted. No full-PCB, guard increase or
-production adoption follows.
+R29-r02 implements implicit incoming curl support without global incoming CSR.
+Its corrected24-case all-row oracle and full CPU54/54 pass, including16 exact
+actual-R28 files, eight native reference and six exact domain cases. Three
+interleaved repetitions reduce peak RSS2.28–3.82% against R28, with slower
+whole setup by8.84–18.90%; this is a structural memory/overflow fix, not a
+preparation speedup. Physical CUDA is running; Metal remains open. Its
+numerical source is not yet promoted. Separate frozen R31 compresses only
+worker ownership labels in256-state uniform/byte-mixed tiles, retaining the
+dense oracle. Thirty storage/address controls and early parent replay pass;
+full CPU56, measured RSS/setup and physical qualification remain pending.
+No full-PCB, guard increase or production adoption follows.
 
 - [ ] **U01** Define device-resident block fields, interface metadata and update
   scheduling within the existing GPU execution architecture.
