@@ -5,6 +5,7 @@
 
 set(TESTS
   test_cartesian_subgrid_child_api
+  test_openems_surface_capability_guard
   test_cartesian_subgrid_device_child_knots
   test_cartesian_subgrid_device_child_loss
   test_cartesian_subgrid_child_knots

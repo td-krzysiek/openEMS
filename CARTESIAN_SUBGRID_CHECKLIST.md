@@ -1575,3 +1575,29 @@ is inferred from source inspection. Recent Metal/physical acceptance remains
 separate. Evidence: `ordinary-metal-guard-r65/DESIGN.md`,
 `ordinary-metal-guard-r65/preparation-r01.json`,
 `ordinary-metal-guard-r65/cuda-snapshot-r01.json`.
+
+R65 now passes independent CPU78 qualification,53 scripted controls and16
+exact actual-R63 operator/field files. The new test reproduces the defect
+against the actual R63 library (expected failure), then checks eight rejection
+and four supported operator cases with the corrected library. Source/archive
+reviews rehash820/535 files. Focused physical RTX3080 qualification passes
+three native conductor controls and two public application lanes;160 final
+arrays match both paused/uninterrupted execution and actual R63 exactly.
+Surface-field relative error is at most2.340e-6 against the original2e-4 gate.
+The exact guard/test bytes are promoted; no equations, kernels, production or
+frozen runtimes change. Recent Metal and representative antenna remain open.
+Evidence: `ordinary-metal-guard-r65/cpu-independent-r01.json`,
+`ordinary-metal-guard-r65/physical-independent-r03.json`,
+`ordinary-metal-guard-r65/promotion-r01.json`.
+
+R66 has three offline full-board slab-mesh proposals with100,899,684 /
+126,423,708 /139,185,720 predicted leaves, versus427,485,270 original regular
+cells. All117 CAD properties and actual ports are preserved; independent
+input checks retain the exact eight-cell PML planes, NF2FF anchors and old
+refined XY knots. These counts are not memory, accuracy or speed evidence.
+The first100.9M-leaf case has entered a CPU-only preparation probe with64GiB
+cgroup limit, no swap/GPU/time advance,80GiB total project cap and12GiB host
+reserve. Actual operator/contact/interface/CFL/resource acceptance is pending.
+Historical contours are unchanged and this is not a fabrication derivative.
+Evidence: `representative-slab-mesh-r66/independent-preflight-r02.json`,
+`representative-slab-mesh-r66/setup-admission-r01.json`.

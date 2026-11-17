@@ -307,6 +307,10 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Fixed
 
+- This experimental branch rejects optional LossyMetal on its ordinary-grid
+  path, which lacks the conductor extension, rather than accepting unmodelled
+  losses. Native Cartesian subgrids and ordinary PEC retain their behavior.
+
 - Experimental native Cartesian-subgrid line resistors distribute series
   resistance by physical segment length on graded grids. Equal-length grids
   and explicit C++ circuits retain their behavior. Scoped CPU/CUDA controls

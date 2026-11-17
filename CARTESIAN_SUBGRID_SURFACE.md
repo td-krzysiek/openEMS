@@ -108,6 +108,17 @@ qualified prefix. These local archives are not public PR attachments.
 
 ## Remaining scope
 
+This branch's ordinary Cartesian operator does not implement the optional
+CSXCAD LossyMetal property. It now rejects that configuration before creating
+an operator/backend; choose a separately qualified runtime with the conductor
+extension for an ordinary-grid reference. The guard does not change supported
+native subgrid or legacy PEC calculations. Integrating an ordinary conductor
+extension must revisit this guard. Scoped Linux CPU qualification passes78/78
+CTest, eight rejection/four supported controls and16 exact actual-parent
+operator/field files; focused RTX3080 tests retain160 exact parent/application
+arrays and pass three native conductor controls. Recent Metal and full-antenna
+qualification remain separate. Evidence: local R65 archive and canonical log.
+
 A surface state attached to a voltage path does not automatically represent
 physical metal. Native volume exclusion, exposed-face quadrature, reference
 planes, finite-thickness conventions, conductor contacts and short-line phase/

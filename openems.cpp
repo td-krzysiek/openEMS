@@ -66,6 +66,10 @@
 #include "CSPropExcitation.h"
 #include "CSPrimBox.h"
 #include "CSPropDumpBox.h"
+#if __has_include("CSPropLossyMetal.h")
+#include "CSPropLossyMetal.h"
+#define OPENEMS_HAS_SUBGRID_SURFACE_PROPERTY 1
+#endif
 
 using namespace std;
 namespace po = boost::program_options;
@@ -1101,6 +1105,18 @@ bool openEMS::SetupOperator()
 	{
 		throw std::invalid_argument("CartesianSubgrid: child coordinates require refinement regions");
 	}
+
+	// This branch implements this optional property only in the native local
+	// operator. Do not silently accept its losses on an ordinary operator.
+#ifdef OPENEMS_HAS_SUBGRID_SURFACE_PROPERTY
+	if (m_CSX && m_CartesianSubgridBox.empty() && m_CartesianSubgridBoxes.empty() &&
+		!m_CSX->GetPropertyByType(CSProperties::LOSSYMETAL).empty())
+	{
+		throw std::invalid_argument(
+			"openEMS: LossyMetal requires the native Cartesian subgrid path in this build; "
+			"a regular-grid calculation needs a runtime with the conductor extension");
+	}
+#endif
 
 	// the command-line choice (openEMS::EngineType) as the engine type of the operator
 	Engine::EngineType type = Engine::UNKNOWN;
