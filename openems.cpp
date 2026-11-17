@@ -1901,6 +1901,11 @@ int openEMS::SetupFDTD()
 		return 2;
 	}
 
+	if (auto *local = dynamic_cast<Operator_CartesianSubgrid *>(FDTD_Op))
+	{
+		local->SealObservations();
+	}
+
 	// Cleanup all unused material storages...
 	FDTD_Op->CleanupMaterialStorage();
 

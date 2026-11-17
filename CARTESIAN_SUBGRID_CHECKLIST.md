@@ -1098,7 +1098,7 @@ covers single/two workers, all cuts, PML/bulk loss, U/I/SI functionals, scalar
 energy/cache accounting, exact full fields and concurrent fallback. Frozen build and12 focused reference cases pass: functional discrepancy0,
 maximum energy error7.60313e-9, no full reads across four processing batches,
 and exactly one refreshed full fallback per observed epoch under concurrent
-readers. Full CPU69/69 and16 actual-parent operator/field files now pass;780 source files were rehashed. Physical56 is running; Metal/native RF remain pending. The
+readers. Full CPU69/69 and16 actual-parent operator/field files now pass;780 source files were rehashed. Physical56 now passes exit0/noOOM;780 source and418 archived files were independently rehashed. Exact numerical/API/test source is promoted. Metal/native RF remain pending. The
 host-observation byte counter excludes registry/reader/caller memory.
 Evidence: `native-sparse-observations-r53/`. No production runtime is changed.
 

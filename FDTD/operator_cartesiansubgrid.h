@@ -26,6 +26,19 @@ class Operator_CartesianSubgrid : public Operator
 	//! Fixed execution placement, separate from physical geometry and XML.
 	void SetDomainExecution(unsigned int axis, std::vector<double> drawingCuts,
 		std::vector<std::unique_ptr<GPU_Backend>> backends);
+	//! Startup registration; seal only after all native processing has been prepared.
+	std::size_t RegisterObservation(const CartesianSubgrid::Integral &functional) const;
+	void SealObservations();
+	double EvaluateObservation(std::size_t id) const;
+	struct ObservationInfo
+	{
+		std::size_t fullFieldReads = 0, selectedReadbacks = 0, energyReadbacks = 0;
+		std::uint64_t energyDownloadBytes = 0;
+		std::size_t hostObservationBytes = 0;
+		bool sealed = false, device = false;
+	};
+	ObservationInfo NativeObservationInfo() const;
+	//! Explicit complete mirror; refreshes lazily in sealed device execution.
 	const CartesianSubgrid &ObservationGrid() const;
 	void InvalidateObservations() const { m_ObservationsValid = false; }
 	bool SetGeometryCSX(ContinuousStructure *geometry) override;
@@ -35,6 +48,7 @@ class Operator_CartesianSubgrid : public Operator
 	Engine *CreateEngine() override;
 	double GetNumberCells() const override;
 	void ShowStat() const override;
+	//! Raw setup/reference grid. After SealObservations use ObservationGrid() for live device fields.
 	CartesianSubgrid &Grid() const
 	{
 		return *m_Grid;
@@ -62,6 +76,8 @@ class Operator_CartesianSubgrid : public Operator
 	std::vector<double> m_DomainCuts;
 	std::vector<std::unique_ptr<GPU_Backend>> m_DomainBackends;
 	mutable bool m_ObservationsValid = true;
+	mutable std::vector<CartesianSubgrid::Integral> m_ObservationFunctions;
+	bool m_ObservationPlanSealed = false;
 	//! Non-owning handle; the operator extension list retains ownership.
 	Operator_Ext_CartesianSubgrid_Conductivity *m_NativeConductivity = nullptr;
 };

@@ -1,6 +1,9 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include "operator_cartesiansubgrid.h"
 #include "subgrid_allocation_limits.h"
+#include "subgrid_observations.h"
+#include <atomic>
+#include <mutex>
 #include "subgrid_material_quadrature.h"
 #include "CSPrimBox.h"
 #include "CSPrimPolygon.h"
@@ -357,6 +360,63 @@ class Engine_CartesianSubgrid : public Engine
 					  << "; allocated " << (m_Device->StorageBytes() + extensionBytes) << " bytes; no host half-step fallback" << std::endl;
 		}
 	}
+	void SealObservations(const std::vector<CartesianSubgrid::Integral> &functionals)
+	{
+		CheckAdvanceState();
+		if (m_ObservationSealed || numTS != 0)
+		{
+			throw std::logic_error("CartesianSubgrid: native observation sealing is startup-only");
+		}
+		// A failed configuration attempt is not retryable as an unused device.
+		m_ObservationSealed = true;
+		if (m_Device)
+		{
+			try
+			{
+				m_Selected = std::make_unique<CartesianSubgridObservations>(m_Operator->Grid(), functionals);
+				m_Selected->Bind(*m_Device);
+				m_Device->ConfigureEnergy(m_Operator->Grid());
+				m_Selected->Read(m_SelectedValues);
+				++m_SelectedReadbacks;
+			}
+			catch (...)
+			{
+				m_AdvanceFailed = true;
+				m_Operator->InvalidateObservations();
+				throw;
+			}
+		}
+	}
+	double SelectedObservation(std::size_t id) const
+	{
+		CheckAdvanceState();
+		if (!m_Selected)
+		{
+			throw std::logic_error("CartesianSubgrid: native device observations are not sealed");
+		}
+		return m_SelectedValues.at(id);
+	}
+	Operator_CartesianSubgrid::ObservationInfo ObservationInfo() const
+	{
+		return {m_FullFieldReads, m_SelectedReadbacks, m_EnergyReadbacks,
+			m_Device ? m_Device->EnergyDownloadBytes() : 0,
+			m_Device ? m_Device->HostObservationStorageBytes() : 0,
+			m_ObservationSealed, bool(m_Device)};
+	}
+	void PrepareHostObservation() const
+	{
+		CheckAdvanceState();
+		if (m_Device && !m_HostFieldsCurrent.load(std::memory_order_acquire))
+		{
+			std::lock_guard<std::mutex> lock(m_ObservationMutex);
+			if (!m_HostFieldsCurrent.load(std::memory_order_relaxed))
+			{
+				m_Device->ReadFields(m_Operator->Grid());
+				++m_FullFieldReads;
+				m_HostFieldsCurrent.store(true, std::memory_order_release);
+			}
+		}
+	}
 	bool IterateTS(unsigned int steps) override
 	{
 		if (m_AdvanceFailed)
@@ -377,6 +437,11 @@ class Engine_CartesianSubgrid : public Engine
   private:
 	bool IterateCompact(unsigned int steps)
 	{
+		if (steps && m_Device)
+		{
+			m_HostFieldsCurrent.store(false, std::memory_order_release);
+			m_EnergyCurrent = false;
+		}
 		Excitation *signal = m_Operator->Signal();
 		const auto length = signal->GetLength();
 		unsigned int period = 0;
@@ -447,7 +512,17 @@ class Engine_CartesianSubgrid : public Engine
 		}
 		if (m_Device)
 		{
-			m_Device->ReadFields(m_Operator->Grid());
+			if (m_Selected)
+			{
+				m_Selected->Read(m_SelectedValues);
+				++m_SelectedReadbacks;
+				const auto ledger = m_Device->ReadLedger();
+				m_Operator->Grid().ImportDeviceLedger(ledger[0], ledger[1]);
+			}
+			else
+			{
+				PrepareHostObservation();
+			}
 			if (m_Advance)
 			{
 				m_Advance->ReadDeviceDiagnostics(*m_Device);
@@ -472,6 +547,7 @@ class Engine_CartesianSubgrid : public Engine
 	FDTD_FLOAT GetVolt(unsigned int n, const unsigned int pos[3]) const override
 	{
 		CheckAdvanceState();
+		PrepareHostObservation();
 		if (pos[n] + 1 >= m_Operator->GetNumberOfLines(n))
 		{
 			return 0;
@@ -486,6 +562,7 @@ class Engine_CartesianSubgrid : public Engine
 	FDTD_FLOAT GetCurr(unsigned int n, const unsigned int pos[3]) const override
 	{
 		CheckAdvanceState();
+		PrepareHostObservation();
 		if (pos[(n + 1) % 3] + 1 >= m_Operator->GetNumberOfLines((n + 1) % 3) ||
 			pos[(n + 2) % 3] + 1 >= m_Operator->GetNumberOfLines((n + 2) % 3))
 		{
@@ -499,9 +576,25 @@ class Engine_CartesianSubgrid : public Engine
 		CheckAdvanceState();
 		// Engine_Interface_FDTD multiplies by vacuum epsilon/mu. Return the
 		// correctly integrated energy, not a count-dependent coarse sample sum.
-		electric = 2 * m_Operator->Grid().ElectricEnergy() / EPS0;
+		std::array<double, 2> fields;
+		if (m_Selected)
+		{
+			std::lock_guard<std::mutex> lock(m_ObservationMutex);
+			if (!m_EnergyCurrent)
+			{
+				m_EnergyValues = m_Device->ReadEnergy();
+				++m_EnergyReadbacks;
+				m_EnergyCurrent = true;
+			}
+			fields = m_EnergyValues;
+		}
+		else
+		{
+			fields = {m_Operator->Grid().ElectricEnergy(), m_Operator->Grid().MagneticEnergy()};
+		}
+		electric = 2 * fields[0] / EPS0;
 		const double history = m_Advance ? m_Advance->AdditionalStoredEnergy() : 0;
-		magnetic = 2 * (m_Operator->Grid().MagneticEnergy() + history) / MUE0;
+		magnetic = 2 * (fields[1] + history) / MUE0;
 		return true;
 	}
 	void SetVolt(unsigned int, unsigned int, unsigned int, unsigned int, FDTD_FLOAT) override
@@ -565,6 +658,15 @@ class Engine_CartesianSubgrid : public Engine
 	std::unique_ptr<GPU_CartesianSubgrid> m_Device;
 	Engine_Ext_CartesianSubgrid_Advance *m_Advance = nullptr;
 	bool m_AdvanceFailed = false;
+	bool m_ObservationSealed = false;
+	std::unique_ptr<CartesianSubgridObservations> m_Selected;
+	std::vector<double> m_SelectedValues;
+	mutable std::mutex m_ObservationMutex;
+	mutable std::atomic<bool> m_HostFieldsCurrent{true};
+	mutable bool m_EnergyCurrent = false;
+	mutable std::array<double, 2> m_EnergyValues{};
+	mutable std::size_t m_FullFieldReads = 0, m_EnergyReadbacks = 0;
+	std::size_t m_SelectedReadbacks = 0;
 	Engine_Ext_CartesianSubgrid_PML *m_DomainPML = nullptr;
 	struct DevicePair
 	{
@@ -1510,7 +1612,59 @@ const CartesianSubgrid &Operator_CartesianSubgrid::ObservationGrid() const
 	{
 		throw std::logic_error("CartesianSubgrid: failed native advance has no valid field observation");
 	}
+	if (const auto *engine = dynamic_cast<const Engine_CartesianSubgrid *>(m_Engine))
+	{
+		engine->PrepareHostObservation();
+	}
 	return *m_Grid;
+}
+
+std::size_t Operator_CartesianSubgrid::RegisterObservation(const CartesianSubgrid::Integral &functional) const
+{
+	if (!m_Grid || m_ObservationPlanSealed || (m_Engine && m_Engine->GetNumberOfTimesteps() != 0))
+	{
+		throw std::logic_error("CartesianSubgrid: native observation registration is startup-only");
+	}
+	// Reuse the exact finite/count checks without binding or downloading fields.
+	CartesianSubgridObservations checked(*m_Grid, {functional});
+	m_ObservationFunctions.push_back(functional);
+	return m_ObservationFunctions.size() - 1;
+}
+
+void Operator_CartesianSubgrid::SealObservations()
+{
+	if (m_ObservationPlanSealed || !m_Engine || m_Engine->GetNumberOfTimesteps() != 0)
+	{
+		throw std::logic_error("CartesianSubgrid: seal native observations once after engine/processing setup");
+	}
+	m_ObservationPlanSealed = true;
+	auto *engine = dynamic_cast<Engine_CartesianSubgrid *>(m_Engine);
+	if (!engine)
+	{
+		throw std::logic_error("CartesianSubgrid: matching native engine is required");
+	}
+	engine->SealObservations(m_ObservationFunctions);
+}
+
+double Operator_CartesianSubgrid::EvaluateObservation(std::size_t id) const
+{
+	if (!m_ObservationsValid || !m_Grid)
+	{
+		throw std::logic_error("CartesianSubgrid: failed native advance has no valid probe observation");
+	}
+	const auto &functional = m_ObservationFunctions.at(id);
+	const auto *engine = dynamic_cast<const Engine_CartesianSubgrid *>(m_Engine);
+	if (m_ObservationPlanSealed && engine && engine->ObservationInfo().device)
+	{
+		return engine->SelectedObservation(id);
+	}
+	return ObservationGrid().Evaluate(functional);
+}
+
+Operator_CartesianSubgrid::ObservationInfo Operator_CartesianSubgrid::NativeObservationInfo() const
+{
+	const auto *engine = dynamic_cast<const Engine_CartesianSubgrid *>(m_Engine);
+	return engine ? engine->ObservationInfo() : ObservationInfo{};
 }
 
 void Operator_CartesianSubgrid::SetDomainExecution(unsigned int axis,

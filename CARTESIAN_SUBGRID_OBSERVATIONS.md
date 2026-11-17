@@ -79,3 +79,43 @@ series; resource limits still passed and numerical cases used independent
 state. Preserve the original launch/audit and use no timing-isolation or
 performance claim from these controls. The next owner requires exact container
 name AND ID terminal checks twice, with positive/negative regression coverage.
+
+## R53 staged native observation integration
+
+Unqualified native processing registration uses `RegisterObservation` before
+stepping and `SealObservations` after processing setup. `EvaluateObservation`
+returns registered U/I (or explicit C++ SI E/H functionals) at the complete
+processing epoch. The native application seals automatically after setup;
+manual C++ engine users remain on the existing eager path until explicit seal.
+Registration, sealing and sample IDs are checked. Native CPU remains direct.
+
+Sealed device execution gathers only registered states and scalar work/loss at
+batch boundaries. `CalcFastEnergy` reads optional device field energy once per
+epoch and retains separately mirrored surface-history energy, preserving the
+existing vacuum scaling of the engine interface. GPU reduction rounding may
+change a threshold-edge termination batch; field stepping is unchanged.
+
+`ObservationGrid()` explicitly refreshes a complete host mirror on demand.
+Generic E/H field queries/dumps still use that full fallback, serialized once
+per epoch before concurrent read-only access. Raw `Grid()` is setup/reference
+storage, not a live device mirror after sealing; previously held raw references
+must not be used as live fields. Sparse diagnostic calls do not refresh it.
+Full device mirror removal, planned E/H/DFT gathers and device DFT accumulation
+are subsequent work, not claimed by this increment. Complete initial double
+host fields are still allocated. Counters describe this component only and
+exclude setup, halos, other extension transfers and total RSS/VRAM.
+
+The new control compares eager/sealed single/two workers, three cut axes,
+PML with/without bulk loss, native U/I and SI functionals, energy/epoch caching,
+unchanged complete fields, invalid operations and concurrent full fallback.
+Representative RF/antenna, Metal and actual physical CUDA remain separate gates.
+
+
+R53 qualification: CPU69/69,16 bit-identical actual-R51 arrays and56 physical
+CUDA gates pass on RTX4090/3080 and both pair orders. All780 source and418
+archived files were independently rehashed. The48 new physical native cases
+retain exact selected/full functional values, maximum relative energy error
+7.60313e-9, zero full reads over four batches and one full refresh per observed
+epoch under concurrent readers. Exact source is promoted; Metal, prepared
+E/H/DFT, PCB scaling and representative RF/antenna remain open. Evidence:
+`native-sparse-observations-r53/independent-qualification-r01.json`.

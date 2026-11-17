@@ -42,9 +42,10 @@ void ProcessVoltage::DefineStartStopCoord(double* dstart, double* dstop)
 	if (auto *local = dynamic_cast<const Operator_CartesianSubgrid *>(Op))
 	{
 		const auto path = local->Grid().VoltagePath(local->DrawingPoint(dstart), local->DrawingPoint(dstop));
-		m_LocalIntegral = [local, path]()
+		const auto observation = local->RegisterObservation(path);
+		m_LocalIntegral = [local, observation]()
 		{
-			return local->ObservationGrid().Evaluate(path);
+			return local->EvaluateObservation(observation);
 		};
 		std::ostringstream description;
 		description << std::setprecision(17)
