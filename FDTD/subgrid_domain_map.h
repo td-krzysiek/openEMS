@@ -3,6 +3,7 @@
 #define CARTESIAN_SUBGRID_DOMAIN_MAP_H
 
 #include "subgrid_domain_owners.h"
+#include "subgrid_domain_ranks.h"
 #include <cstddef>
 #include <cstdint>
 #include <limits>
@@ -10,10 +11,11 @@
 #include <unordered_map>
 #include <vector>
 
-//! Setup-only global-to-local lookup. Owners and shared addresses outlive it.
-/*! Each global state has one owning worker, so its owned local index needs
- *  only one shared dense slot. Other workers hash their own ghost indices.
- *  The expanded oracle retains the independent all-entry hash-map path.
+//! Setup-only global-to-local lookup; its immutable input index outlives it.
+/*! Canonical owned ranks avoid global mutable per-state address slots.
+ *  Other workers hash only their own ghost indices. Retained direct-slot and
+ *  expanded all-entry hash APIs remain independent controls. None of the
+ *  referenced inputs may be moved or replaced while a map is in use.
  */
 class CartesianSubgridDomainMap
 {
@@ -24,11 +26,20 @@ class CartesianSubgridDomainMap
 	template <class Owners>
 	CartesianSubgridDomainMap(const Owners &owners, std::vector<Index> &local,
 		Index worker, bool indexed)
-		: m_Owners(owners), m_Local(local), m_Worker(worker), m_Indexed(indexed)
+		: m_Owners(owners), m_Local(&local), m_Worker(worker), m_Indexed(indexed)
 	{
 		if (worker >= 64 || owners.size() > absent || (indexed && local.size() != owners.size()))
 		{
 			throw std::invalid_argument("CartesianSubgrid: invalid owned-address map dimensions");
+		}
+	}
+
+	CartesianSubgridDomainMap(const CartesianSubgridDomainRanks &ranks, Index worker)
+		: m_Owners(ranks.Owners()), m_Worker(worker), m_Indexed(false), m_Ranks(&ranks)
+	{
+		if (worker >= 64)
+		{
+			throw std::invalid_argument("CartesianSubgrid: owned-rank worker is out of range");
 		}
 	}
 
@@ -39,9 +50,24 @@ class CartesianSubgridDomainMap
 			throw std::invalid_argument("CartesianSubgrid: local address uses the absent sentinel");
 		}
 		const bool owned = m_Owners.at(global) == m_Worker;
+		if (m_Ranks && owned)
+		{
+			const Index rank = m_Ranks->at(global);
+			if (rank < m_AssignedOwned)
+			{
+				return false;
+			}
+			if (rank != m_AssignedOwned || local != rank || m_Count != m_AssignedOwned)
+			{
+				throw std::invalid_argument("CartesianSubgrid: owned rank insertion is not canonical");
+			}
+			++m_AssignedOwned;
+			++m_Count;
+			return true;
+		}
 		if (m_Indexed && owned)
 		{
-			auto &slot = m_Local.at(global);
+			auto &slot = m_Local->at(global);
 			if (slot != absent)
 			{
 				return false;
@@ -49,6 +75,17 @@ class CartesianSubgridDomainMap
 			slot = local;
 			++m_Count;
 			return true;
+		}
+		if (m_Ranks)
+		{
+			if (m_Map.find(global) != m_Map.end())
+			{
+				return false;
+			}
+			if (m_AssignedOwned != m_Ranks->Count(m_Worker) || local != m_Count)
+			{
+				throw std::invalid_argument("CartesianSubgrid: ghost rank insertion precedes or skips owned states");
+			}
 		}
 		const bool inserted = m_Map.emplace(global, local).second;
 		m_Count += inserted;
@@ -58,9 +95,18 @@ class CartesianSubgridDomainMap
 	Index at(Index global) const
 	{
 		const Index owner = m_Owners.at(global);
+		if (m_Ranks && owner == m_Worker)
+		{
+			const Index rank = m_Ranks->at(global);
+			if (rank >= m_AssignedOwned)
+			{
+				throw std::out_of_range("CartesianSubgrid: unassigned owned rank");
+			}
+			return rank;
+		}
 		if (m_Indexed && owner == m_Worker)
 		{
-			const Index value = m_Local.at(global);
+			const Index value = m_Local->at(global);
 			if (value == absent)
 			{
 				throw std::out_of_range("CartesianSubgrid: unassigned owned local address");
@@ -107,9 +153,11 @@ class CartesianSubgridDomainMap
 
   private:
 	CartesianSubgridDomainOwnerView m_Owners;
-	std::vector<Index> &m_Local;
+	std::vector<Index> *m_Local = nullptr;
 	Index m_Worker;
 	bool m_Indexed;
+	const CartesianSubgridDomainRanks *m_Ranks = nullptr;
+	std::size_t m_AssignedOwned = 0;
 	std::size_t m_Count = 0;
 	std::unordered_map<Index, Index> m_Map;
 };

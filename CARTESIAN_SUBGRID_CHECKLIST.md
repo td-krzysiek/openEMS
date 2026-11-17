@@ -362,20 +362,26 @@ actual-parent files and native observations. Three interleaved measurements
 reduce peak RSS2.73–6.05% against R31, with whole setup+0.23–3.08%;
 all22 physical CUDA gates pass on4090/3080 in both orders. Exact source is
 promoted; Metal remains open. See the [initial-state contract](CARTESIAN_SUBGRID_DOMAINS.md#metadata-only-initial-state-preparation).
-R33 owns finalized labels and precomputes canonical owned ranks using
+Qualified R33 owns finalized labels and precomputes canonical owned ranks using
 uniform-tile bases or exact mixed/dense uint32 ranks, removing mutable global
 address slots. Its frozen implementation builds successfully. Fifty rank size/pattern
 cases, five independent map comparisons, ASan/UBSan, full CPU58/58,16 exact
 actual-parent files and native observations pass. A separately named collector
 corrects only a copied19-versus20 wrapper-command count on the same archive;
 no numerical rerun. Three interleaved repetitions reduce RSS2.43–5.98% against
-R32, with whole setup−1.04% to+1.67%. All22 physical gates are running;
-source is not promoted and Metal remains open. A separately frozen R34 native
+R32, with whole setup−1.04% to+1.67%. All22 physical gates pass on4090/3080
+in both orders, including24 exact domain cases and16 native Python cases.
+Exact source is promoted; Metal remains open. See the [owned-rank contract](CARTESIAN_SUBGRID_DOMAINS.md#immutable-owned-local-ranks).
+A separately frozen R34 native
 rectangular-port candidate composes geometry-normalized independent G through
 the existing admittance extension, preserving cap electrodes and the64-port
 dense guard. Its original new-test compile error is preserved; r02 changes
-only that test declaration before a fresh build. CPU59, physical, native RF
-and full-antenna qualification remain open.
+only that test declaration. Its next retained test fixture violates the required
+region margin; separately corrected fixtures preserve the margin and compare
+ordinary fields on matching grids, ordinary G on both layouts and actual
+refined CPU/device fields. Fresh r03 also keeps the shared timestep below the
+ordinary CFL; CPU59, physical, native RF and full-antenna qualification remain
+open. No source from these unqualified candidates is promoted.
 No full-PCB, guard increase or production adoption follows.
 
 - [ ] **U01** Define device-resident block fields, interface metadata and update
@@ -769,3 +775,5 @@ numerical change invalidates their prior qualification.
 | 2026-11-17 | Further partial C03/C05/D01/D05: tiled domain ownership | R31, exact qualified source promoted | [Contract and measured storage](CARTESIAN_SUBGRID_DOMAINS.md#tiled-domain-ownership-labels). CPU56/56,30 storage/address controls,16 exact actual-parent files and22 physical CUDA gates pass on4090/3080 in both orders. Native child losses, TD/FD/ports and exact domain fields are retained. Interleaved peak RSS−2.90–5.41% against R29; whole setup+2.36–4.73%. Metal, full-array scaling and RF remain open; allocation guards unchanged. |
 
 | 2026-11-17 | Further partial C03/C05/D01/D05: metadata-only initial state | R32-r02, exact qualified source promoted | [Contract and preparation measurements](CARTESIAN_SUBGRID_DOMAINS.md#metadata-only-initial-state-preparation). CPU57/57,16 exact actual-R31 files,16 initial metadata/tail controls and22 physical CUDA gates pass on4090/3080 in both orders. Global FTZ bounds and local owned/ghost initial values remain exact. Interleaved peak RSS−2.73–6.05% against R31, whole setup+0.23–3.08%. Earlier original compile failure retained; Metal, full-array scaling and RF remain open. |
+
+| 2026-11-17 | Further partial C03/C05/D01/D05: immutable local owned ranks | R33, exact qualified source promoted | [Owned-index contract and storage](CARTESIAN_SUBGRID_DOMAINS.md#immutable-owned-local-ranks). CPU58/58,50 rank cases/five map oracles, ASan/UBSan,16 exact actual-R32 files and22 physical CUDA gates on4090/3080 in both orders. Interleaved peak RSS−2.43–5.98% against R32; whole setup−1.04% to+1.67%. Collector-only19/20-count failure preserved and corrected against the same archive without rerunning CPU. Metal, full-array scaling and RF remain open. |

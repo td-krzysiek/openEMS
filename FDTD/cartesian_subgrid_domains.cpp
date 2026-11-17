@@ -252,21 +252,33 @@ CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(const CartesianSubgrid &g
 		m_ReassignedElectric += eOwner[edge] != owner(grid.EdgePosition(edge)[axis]);
 	}
 	m_Domains.resize(cuts.size() + 1);
-	// One direct local address for every globally owned state. Only ghosts
-	// need a per-worker hash entry. The expanded oracle retains full maps.
-	std::vector<Index> eLocal, hLocal;
+	// Finalized ownership and canonical owned addresses share one immutable
+	// index. Only ghosts require mutable per-worker hash entries. The expanded
+	// oracle retains its independent all-entry maps and label storage.
+	std::optional<CartesianSubgridDomainRanks> eRanks, hRanks;
 	if (data.streamCurls)
 	{
-		eLocal.assign(m_ElectricCount, CartesianSubgridDomainMap::absent);
-		hLocal.assign(m_MagneticCount, CartesianSubgridDomainMap::absent);
+		eRanks.emplace(std::move(eOwner));
+		hRanks.emplace(std::move(hOwner));
 	}
+	const auto &eOwners = eRanks ? eRanks->Owners() : eOwner;
+	const auto &hOwners = hRanks ? hRanks->Owners() : hOwner;
+	std::vector<Index> unused;
 	std::vector<CartesianSubgridDomainMap> eMaps, hMaps;
 	eMaps.reserve(m_Domains.size());
 	hMaps.reserve(m_Domains.size());
 	for (Index worker = 0; worker < m_Domains.size(); ++worker)
 	{
-		eMaps.emplace_back(eOwner, eLocal, worker, data.streamCurls);
-		hMaps.emplace_back(hOwner, hLocal, worker, data.streamCurls);
+		if (data.streamCurls)
+		{
+			eMaps.emplace_back(*eRanks, worker);
+			hMaps.emplace_back(*hRanks, worker);
+		}
+		else
+		{
+			eMaps.emplace_back(eOwners, unused, worker, false);
+			hMaps.emplace_back(hOwners, unused, worker, false);
+		}
 	}
 	for (Index worker = 0; worker < m_Domains.size(); ++worker)
 	{
@@ -276,14 +288,14 @@ CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(const CartesianSubgrid &g
 		local.trackSourceWork = data.trackSourceWork || !data.rootConductance.empty();
 		for (Index i = 0; i < m_ElectricCount; ++i)
 		{
-			if (eOwner[i] == worker)
+			if (eOwners[i] == worker)
 			{
 				domain.globalElectric.push_back(i);
 			}
 		}
 		for (Index i = 0; i < m_MagneticCount; ++i)
 		{
-			if (hOwner[i] == worker)
+			if (hOwners[i] == worker)
 			{
 				domain.globalMagnetic.push_back(i);
 			}
@@ -297,7 +309,7 @@ CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(const CartesianSubgrid &g
 		{
 			curls.ForEach(true, row, [&](Index column, float, float)
 			{
-				if (hOwner[column] != worker)
+				if (hOwners[column] != worker)
 				{
 					ghostH.insert(column);
 				}
@@ -307,7 +319,7 @@ CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(const CartesianSubgrid &g
 		{
 			curls.ForEach(false, row, [&](Index column, float, float)
 			{
-				if (eOwner[column] != worker)
+				if (eOwners[column] != worker)
 				{
 					ghostE.insert(column);
 				}
@@ -335,8 +347,8 @@ CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(const CartesianSubgrid &g
 					}
 				}
 			};
-			dependencies(prepared.pml->electric, eOwner, hOwner, ghostH);
-			dependencies(prepared.pml->magnetic, hOwner, eOwner, ghostE);
+			dependencies(prepared.pml->electric, eOwners, hOwners, ghostH);
+			dependencies(prepared.pml->magnetic, hOwners, eOwners, ghostE);
 		}
 		domain.globalElectric.insert(domain.globalElectric.end(), ghostE.begin(), ghostE.end());
 		domain.globalMagnetic.insert(domain.globalMagnetic.end(), ghostH.begin(), ghostH.end());
@@ -411,13 +423,13 @@ CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(const CartesianSubgrid &g
 		for (Index block = 0; block < data.bandwidth.size(); ++block)
 		{
 			const Index first = data.blockStart[block], stop = data.blockStart[block + 1];
-			if (eOwner[data.blockEdge[first]] != worker)
+			if (eOwners[data.blockEdge[first]] != worker)
 			{
 				continue;
 			}
 			for (Index k = first; k < stop; ++k)
 			{
-				Require(eOwner[data.blockEdge[k]] == worker, "CartesianSubgrid: split interface mass component");
+				Require(eOwners[data.blockEdge[k]] == worker, "CartesianSubgrid: split interface mass component");
 				local.blockEdge.push_back(eMaps[worker].at(data.blockEdge[k]));
 			}
 			local.blockStart.push_back(static_cast<Index>(local.blockEdge.size()));
@@ -428,13 +440,13 @@ CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(const CartesianSubgrid &g
 		}
 		for (Index source = 0; source < data.sourceEdge.size(); ++source)
 		{
-			if (eOwner[data.sourceEdge[source]] == worker)
+			if (eOwners[data.sourceEdge[source]] == worker)
 			{
 				local.sourceEdge.push_back(eMaps[worker].at(data.sourceEdge[source]));
 				local.sourceWeight.push_back(data.sourceWeight[source]);
 				for (Index k = data.sourceOffStart[source]; k < data.sourceOffStart[source + 1]; ++k)
 				{
-					Require(eOwner[data.sourceOffEdge[k]] == worker,
+					Require(eOwners[data.sourceOffEdge[k]] == worker,
 						"CartesianSubgrid: source work crosses a split mass component");
 					local.sourceOffEdge.push_back(eMaps[worker].at(data.sourceOffEdge[k]));
 					local.sourceOffWeight.push_back(data.sourceOffWeight[k]);
@@ -454,12 +466,12 @@ CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(const CartesianSubgrid &g
 			local.responseWeight = data.responseWeight;
 			for (Index edge : data.portEdge)
 			{
-				Require(eOwner[edge] == worker, "CartesianSubgrid: split port voltage support");
+				Require(eOwners[edge] == worker, "CartesianSubgrid: split port voltage support");
 				local.portEdge.push_back(eMaps[worker].at(edge));
 			}
 			for (Index edge : data.responseEdge)
 			{
-				Require(eOwner[edge] == worker, "CartesianSubgrid: split port response support");
+				Require(eOwners[edge] == worker, "CartesianSubgrid: split port response support");
 				local.responseEdge.push_back(eMaps[worker].at(edge));
 			}
 			// Attribute the existing accumulated work once, never per worker.
@@ -497,8 +509,8 @@ CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(const CartesianSubgrid &g
 					output.group.push_back(static_cast<Index>(output.target.size()));
 				}
 			};
-			select(prepared.pml->electric, eOwner, eMaps[worker], hMaps[worker], domain.pml->electric);
-			select(prepared.pml->magnetic, hOwner, hMaps[worker], eMaps[worker], domain.pml->magnetic);
+			select(prepared.pml->electric, eOwners, eMaps[worker], hMaps[worker], domain.pml->electric);
+			select(prepared.pml->magnetic, hOwners, hMaps[worker], eMaps[worker], domain.pml->magnetic);
 		}
 		if (prepared.advance.loss)
 		{
@@ -527,10 +539,10 @@ CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(const CartesianSubgrid &g
 				{
 					const Index first = rows.start[row], stop = rows.start[row + 1];
 					Require(first < stop, "CartesianSubgrid: empty constitutive trace");
-					const Index assigned = eOwner.at(rows.edge.at(first));
+					const Index assigned = eOwners.at(rows.edge.at(first));
 					for (Index k = first; k < stop; ++k)
 					{
-						Require(eOwner.at(rows.edge.at(k)) == assigned,
+						Require(eOwners.at(rows.edge.at(k)) == assigned,
 							"CartesianSubgrid: constitutive trace crosses ownership");
 					}
 					if (assigned == worker)
@@ -559,7 +571,7 @@ CartesianSubgridDomainPlan::CartesianSubgridDomainPlan(const CartesianSubgrid &g
 	{
 		std::vector<Map> sends(m_Domains.size());
 		auto &transfers = electric ? m_ElectricTransfers : m_MagneticTransfers;
-		const auto &owners = electric ? eOwner : hOwner;
+		const auto &owners = electric ? eOwners : hOwners;
 		const auto &maps = electric ? eMaps : hMaps;
 		for (Index receiver = 0; receiver < m_Domains.size(); ++receiver)
 		{

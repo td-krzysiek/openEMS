@@ -719,3 +719,54 @@ These are preparation-memory measurements, not FDTD throughput claims. Full
 double host fields, global address storage and all local upload packages still
 exist. Metal, full-array memory/interface scaling, curved RF convergence and
 antenna qualification remain open. Allocation/resource guards stay unchanged.
+
+
+## Immutable owned local ranks
+
+R33 removes mutable global uint32 owned-address arrays from streamed plans.
+The index owns finalized labels and assigns each state's exact local owned
+rank in ascending global-ID order. Uniform256-state tiles store one uint64
+local base; mixed tiles retain exact uint32 ranks. A two-pass byte preflight
+chooses dense ranks when smaller, checks actual capacities and releases any
+rejected packing reservation before fallback. The64-bit descriptor tag does
+not consume a bit of the32-bit local address. Per-owner counts and storage
+products are checked; no field-numbering limit is silently reduced.
+
+Maps reference this single immutable owner/rank index, reject unassigned or
+noncanonical first insertions before mutating counts, and hash only their own
+ghosts after the owned prefix. Existing shared-dense-slot and expanded hash
+APIs remain independent controls. Index lifetime/placement must remain fixed
+while maps reference it; no runtime repartitioning is introduced.
+
+Fifty size/pattern cases cover empty/partial/full tiles, all64 labels, owning
+copies, uniform/chunked/alternating/randomized/corrected ownership and exact
+per-owner counters. Five full map comparisons verify dense/hash addresses and
+bounds, duplicate, sentinel, unassigned, out-of-order and skipped-ghost guards.
+Separate ASan/UBSan label/map/rank controls pass. Full CPU58/58,16 exact
+actual-R32 operator/field files and native observations pass. An inherited
+collector first expected19 wrapper commands rather than20 after adding the
+new test; the corrected separately named collector reviewed the same immutable
+archive. Neither source nor numerical tests were modified/rerun for that fix.
+
+All22 physical CUDA gates pass on the actual4090/3080 pair in both orders,
+including24 exact domain cases,48 native child-coordinate cases,58 native
+child-loss compositions and16 Python TD/FD/port cases. Actual source/runtime,
+raw files and terminal exit0/no-OOM are independently bound and rechecked.
+
+Three interleaved repetitions use actual R31/R32/R33 prefixes. The following
+table reports the immediately preceding R32; grid bytes, field IDs, owners,
+ghosts and local term counts remain equal.
+
+| Fixture leaves | R32 peak RSS, bytes | R33 peak RSS, bytes | RSS change | Whole setup change |
+|---:|---:|---:|---:|---:|
+|491,520 uniform|291368960|274518016|−5.78%|+1.67%|
+|61,440 graded|86196224|84103168|−2.43%|−1.04%|
+|960,000 uniform|534876160|502894592|−5.98%|+0.93%|
+
+These preparation measurements do not establish an FDTD speedup or a full
+antenna RAM forecast. Host double fields, global ID lists, local upload
+packages and observation mirrors remain. Metal is not accepted: the latest
+read-only Mac check has12.87GiB available against the unchanged15.5GiB stable
+admission requirement/12.5GiB reserve, so no new compiler was started. Large
+arrays, curved RF convergence and representative antennas remain open; all
+allocation, interface, numerical and resource guards are unchanged.
