@@ -1435,3 +1435,21 @@ and this small-network replay does not qualify a representative antenna,
 large-PCB resources or general three-dimensional curved convergence.
 Evidence: `pcb-pair-rf-r62/preparation-r01.json`, `pcb-pair-rf-r62/DESIGN.md`,
 `pcb-pair-rf-r62/admission-r01.json`, `pcb-pair-rf-r62/owner-r02.json`.
+
+
+R63 is separately frozen/unpromoted over exact R61: an owning64-bit integer
+edge-address buffer replaces five host integers per edge, preserving canonical
+IDs and exact lattice geometry. The current16384-interval/refinement16 guards
+fit19 bits per coordinate; malformed values reject. Source/build and the
+3241-value/11-negative focused test pass. Full CPU77/16 parent-array replay
+and three interleaved3.93M-leaf host comparisons per layout/prefix are running.
+The expected address-buffer reduction is not a measured total-memory win or
+antenna admission. No numerical/production source is promoted; device and
+recent Metal acceptance remain separate. A fresh local headroom sample is
+below the unchanged15.5GiB admission threshold; no compiler/test was launched.
+R62 continues on its unchanged R61 runtime.
+Evidence: `packed-edge-addresses-r63/DESIGN.md`,
+`packed-edge-addresses-r63/preparation-r01.json`,
+`packed-edge-addresses-r63/cpu-admission-r01.json`,
+`packed-edge-addresses-r63/memory-admission-r01.json`,
+`packed-edge-addresses-r63/metal-headroom-r01.json`.
