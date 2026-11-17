@@ -121,10 +121,8 @@ class Coordinator : public GPU_CartesianSubgrid
 			maxE = std::max(maxE, worker->Owned(Field::Electric));
 			maxH = std::max(maxH, worker->Owned(Field::Magnetic));
 		}
-		m_ReadElectric.resize(maxE);
-		m_ReadMagnetic.resize(maxH);
-		m_Electric.resize(m_Plan->ElectricCount());
-		m_Magnetic.resize(m_Plan->MagneticCount());
+		m_MaxReadElectric = maxE;
+		m_MaxReadMagnetic = maxH;
 		if (m_Plan->FactorTails().terms || m_Plan->StateTails().terms)
 		{
 			std::cout << "CartesianSubgrid domain plan FP32 FTZ tails: factors=" << m_Plan->FactorTails().terms
@@ -195,14 +193,126 @@ class Coordinator : public GPU_CartesianSubgrid
 		m_Pending = 0;
 		++m_Epoch;
 	}
+	void ConfigureObservations(const std::vector<std::uint32_t> &electric,
+		const std::vector<std::uint32_t> &magnetic) override
+	{
+		Healthy();
+		Require(!m_Pending && m_Epoch == 0 && !m_ObservationAttempted,
+			"CartesianSubgrid: selective coordinator configuration requires unused startup");
+		const std::vector<std::uint32_t> *requested[2] = {&electric, &magnetic};
+		const std::size_t limits[2] = {m_Plan->ElectricCount(), m_Plan->MagneticCount()};
+		std::array<std::vector<std::vector<std::uint32_t>>, 2> local;
+		std::array<std::vector<std::vector<std::size_t>>, 2> destinations;
+		for (unsigned int field = 0; field < 2; ++field)
+		{
+			Require(requested[field]->size() <= std::numeric_limits<std::uint32_t>::max(),
+				"CartesianSubgrid: selective observation count exceeds device indexing");
+			local[field].resize(m_Workers.size());
+			destinations[field].resize(m_Workers.size());
+			for (const auto &domain : m_Plan->Domains())
+			{
+				const auto &ids = field ? domain.globalMagnetic : domain.globalElectric;
+				const auto owned = field ? domain.ownedMagnetic : domain.ownedElectric;
+				Require(owned <= ids.size() && std::is_sorted(ids.begin(), ids.begin() + owned),
+					"CartesianSubgrid: selective owner IDs are not in canonical order");
+			}
+			for (std::size_t query = 0; query < requested[field]->size(); ++query)
+			{
+				const auto global = (*requested[field])[query];
+				Require(global < limits[field], "CartesianSubgrid: selective global observation index outside grid");
+				std::size_t found = 0;
+				for (std::size_t worker = 0; worker < m_Workers.size(); ++worker)
+				{
+					const auto &domain = m_Plan->Domains()[worker];
+					const auto &ids = field ? domain.globalMagnetic : domain.globalElectric;
+					const auto owned = field ? domain.ownedMagnetic : domain.ownedElectric;
+					const auto stop = ids.begin() + owned;
+					const auto it = std::lower_bound(ids.begin(), stop, global);
+					if (it != stop && *it == global)
+					{
+						local[field][worker].push_back(static_cast<std::uint32_t>(it - ids.begin()));
+						destinations[field][worker].push_back(query);
+						++found;
+					}
+				}
+				Require(found == 1, "CartesianSubgrid: selective observation has no unique owner");
+			}
+		}
+		m_ObservationAttempted = true;
+		try
+		{
+			for (std::size_t worker = 0; worker < m_Workers.size(); ++worker)
+			{
+				m_Workers[worker]->ConfigureObservations(local[0][worker], local[1][worker]);
+			}
+			m_ObservationDestinations = std::move(destinations);
+			m_ObservationCounts = {electric.size(), magnetic.size()};
+			m_ObservationReady = true;
+		}
+		catch (...)
+		{
+			m_Failed = true;
+			throw;
+		}
+	}
+	void ReadObservations(std::vector<float> &electric, std::vector<float> &magnetic) override
+	{
+		Healthy();
+		Require(!m_Pending && m_ObservationReady && &electric != &magnetic,
+			"CartesianSubgrid: selective observation requires separate buffers, configuration and complete step");
+		std::vector<float> *output[2] = {&electric, &magnetic};
+		try
+		{
+			electric.resize(m_ObservationCounts[0]);
+			magnetic.resize(m_ObservationCounts[1]);
+			for (std::size_t worker = 0; worker < m_Workers.size(); ++worker)
+			{
+				m_Workers[worker]->ReadObservations(m_Epoch, m_ObservationReadElectric, m_ObservationReadMagnetic);
+				const std::vector<float> *values[2] = {&m_ObservationReadElectric, &m_ObservationReadMagnetic};
+				for (unsigned int field = 0; field < 2; ++field)
+				{
+					const auto &destinations = m_ObservationDestinations[field][worker];
+					Require(values[field]->size() == destinations.size(), "CartesianSubgrid: selective worker result count differs");
+					for (std::size_t i = 0; i < destinations.size(); ++i)
+					{
+						(*output[field])[destinations[i]] = (*values[field])[i];
+					}
+				}
+			}
+		}
+		catch (...)
+		{
+			m_Failed = true;
+			throw;
+		}
+	}
+	std::size_t HostObservationStorageBytes() const override
+	{
+		std::size_t bytes = (m_Electric.capacity() + m_Magnetic.capacity() +
+			m_ReadElectric.capacity() + m_ReadMagnetic.capacity() + m_ObservationReadElectric.capacity() +
+			m_ObservationReadMagnetic.capacity()) * sizeof(float);
+		for (const auto &field : m_ObservationDestinations)
+		{
+			bytes += field.capacity() * sizeof(std::vector<std::size_t>);
+			for (const auto &destinations : field)
+			{
+				bytes += destinations.capacity() * sizeof(std::size_t);
+			}
+		}
+		return bytes;
+	}
 	void ReadFields(CartesianSubgrid &grid) override
 	{
 		Healthy();
 		Require(!m_Pending, "CartesianSubgrid: coordinator observation requires a complete step");
-		Require(grid.EdgeCount() == m_Electric.size() && grid.FaceCount() == m_Magnetic.size(),
+		Require(grid.EdgeCount() == m_Plan->ElectricCount() && grid.FaceCount() == m_Plan->MagneticCount(),
 			"CartesianSubgrid: coordinator observation dimensions differ");
 		try
 		{
+			m_Electric.resize(m_Plan->ElectricCount());
+			m_Magnetic.resize(m_Plan->MagneticCount());
+			m_ReadElectric.resize(m_MaxReadElectric);
+			m_ReadMagnetic.resize(m_MaxReadMagnetic);
 			for (std::size_t k = 0; k < m_Workers.size(); ++k)
 			{
 				const auto &domain = m_Plan->Domains()[k];
@@ -340,6 +450,11 @@ class Coordinator : public GPU_CartesianSubgrid
 	std::vector<std::unique_ptr<CartesianSubgridDomainWorker>> m_Workers;
 	std::unique_ptr<CartesianSubgridDomainTransport> m_Transport;
 	std::vector<float> m_Electric, m_Magnetic, m_ReadElectric, m_ReadMagnetic;
+	std::size_t m_MaxReadElectric = 0, m_MaxReadMagnetic = 0;
+	std::array<std::vector<std::vector<std::size_t>>, 2> m_ObservationDestinations;
+	std::array<std::size_t, 2> m_ObservationCounts{};
+	std::vector<float> m_ObservationReadElectric, m_ObservationReadMagnetic;
+	bool m_ObservationAttempted = false, m_ObservationReady = false;
 	std::size_t m_Epoch = 0;
 	double m_Pending = 0, m_Fixed = 0;
 	bool m_Failed = false;

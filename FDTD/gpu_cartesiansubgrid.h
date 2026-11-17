@@ -96,6 +96,19 @@ class GPU_CartesianSubgrid
 	virtual void Step(double timestep, double sourceAmplitude) = 0;
 	virtual void ReadFields(CartesianSubgrid &grid) = 0;
 	virtual std::size_t StorageBytes() const = 0;
+	//! Startup-only ordered normalized-state selection; duplicates are preserved.
+	//! Unsupported adapters reject rather than download all fields as a fallback.
+	virtual void ConfigureObservations(const std::vector<std::uint32_t> &, const std::vector<std::uint32_t> &)
+	{
+		throw std::logic_error("CartesianSubgrid: selective observations unavailable");
+	}
+	//! Complete-step blocking read of only the configured E/H state entries.
+	virtual void ReadObservations(std::vector<float> &, std::vector<float> &)
+	{
+		throw std::logic_error("CartesianSubgrid: selective observations unavailable");
+	}
+	//! Owned host observation buffers only, excluding device and global-grid storage.
+	virtual std::size_t HostObservationStorageBytes() const { return 0; }
 	virtual std::size_t StructuredRows() const
 	{
 		return 0;

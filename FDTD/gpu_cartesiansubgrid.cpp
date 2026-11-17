@@ -139,13 +139,7 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 		m_TrackSourceWork = m_PortCount != 0 || data.trackSourceWork;
 		m_ElectricCount = data.electric.size();
 		m_MagneticCount = data.magnetic.size();
-		// Domain processing is gathered by its coordinator. Keep the legacy
-		// one-device observation mirror, not another full mirror per worker.
-		if (!m_Domain)
-		{
-			m_Electric.resize(m_ElectricCount);
-			m_Magnetic.resize(m_MagneticCount);
-		}
+		// Complete host field mirrors are allocated only when ReadFields is used.
 		m_BlockCount = data.bandwidth.size();
 		m_SourceCount = data.sourceEdge.size();
 		const bool validStreamOwner = domain ? domainOperators && !streamingGrid : streamingGrid && !domainOperators;
@@ -331,6 +325,67 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 		(electric ? m_ElectricGhostEpoch : m_MagneticGhostEpoch) = epoch;
 	}
 
+	void ConfigureObservations(const std::vector<std::uint32_t> &electric,
+		const std::vector<std::uint32_t> &magnetic) override
+	{
+		if (m_Started || m_PendingStep != 0 || m_ObservationAttempted)
+		{
+			throw std::logic_error("CartesianSubgrid: selective observation configuration requires unused startup");
+		}
+		const std::vector<std::uint32_t> *indices[2] = {&electric, &magnetic};
+		const std::size_t limits[2] = {m_OwnedElectric, m_OwnedMagnetic};
+		for (unsigned int field = 0; field < 2; ++field)
+		{
+			if (indices[field]->size() > std::numeric_limits<std::uint32_t>::max() ||
+				std::any_of(indices[field]->begin(), indices[field]->end(),
+					[&](std::uint32_t index) { return index >= limits[field]; }))
+			{
+				throw std::invalid_argument("CartesianSubgrid: selective observation index outside owned states");
+			}
+		}
+		// Backend allocations live until backend destruction; a failed partial
+		// configuration must not be retried as though that storage were freed.
+		m_ObservationAttempted = true;
+		m_Backend.Activate();
+		for (unsigned int field = 0; field < 2; ++field)
+		{
+			m_ObservationCounts[field] = indices[field]->size();
+			if (!indices[field]->empty())
+			{
+				m_ObservationGather[field] = {field ? m_Curl.output : m_Update.electric,
+					Upload(*indices[field]), Upload(std::vector<float>(indices[field]->size(), 0))};
+			}
+		}
+		m_ObservationReady = true;
+	}
+	void ReadObservations(std::vector<float> &electric, std::vector<float> &magnetic) override
+	{
+		if (!m_ObservationReady || m_PendingStep != 0 || &electric == &magnetic)
+		{
+			throw std::logic_error("CartesianSubgrid: selective observation requires configuration and complete step");
+		}
+		if (m_Recurrence)
+		{
+			m_Recurrence->CheckObservation();
+		}
+		std::vector<float> *output[2] = {&electric, &magnetic};
+		m_Backend.Activate();
+		for (unsigned int field = 0; field < 2; ++field)
+		{
+			const auto count = m_ObservationCounts[field];
+			output[field]->resize(count);
+			if (count)
+			{
+				auto &gather = m_ObservationGather[field];
+				m_Backend.RunPoints(GPU_OP_SUBGRID_GATHER, &gather, 0, count, false);
+				m_Backend.DeviceDownload(output[field]->data(), gather.curl, count * sizeof(float));
+			}
+		}
+	}
+	std::size_t HostObservationStorageBytes() const override
+	{
+		return (m_Electric.capacity() + m_Magnetic.capacity()) * sizeof(float);
+	}
 	void ReadFields(CartesianSubgrid &grid) override
 	{
 		if (m_Domain)
@@ -346,6 +401,8 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 			m_Recurrence->CheckObservation();
 		}
 		m_Backend.Activate();
+		m_Electric.resize(m_ElectricCount);
+		m_Magnetic.resize(m_MagneticCount);
 		m_Backend.DeviceDownload(m_Electric.data(), m_Update.electric, m_Electric.size() * sizeof(float));
 		m_Backend.DeviceDownload(m_Magnetic.data(), m_Curl.output, m_Magnetic.size() * sizeof(float));
 		grid.ImportDeviceFields(m_Electric.data(), m_Electric.size(), m_Magnetic.data(), m_Magnetic.size());
@@ -422,6 +479,9 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 	std::size_t m_ElectricGhostEpoch = std::numeric_limits<std::size_t>::max();
 	std::size_t m_MagneticGhostEpoch = std::numeric_limits<std::size_t>::max();
 	std::vector<float> m_Electric, m_Magnetic;
+	std::array<Op_SubgridGather, 2> m_ObservationGather{};
+	std::array<std::size_t, 2> m_ObservationCounts{};
+	bool m_ObservationAttempted = false, m_ObservationReady = false;
 	Op_SubgridCurl m_Transpose{}, m_Curl{};
 	Op_SubgridMass m_Mass{};
 	Op_SubgridElectric m_Update{};

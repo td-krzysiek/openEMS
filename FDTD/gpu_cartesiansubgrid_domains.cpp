@@ -156,6 +156,18 @@ class LocalWorker : public CartesianSubgridDomainWorker
 		m_Backend.DeviceDownload(electric, fields.electric, electricCount * sizeof(float));
 		m_Backend.DeviceDownload(magnetic, fields.magnetic, magneticCount * sizeof(float));
 	}
+	void ConfigureObservations(const std::vector<std::uint32_t> &electric,
+		const std::vector<std::uint32_t> &magnetic) override
+	{
+		Require(!m_Pending && m_Epoch == 0, "CartesianSubgrid: worker selective observations require startup");
+		m_Execution->ConfigureObservations(electric, magnetic);
+	}
+	void ReadObservations(std::size_t epoch, std::vector<float> &electric,
+		std::vector<float> &magnetic) override
+	{
+		Require(!m_Pending && epoch == m_Epoch, "CartesianSubgrid: mixed selective observation epoch");
+		m_Execution->ReadObservations(electric, magnetic);
+	}
 	std::size_t StorageBytes() const override
 	{
 		return m_StorageBytes + m_Execution->StorageBytes() + (m_PML ? m_PML->StorageBytes() : 0);

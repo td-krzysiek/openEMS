@@ -16,6 +16,12 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Added
 
+- Experimental C++ Cartesian-subgrid workers can gather startup-selected
+  normalized E/H states at complete epochs. Complete-field host mirrors now
+  allocate on explicit read. Scoped CPU/CUDA controls pass; native processing
+  still reads complete fields and Metal qualification remains open. Rebuild
+  callers/plugins against matching headers.
+
 - Experimental Cartesian subgrids accept explicit scalar volume sampling for
   extruded material polygons/axial cylinders, plus a checked opt-in leaf-count
   budget. Defaults retain strict boxes and one million leaves. Scoped combined

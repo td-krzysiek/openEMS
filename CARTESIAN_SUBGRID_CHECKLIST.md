@@ -927,7 +927,8 @@ retained2e-4/2e-6 double/FP32 gates. Test-only missing-header/oracle/API failure
 are preserved. R07 completes 36 material-field cases plus 32 retained same-build
 CUDA gates after accepted CPU63 and actual R42 physical release. Independent
 review checks actual backend models, both pair orders, raw metrics and 763
-source hashes. FP32 fields agree exactly; no material source is promoted yet.
+source hashes. FP32 fields agree exactly; the standalone R44 source remained unpromoted until
+the separately qualified combined R46 integration below.
 Metal, mesh/RF, resource/scaling and representative antenna acceptance remain open. The production runtime and frozen antenna inputs remain unchanged.
 
 R42 physical qualification is complete:32 gates, native16 Python cases,
@@ -1001,11 +1002,24 @@ R04 derivative must pass actual native setup before RF; no stability bound or
 RF acceptance threshold is weakened. This is not an RF acceptance result.
 
 R48 adds selected normalized-state readback and lazy complete-field host mirrors
-as a separately frozen, unpromoted candidate over R46. Its original port test
+as a separately frozen, now CPU/CUDA-qualified increment over R46. Its original port test
 used an independent FP32 oracle without resistor support; that same mismatch
 is reproduced on unchanged R46. Corrected tests retain source-only2e-6 and
 single/domain2e-6 gates, using the independent double reference for port solves
 under the established2e-4 bound. Original failure and test-only correction are
-retained. Fresh CPU66 completes exit0/noOOM; independent collection and physical
-qualification are in progress. Native processing still requests complete fields;
+retained. Fresh CPU66/66 and44 physical CUDA gates pass exit0/noOOM, including each GPU
+and both pair orders, retained native/loss/PML and24 new sparse-state cases.
+Source/runtime and401 archived files are independently rehashed before exact
+numerical/API/test promotion. Metal remains open. Native processing still requests complete fields;
 no native DFT/RAM saving or representative antenna acceptance is claimed.
+
+
+R49 is a separately frozen, unpromoted physical-observation bridge over exact
+R48-r04. Owning E/H sample stencils retain existing interpolation, hanging traces,
+constitutive/mass normalization and positive-side material selection. The sparse
+reader also accepts existing U/I functionals; no field equation or native
+Processing/energy/DFT behavior changes. Isolated build passes; CPU67 has started,
+including independent analytic SI fields, direct reconstruction, complete-field
+and double/single/domain controls. Qualification remains pending; no native
+memory/transfer, RF or antenna gain is claimed. Exact source/build identities
+and gates are in `physical-observations-r49/` in the project evidence archive.

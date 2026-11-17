@@ -40,6 +40,7 @@ set(TESTS
   test_cartesian_subgrid_device_curl_rows
   test_cartesian_subgrid_incoming_faces
   test_cartesian_subgrid_device
+  test_cartesian_subgrid_device_observations
   test_cartesian_subgrid_device_ports
   test_cartesian_subgrid_device_pml
   test_cartesian_subgrid_device_precision
