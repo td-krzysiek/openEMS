@@ -26,6 +26,7 @@
 #include "FDTD/operator_cylindermultigrid.h"
 #include "FDTD/operator_cartesiansubgrid.h"
 #include "FDTD/cartesian_subgrid_runtime.h"
+#include "FDTD/subgrid_interface_limits.h"
 #include <cmath>
 #include "FDTD/engine_sse.h"
 #include "FDTD/extensions/operator_ext_excitation.h"
@@ -138,6 +139,7 @@ void openEMS::Reset()
 	m_CartesianSubgridRatio = {2, 2, 2};
 	m_CartesianSubgridBoxes.clear();
 	m_CartesianSubgridRatios.clear();
+	m_CartesianSubgridChildLines = {};
 	m_CellConstantMaterial=false;
 	endCrit = 1e-6;
 	m_OverSampling = 4;
@@ -946,6 +948,31 @@ void openEMS::AddCartesianSubgrid(const std::vector<double> &box, const std::vec
 	SetupCartesianSubgrids(boxes, ratios);
 }
 
+void openEMS::SetupCartesianSubgridChildLines(const std::vector<std::vector<double>> &axes)
+{
+	if (axes.size() != 3)
+	{
+		throw std::invalid_argument("CartesianSubgrid: expected three child-coordinate axes");
+	}
+	for (const auto &axis : axes)
+	{
+		if (axis.size() == 1 || axis.size() > CartesianSubgridDetail::MaxBaseIntervals * 16 + 1)
+		{
+			throw std::invalid_argument("CartesianSubgrid: invalid child-coordinate axis length");
+		}
+		for (std::size_t k = 0; k < axis.size(); ++k)
+		{
+			if (!std::isfinite(axis[k]) || (k != 0 && axis[k] <= axis[k - 1]))
+			{
+				throw std::invalid_argument("CartesianSubgrid: child coordinates must be finite and strictly increasing");
+			}
+		}
+	}
+	// Validate the entire request before replacing any axis. Exact parent
+	// anchors and refinement-dependent lengths are checked against the mesh.
+	std::copy(axes.begin(), axes.end(), m_CartesianSubgridChildLines.begin());
+}
+
 namespace
 {
 template <typename Value> std::vector<Value> ParseSubgridValues(const char *text, std::size_t count)
@@ -1003,6 +1030,12 @@ bool openEMS::SetupOperator()
 {
 	// what defaults to AvailableThreads() (GPU operator build, field dumps, SAR, nf2ff) honours numThreads
 	SetThreadLimit(m_engine_numThreads);
+	const bool childLines = std::any_of(m_CartesianSubgridChildLines.begin(), m_CartesianSubgridChildLines.end(),
+		[](const std::vector<double> &axis) { return !axis.empty(); });
+	if (childLines && m_CartesianSubgridBox.empty() && m_CartesianSubgridBoxes.empty())
+	{
+		throw std::invalid_argument("CartesianSubgrid: child coordinates require refinement regions");
+	}
 
 	// the command-line choice (openEMS::EngineType) as the engine type of the operator
 	Engine::EngineType type = Engine::UNKNOWN;
@@ -1096,6 +1129,15 @@ bool openEMS::SetupOperator()
 		FDTD_Op = Operator::New(m_engine_numThreads);
 	}
 	FDTD_Op->SetEngineType(type);
+	if (childLines)
+	{
+		auto *compact = dynamic_cast<Operator_CartesianSubgrid *>(FDTD_Op);
+		if (!compact)
+		{
+			throw std::invalid_argument("CartesianSubgrid: child coordinates require the Cartesian subgrid operator");
+		}
+		compact->SetChildLines(m_CartesianSubgridChildLines);
+	}
 	if (domains)
 	{
 		auto *compact = dynamic_cast<Operator_CartesianSubgrid *>(FDTD_Op);
@@ -1245,6 +1287,33 @@ bool openEMS::Parse_XML_FDTDSetup(TiXmlElement* FDTD_Opts)
 			}
 			SetupCartesianSubgridRatio(ParseSubgridRatio(ratio));
 		}
+	}
+	if (TiXmlElement *children = FDTD_Opts->FirstChildElement("CartesianSubgridChildLines"))
+	{
+		if (children->NextSiblingElement("CartesianSubgridChildLines") || children->FirstChildElement())
+		{
+			throw std::invalid_argument("CartesianSubgrid: expected one child-coordinate element without children");
+		}
+		std::vector<std::vector<double>> axes(3);
+		for (TiXmlAttribute *attribute = children->FirstAttribute(); attribute; attribute = attribute->Next())
+		{
+			const std::string name(attribute->Name()), values(attribute->Value());
+			if (name.size() != 1 || name[0] < 'X' || name[0] > 'Z')
+			{
+				throw std::invalid_argument("CartesianSubgrid: child-coordinate attributes must be X, Y or Z");
+			}
+			const std::size_t count = 1 + std::count(values.begin(), values.end(), ',');
+			if (count > CartesianSubgridDetail::MaxBaseIntervals * 16 + 1)
+			{
+				throw std::invalid_argument("CartesianSubgrid: child-coordinate axis exceeds the allocation guard");
+			}
+			axes[name[0] - 'X'] = ParseSubgridValues<double>(values.c_str(), count);
+		}
+		if (!children->FirstAttribute())
+		{
+			throw std::invalid_argument("CartesianSubgrid: child-coordinate element needs at least one axis");
+		}
+		SetupCartesianSubgridChildLines(axes);
 	}
 	FDTD_Opts->QueryIntAttribute("CylinderCoords",&ihelp);
 	if (ihelp==1)
@@ -1406,6 +1475,19 @@ bool openEMS::Write2XML(TiXmlNode* rootNode)
 	{
 		fdtd.SetAttribute("CartesianSubgridBox", SubgridValues(m_CartesianSubgridBox));
 		fdtd.SetAttribute("CartesianSubgridRatio", SubgridValues(m_CartesianSubgridRatio));
+	}
+	TiXmlElement childLines("CartesianSubgridChildLines");
+	for (unsigned int n = 0; n < 3; ++n)
+	{
+		if (!m_CartesianSubgridChildLines[n].empty())
+		{
+			const char name[2] = {char('X' + n), 0};
+			childLines.SetAttribute(name, SubgridValues(m_CartesianSubgridChildLines[n]));
+		}
+	}
+	if (childLines.FirstAttribute())
+	{
+		fdtd.InsertEndChild(childLines);
 	}
 
 	if (this->CylinderCoords)

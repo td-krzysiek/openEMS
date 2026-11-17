@@ -63,6 +63,7 @@ cdef class openEMS:
     :param MultiGrid:      define a cylindrical sub-grid radius
     :param CartesianSubgrids: list of independent {box: [...], ratio: [...]} refinement regions
     :param CartesianSubgridRatio: axis ratios [rx,ry,rz], powers of two 1..16 (default [2,2,2])
+    :param CartesianSubgridChildLines: optional [x,y,z] finest child coordinates in mesh units; empty axes retain equal subdivision
     :param CartesianSubgridBox: experimental local XYZ refinement [x0,y0,z0,x1,y1,z1]
     :param TimeStep:       force to use a given timestep (dangerous!)
     :param TimeStepFactor: reduce the timestep by a given factor (>0 to <=1)
@@ -123,6 +124,9 @@ cdef class openEMS:
         if 'CartesianSubgridRatio' in kw:
             self.SetCartesianSubgridRatio(kw['CartesianSubgridRatio'])
             del kw['CartesianSubgridRatio']
+        if 'CartesianSubgridChildLines' in kw:
+            self.SetCartesianSubgridChildLines(kw['CartesianSubgridChildLines'])
+            del kw['CartesianSubgridChildLines']
 
         assert len(kw)==0, 'Unknown keyword arguments: "{}"'.format(kw)
 
@@ -277,6 +281,28 @@ cdef class openEMS:
         """Set independent X/Y/Z refinement ratios; 1 leaves an axis unchanged."""
         cdef vector[unsigned int] values = self._CartesianSubgridRatio(ratio)
         self.thisptr.SetupCartesianSubgridRatio(values)
+
+    def SetCartesianSubgridChildLines(self, axes):
+        """Retain exact finest-lattice coordinates rather than equal subdivisions.
+
+        Supply three one-dimensional arrays in mesh drawing units. Empty axes
+        retain the original equal subdivision. A populated axis must include
+        every base anchor exactly and contain max_ratio*(base_intervals)+1
+        entries. Length/anchor/contact checks occur against the prepared mesh.
+        Use [[], [], []] to clear this optional configuration.
+        """
+        entries = list(axes)
+        if len(entries) != 3:
+            raise ValueError('CartesianSubgrid: expected three child-coordinate axes')
+        cdef vector[vector[double]] values
+        for entry in entries:
+            axis = np.asarray(entry, dtype=float)
+            if axis.ndim != 1 or len(axis) == 1 or len(axis) > 16384*16+1:
+                raise ValueError('CartesianSubgrid: invalid child-coordinate axis shape')
+            if not np.isfinite(axis).all() or not (np.diff(axis) > 0).all():
+                raise ValueError('CartesianSubgrid: child coordinates must be finite and strictly increasing')
+            values.push_back(axis.tolist())
+        self.thisptr.SetupCartesianSubgridChildLines(values)
 
     def SetCylinderCoords(self):
         """ SetCylinderCoords()

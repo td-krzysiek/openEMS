@@ -312,26 +312,21 @@ uniform491,520/graded61,440/uniform960,000 leaves, with whole setup
 changes+10.92%/−11.92%/+2.39%. Thirteen physical CUDA gates pass on each GPU
 and in both pair orders, including24 exact domain and16 native Python cases.
 The exact R26 numerical/test bytes are now in this branch. Metal remains open;
-this is not a general speedup or full-PCB adoption. A further isolated native-child-coordinate prototype
-builds, but its first symmetric-field divergence metric is degenerate on
-both equal and native meshes. A separately corrected fixture passes12
-geometry/energy cases on unchanged core. Its fresh R27-r02 prefix passes
-CPU CTest52/52 with twelve
-single/domain reference cases (including resistors), six independent FP32
-no-port comparisons, eight native reference cases and sixteen unchanged
-frozen-parent files. Core SHA256:
-`20d49491cfae90b18556ab2dc17fc38ffebae2c0230bb0c1e66a1e8b214fa811`.
-Physical Metal/CUDA remains open. A separate R28 native API/XML successor
-builds with matching Cython bindings and passes11 Python tests, two exact
-drawing-unit/native-manual controls, three native E/H runs and two negative
-mesh setups. Its completed Linux CPU suite passes53/53, including16 exact
-actual-R26 operator/field files and eight native reference cases. Physical
-4090/3080 qualification is running; Metal and actual Matlab/Octave execution
-remain pending. Neither native-child prototype is in this branch's numerical
-source yet. A separate frozen R29 candidate removes the global incoming CSR
-from streamed domain preparation using an implicit local-support query; its
-build, exact all-row controls, memory/setup and physical qualification are
-pending. No full-PCB, guard increase or qualified scripting support follows.
+this is not a general speedup or full-PCB adoption. Exact native child
+coordinates and API/XML from R27-r02/R28 are now included with matching source
+and test bytes; see [native coordinate contract](CARTESIAN_SUBGRID_RUNTIME.md#exact-native-child-coordinates).
+Linux CPU53/53,16 exact frozen-parent files, eight native reference cases,
+18 physical CUDA gates/48 new coordinate cases,24 exact domain cases and16
+native Python cases pass on4090/3080 in both orders. Metal and actual
+Matlab/Octave remain unqualified. An additional standalone R30 composition
+fixture passes14 CPU/reference native-coordinate bulk/surface-loss/port/copper
+cases; physical CUDA and Metal for that composition remain open. The original
+degenerate field diagnostic and two R29 fixture failures remain retained.
+R29-r02 implements implicit incoming curl support without global incoming CSR;
+its corrected24-case all-row oracle passes against unchanged R29 core, and
+full CPU54, setup/RSS and physical qualification are running or pending.
+Its numerical source is not yet promoted. No full-PCB, guard increase or
+production adoption follows.
 
 - [ ] **U01** Define device-resident block fields, interface metadata and update
   scheduling within the existing GPU execution architecture.
@@ -716,3 +711,5 @@ numerical change invalidates their prior qualification.
 
 | 2026-11-17 | Further partial C01/C03/C05: implicit leaf geometry | R24-r03, parent `c003761` | [Address/snapshot contract and evidence](CARTESIAN_SUBGRID_BLOCKS.md#implicit-rootchild-leaf-addresses). CPU48/48, sixteen exact operator/field files,126 address cases/723,354 cells,128 snapshot controls, twelve physical CUDA gates plus a separate corrected native16-case followup. Original TMPDIR collision and rejected R01/R02 prototypes retained. Peak RSS−1.60–3.41% with longer setup. Metal pending after resource stops; no scaling/antenna acceptance or guard increase. |
 | 2026-11-17 | Further partial C01/C03/C05/D01/D05: direct rows and integer incoming addresses | R26, following unpromoted R25 measurement | [Domain preparation and three-prefix measurements](CARTESIAN_SUBGRID_DOMAINS.md#direct-canonical-rows-and-incoming-face-addresses). CPU50/50,16 exact frozen-parent files,12 coefficient controls,13 physical CUDA gates/24 exact domain cases and16 native cases in both pair orders. Peak RSS−7.59–22.63% against R24; whole setup+10.92/−11.92/+2.39%. Exact numerical/test bytes promoted; Metal, full-array scaling and antenna RF remain open. |
+
+| 2026-11-17 | Further partial M/G/P/U/D: exact native child coordinates | R27-r02/R28; exact qualified source promoted | [API and coordinate contract](CARTESIAN_SUBGRID_RUNTIME.md#exact-native-child-coordinates). CPU53/53,16 exact frozen-parent files,18 physical CUDA gates/48 child-coordinate cases,24 exact domain cases and16 native Python cases pass on4090/3080 in both orders. Metal/Octave, large-scale and antenna qualification remain open; no guard increase. Separate R30 native-coordinate loss composition has14 CPU/reference cases only. |

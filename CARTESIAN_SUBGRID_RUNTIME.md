@@ -131,3 +131,45 @@ Evidence is under the separately frozen `native-runtime-r18/` and
 allocation guard is changed. Required PCB/conductor accuracy, interface/host
 scaling, actual end-to-end savings and representative array acceptance remain
 open, as do broader master features and collective external controls.
+
+
+## Exact native child coordinates
+
+`SetCartesianSubgridChildLines([x, y, z])` optionally retains unequal physical
+child positions instead of equal subdivisions. Coordinates use mesh drawing
+units and the same origin/unit conversion as the base axes. A populated axis
+contains `max_ratio * base_intervals + 1` finite, strictly increasing entries,
+including every base anchor **exactly**. Empty axes retain equal subdivision;
+three empty axes clear the setting. The selected region ratios remain powers
+of two and non-nested/separated; child coordinates do not change that topology
+or admit touching covers. Invalid requests fail rather than snapping anchors.
+Configure before operator preparation. Rebuild matching C++/Python bindings.
+
+C++ uses `SetupCartesianSubgridChildLines`; Python also accepts the constructor
+keyword `CartesianSubgridChildLines`. Optional XML stores comma-separated X/Y/Z
+attributes in one `CartesianSubgridChildLines` child of FDTD. The Matlab helper
+`SetCartesianSubgridChildLines(FDTD, {x,y,z})` is supplied; actual Octave/Matlab
+execution remains unqualified.
+
+R27-r02's corrected core fixture passes twelve owning-geometry/256-step-energy
+cases and twelve single/domain reference cases; six no-port cases also match
+an independent FP32 oracle. The first degenerate symmetric-field diagnostic
+fails on both old and new meshes and is retained separately, not interpreted
+as a solver defect. R28 adds XML/API/units and matching Cython bindings:53/53
+Linux CPU tests,11 Python API tests, three native E/H runs, two invalid mesh
+setups, sixteen exact frozen-parent operator/field files and eight native
+reference cases pass. The numerical grid source remains byte-identical to
+R27-r02; the actual R28 Linux `libopenEMS.so` (including the new adapter) has
+SHA256 `78a0ee87b0a61bc3e1460af1c2cad6261c29ae431fc0e6773f5cd4e2c6517ea9`.
+
+Eighteen physical CUDA gates pass on the RTX4090/RTX3080 pair, including48 new
+child-coordinate cases across each device and both orders,24 exact domain
+metadata/field comparisons, retained loss/PML controls and16 native TD/FD/U/I
+cases. An independently hashed physical-only driver changes only backend
+selection, label and scope wording in the native child E/H script. It runs
+three cases without changing geometry, timestep or thresholds. Source,
+runtime, test driver and terminal exit0/no-OOM were independently rechecked.
+These are scoped controls, not Metal, full-array, RF-convergence or production
+qualification. Native unequal-coordinate loss composition is separately
+CPU-tested by R30; it is not inferred from equal-subdivision loss controls.
+Allocation/interface guards remain unchanged.

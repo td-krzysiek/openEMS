@@ -39,6 +39,7 @@ cdef extern from "openEMS/openems.h":
         void SetupCylinderMultiGrid(string val)
         void SetupCartesianSubgrid(vector[double] box) except +
         void SetupCartesianSubgridRatio(vector[unsigned int] ratio) except +
+        void SetupCartesianSubgridChildLines(vector[vector[double]] axes) except +
         void SetupCartesianSubgrids(vector[vector[double]] boxes, vector[vector[unsigned int]] ratios) except +
         void AddCartesianSubgrid(vector[double] box, vector[unsigned int] ratio) except +
 

@@ -16,6 +16,11 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Added
 
+- Experimental Cartesian subgrids accept optional exact nonuniform child
+  coordinates through C++, XML, Python and a supplied Matlab helper. Base
+  anchors must match exactly; existing region/size restrictions remain.
+  Scoped CPU/CUDA controls pass; Metal and Matlab execution remain pending.
+
 - Experimental C++ Cartesian-subgrid diagnostics can read a normalized curl
   row into reusable caller storage without creating full device operators.
 

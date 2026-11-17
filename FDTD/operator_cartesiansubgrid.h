@@ -19,6 +19,7 @@ class Operator_CartesianSubgrid : public Operator
 								const std::vector<CartesianSubgrid::Index> &ratios);
 	~Operator_CartesianSubgrid() override;
 	void SetEngineType(Engine_Types::EngineType type) override;
+	void SetChildLines(const CartesianSubgrid::Axes &drawingLines);
 	//! Fixed execution placement, separate from physical geometry and XML.
 	void SetDomainExecution(unsigned int axis, std::vector<double> drawingCuts,
 		std::vector<std::unique_ptr<GPU_Backend>> backends);
@@ -50,6 +51,7 @@ class Operator_CartesianSubgrid : public Operator
 	void PrepareResistors();
 	std::vector<std::vector<double>> m_Boxes;
 	std::vector<CartesianSubgrid::Index> m_Ratios;
+	CartesianSubgrid::Axes m_ChildDrawingLines;
 	std::unique_ptr<CartesianSubgrid> m_Grid;
 	unsigned int m_DomainAxis = 0;
 	std::vector<double> m_DomainCuts;

@@ -83,7 +83,8 @@ CartesianSubgrid::CartesianSubgrid(Index cells, Point spacing, double epsilon, d
 CartesianSubgrid::CartesianSubgrid(const Axes &lines, double epsilon, double permeability,
 								   const std::vector<Region> &regions, bool uniformFine,
 								   const MediumSampler &medium, const PECSelector &pec,
-								   const BoundaryConditions &boundaries, const OpaqueSelector &opaque, CurlLayout layout)
+								   const BoundaryConditions &boundaries, const OpaqueSelector &opaque, CurlLayout layout,
+								   const Axes &childLines)
 	: m_Ratio{1, 1, 1}, m_Boundaries(boundaries), m_Epsilon(epsilon), m_Mu(permeability),
 	  m_UniformFine(uniformFine), m_CurlLayout(layout)
 {
@@ -167,6 +168,31 @@ CartesianSubgrid::CartesianSubgrid(const Axes &lines, double epsilon, double per
 	}
 	m_Regions = regions;
 	m_Lines = lines;
+	for (unsigned int n = 0; n < 3; ++n)
+	{
+		if (childLines[n].empty())
+		{
+			continue;
+		}
+		Require(childLines[n].size() == std::size_t(m_Cells[n]) * m_Ratio[n] + 1,
+			"CartesianSubgrid: child coordinates must cover the finest axis lattice");
+		for (std::size_t k = 0; k < childLines[n].size(); ++k)
+		{
+			Require(std::isfinite(childLines[n][k]), "CartesianSubgrid: finite child coordinates required");
+			if (k % m_Ratio[n] == 0)
+			{
+				Require(childLines[n][k] == lines[n][k / m_Ratio[n]],
+					"CartesianSubgrid: child coordinates must retain exact base anchors");
+			}
+			if (k != 0)
+			{
+				Require(childLines[n][k] > childLines[n][k - 1],
+					"CartesianSubgrid: strictly increasing child coordinates required");
+				CheckSubdivision(childLines[n][k - 1], childLines[n][k], 1);
+			}
+		}
+		m_ChildLines[n] = childLines[n];
+	}
 	Build(medium, pec, opaque, uniformFine ? count * fineChildren : leaves);
 }
 
@@ -282,8 +308,16 @@ CartesianSubgrid::Trace CartesianSubgrid::Restrict(const Edge &edge, bool ignore
 			break;
 		}
 	}
-	const double u = double(edge.lo[a]) / m_Ratio[a] - root[a];
-	const double v = double(edge.lo[b]) / m_Ratio[b] - root[b];
+	const auto fraction = [&](unsigned int n)
+	{
+		if (m_ChildLines[n].empty())
+		{
+			return double(edge.lo[n]) / m_Ratio[n] - root[n];
+		}
+		return (Coordinate(n, edge.lo[n]) - m_Lines[n][root[n]]) /
+			(m_Lines[n][root[n] + 1] - m_Lines[n][root[n]]);
+	};
+	const double u = fraction(a), v = fraction(b);
 	Require(u >= 0 && u <= 1 && v >= 0 && v <= 1, "CartesianSubgrid: invalid hanging-edge coordinates");
 	Leaf coarse{{int(m_Ratio[0] * root[0]), int(m_Ratio[1] * root[1]), int(m_Ratio[2] * root[2])},
 				{int(m_Ratio[0]), int(m_Ratio[1]), int(m_Ratio[2])}};
@@ -633,8 +667,16 @@ void CartesianSubgrid::ConfigureRegularCurl()
 			block.length[n].reserve(cells[n]);
 			for (unsigned int i = 0; i < cells[n]; ++i)
 			{
-				const unsigned int root = unsigned(origin[n] + int(i) * step[n]) / m_Ratio[n];
-				block.length[n].push_back((m_Lines[n][root + 1] - m_Lines[n][root]) * step[n] / m_Ratio[n]);
+				const auto lo = origin[n] + int(i) * step[n];
+				if (m_ChildLines[n].empty())
+				{
+					const unsigned int root = unsigned(lo) / m_Ratio[n];
+					block.length[n].push_back((m_Lines[n][root + 1] - m_Lines[n][root]) * step[n] / m_Ratio[n]);
+				}
+				else
+				{
+					block.length[n].push_back(Coordinate(n, lo + step[n]) - Coordinate(n, lo));
+				}
 			}
 			block.edge[n].assign(Regular::CellCount(Regular::EdgeShape(cells, n)), Regular::absent);
 		}
@@ -998,6 +1040,21 @@ void CartesianSubgrid::UpdateMagnetic(double timestep)
 
 double CartesianSubgrid::Coordinate(unsigned int axis, double lattice) const
 {
+	if (!m_ChildLines[axis].empty())
+	{
+		const auto &coordinates = m_ChildLines[axis];
+		const auto index = std::min(std::size_t(lattice), coordinates.size() - 2);
+		const double fraction = lattice - double(index);
+		if (fraction == 0)
+		{
+			return coordinates[index];
+		}
+		if (fraction == 1)
+		{
+			return coordinates[index + 1];
+		}
+		return coordinates[index] + fraction * (coordinates[index + 1] - coordinates[index]);
+	}
 	const unsigned int root = std::min(unsigned(lattice / m_Ratio[axis]), m_Cells[axis] - 1);
 	const double fraction = (lattice - double(root) * m_Ratio[axis]) / m_Ratio[axis];
 	if (fraction == 0)
@@ -1013,6 +1070,10 @@ double CartesianSubgrid::Coordinate(unsigned int axis, double lattice) const
 
 double CartesianSubgrid::Length(const Leaf &leaf, unsigned int axis) const
 {
+	if (!m_ChildLines[axis].empty())
+	{
+		return Coordinate(axis, leaf.lo[axis] + leaf.size[axis]) - Coordinate(axis, leaf.lo[axis]);
+	}
 	const unsigned int root = unsigned(leaf.lo[axis]) / m_Ratio[axis];
 	return (m_Lines[axis][root + 1] - m_Lines[axis][root]) * leaf.size[axis] / m_Ratio[axis];
 }
@@ -1055,7 +1116,16 @@ CartesianSubgrid::Point CartesianSubgrid::EdgePoint(const Edge &key, double frac
 	Point position;
 	for (unsigned int n = 0; n < 3; ++n)
 	{
-		position[n] = Coordinate(n, key.lo[n] + (n == unsigned(key.axis) ? key.size * fraction : 0));
+		if (!m_ChildLines[n].empty() && n == unsigned(key.axis))
+		{
+			const double lo = Coordinate(n, key.lo[n]);
+			const double hi = Coordinate(n, key.lo[n] + key.size);
+			position[n] = fraction == 0 ? lo : (fraction == 1 ? hi : lo + fraction * (hi - lo));
+		}
+		else
+		{
+			position[n] = Coordinate(n, key.lo[n] + (n == unsigned(key.axis) ? key.size * fraction : 0));
+		}
 	}
 	return position;
 }
@@ -1076,6 +1146,14 @@ std::vector<CartesianSubgrid::SurfaceFace> CartesianSubgrid::OpaqueBoundaryFaces
 			width = std::min(width, m_Lines[n][i + 1] - m_Lines[n][i]);
 		}
 		displacement[n] = width / (4 * m_Ratio[n]);
+		if (!m_ChildLines[n].empty())
+		{
+			for (std::size_t k = 1; k < m_ChildLines[n].size(); ++k)
+			{
+				displacement[n] = std::min(displacement[n],
+					(m_ChildLines[n][k] - m_ChildLines[n][k - 1]) / 4);
+			}
+		}
 	}
 	for (std::size_t cell = 0; cell < m_Leaves.size(); ++cell)
 	{
@@ -1198,7 +1276,15 @@ void CartesianSubgrid::SetMagnetic(const Field &field)
 				Point position;
 				for (unsigned int k = 0; k < 3; ++k)
 				{
-					position[k] = Coordinate(k, leaf.lo[k] + leaf.size[k] * (n == k ? side : .5));
+					if (m_ChildLines[k].empty())
+					{
+						position[k] = Coordinate(k, leaf.lo[k] + leaf.size[k] * (n == k ? side : .5));
+					}
+					else
+					{
+						const double lo = Coordinate(k, leaf.lo[k]);
+						position[k] = lo + (n == k ? side : .5) * Length(leaf, k);
+					}
 				}
 				const double area = Length(leaf, (n + 1) % 3) * Length(leaf, (n + 2) % 3);
 				const std::size_t index = 6 * cell + 2 * n + side;
@@ -1226,7 +1312,17 @@ std::size_t CartesianSubgrid::FindLeaf(const Point &position) const
 		root[n] = std::min(unsigned(next - m_Lines[n].begin() - 1), m_Cells[n] - 1);
 		const double width = m_Lines[n][root[n] + 1] - m_Lines[n][root[n]];
 		const double boundary = m_Lines[n][root[n] + 1];
-		const double tolerance = std::min(width / m_Ratio[n] * 1e-8,
+		double boundaryWidth = width / m_Ratio[n];
+		if (!m_ChildLines[n].empty())
+		{
+			const auto node = (root[n] + 1) * m_Ratio[n];
+			boundaryWidth = m_ChildLines[n][node] - m_ChildLines[n][node - 1];
+			if (node + 1 < m_ChildLines[n].size())
+			{
+				boundaryWidth = std::min(boundaryWidth, m_ChildLines[n][node + 1] - m_ChildLines[n][node]);
+			}
+		}
+		const double tolerance = std::min(boundaryWidth * 1e-8,
 										  32 * std::numeric_limits<double>::epsilon() *
 											  std::max({std::abs(position[n]), std::abs(boundary), width}));
 		// Material-normal fields can jump. At a cell face select the positive
@@ -1245,6 +1341,28 @@ std::size_t CartesianSubgrid::FindLeaf(const Point &position) const
 	{
 		const double start = m_Lines[n][root[n]];
 		const double width = m_Lines[n][root[n] + 1] - start;
+		if (!m_ChildLines[n].empty())
+		{
+			const auto step = m_Ratio[n] / ratio[n];
+			unsigned int selected = 0;
+			for (unsigned int k = 1; k < ratio[n]; ++k)
+			{
+				const double boundary = Coordinate(n, root[n] * m_Ratio[n] + k * step);
+				const double previous = Coordinate(n, root[n] * m_Ratio[n] + (k - 1) * step);
+				const double next = Coordinate(n, root[n] * m_Ratio[n] + (k + 1) * step);
+				if (position[n] >= boundary || SameBoundaryCoordinate(position[n], boundary,
+					std::min(boundary - previous, next - boundary)))
+				{
+					selected = k;
+				}
+				else
+				{
+					break;
+				}
+			}
+			child[n] = selected;
+			continue;
+		}
 		double local = ratio[n] * (position[n] - start) / width;
 		const double nearest = std::clamp(std::round(local), 0., double(ratio[n]));
 		const double boundary = start + nearest * width / ratio[n];
@@ -1371,6 +1489,10 @@ std::size_t CartesianSubgrid::StorageBytes() const
 		bytes += sizeof(*diagnostic) + diagnostic->capacity() * sizeof(Leaf);
 	}
 	for (const auto &axis : m_Lines)
+	{
+		bytes += axis.capacity() * sizeof(double);
+	}
+	for (const auto &axis : m_ChildLines)
 	{
 		bytes += axis.capacity() * sizeof(double);
 	}

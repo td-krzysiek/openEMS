@@ -81,6 +81,8 @@ public:
     void SetupCartesianSubgrids(const std::vector<std::vector<double>> &boxes,
                                const std::vector<std::vector<unsigned int>> &ratios);
     void AddCartesianSubgrid(const std::vector<double> &box, const std::vector<unsigned int> &ratio);
+	//! Optional finest-lattice child coordinates in drawing units; empty axes use equal subdivision.
+	void SetupCartesianSubgridChildLines(const std::vector<std::vector<double>> &axes);
 
 	void SetTimeStepMethod(int val) {m_TS_method=val;}
 	void SetTimeStep(double val) {m_TS=val;}
@@ -146,6 +148,7 @@ protected:
 	std::vector<unsigned int> m_CartesianSubgridRatio;
 	std::vector<std::vector<double>> m_CartesianSubgridBoxes;
 	std::vector<std::array<unsigned int, 3>> m_CartesianSubgridRatios;
+	std::array<std::vector<double>, 3> m_CartesianSubgridChildLines;
 
 	ContinuousStructure* m_CSX;
 

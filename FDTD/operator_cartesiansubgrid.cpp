@@ -941,6 +941,15 @@ void Operator_CartesianSubgrid::ValidateProperties() const
 	}
 }
 
+void Operator_CartesianSubgrid::SetChildLines(const CartesianSubgrid::Axes &drawingLines)
+{
+	if (m_Grid)
+	{
+		throw std::logic_error("CartesianSubgrid: child coordinates must be selected before operator preparation");
+	}
+	m_ChildDrawingLines = drawingLines;
+}
+
 int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 {
 	if (flags != None)
@@ -955,11 +964,16 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 		m_NativeConductivity = nullptr;
 	}
 	CartesianSubgrid::Axes lines;
+	CartesianSubgrid::Axes childLines;
 	for (unsigned int n = 0; n < 3; ++n)
 	{
 		for (unsigned int i = 0; i < numLines[n]; ++i)
 		{
 			lines[n].push_back((discLines[n][i] - discLines[n][0]) * gridDelta);
+		}
+		for (double value : m_ChildDrawingLines[n])
+		{
+			childLines[n].push_back((value - discLines[n][0]) * gridDelta);
 		}
 	}
 	std::vector<CartesianSubgrid::Region> regions;
@@ -1141,7 +1155,8 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 		lines, GetBackgroundEpsR() * EPS0, GetBackgroundMueR() * MUE0, regions, false, sample,
 		hasMetal ? CartesianSubgrid::PECSelector(pec) : CartesianSubgrid::PECSelector(), boundaries,
 		hasSurfaceMetal ? CartesianSubgrid::OpaqueSelector(opaque) : CartesianSubgrid::OpaqueSelector(),
-		m_EngineType == Engine::GPU ? CartesianSubgrid::CurlLayout::SpatialBlocks : CartesianSubgrid::CurlLayout::Patterns));
+		m_EngineType == Engine::GPU ? CartesianSubgrid::CurlLayout::SpatialBlocks : CartesianSubgrid::CurlLayout::Patterns,
+		childLines));
 	const auto curlStorage = m_Grid->StructuredCurlStorage();
 	std::cout << "CartesianSubgrid curl storage: " << curlStorage.regularRows << " spatial rows, "
 		<< curlStorage.exceptionRows << " algebraic rows; " << curlStorage.bytes << " accounted bytes" << std::endl;

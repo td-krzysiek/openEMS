@@ -42,4 +42,20 @@ pass = ts_check('PML boundary serialization', ...
     strcmp(FDTD.BoundaryCond.ATTRIBUTE.xmin, 'PML_8') && ...
     strcmp(FDTD.BoundaryCond.ATTRIBUTE.xmax, 'PML_8') && ...
     strcmp(FDTD.BoundaryCond.ATTRIBUTE.zmin, 'PMC'), 'existing boundary API') && pass;
+FDTD = SetCartesianSubgridChildLines(FDTD, {[0 .13 1], [], [-1 .27 1]});
+pass = ts_check('child-coordinate serialization', ...
+    strcmp(FDTD.CartesianSubgridChildLines.ATTRIBUTE.X, '0,0.13,1') && ...
+    ~isfield(FDTD.CartesianSubgridChildLines.ATTRIBUTE, 'Y'), 'exact explicit and empty axes') && pass;
+invalid_axes = {{[0], [], []}, {[0 1 1], [], []}, {[0 NaN], [], []}, {[0 1], []}};
+for i = 1:numel(invalid_axes)
+    rejected = false;
+    try
+        SetCartesianSubgridChildLines(FDTD, invalid_axes{i});
+    catch err
+        rejected = strcmp(err.identifier, 'openEMS:CartesianSubgrid');
+    end
+    pass = ts_check('invalid child coordinates rejected', rejected, 'malformed or nonincreasing axes') && pass;
+end
+FDTD = SetCartesianSubgridChildLines(FDTD, {[], [], []});
+pass = ts_check('child-coordinate clearing', ~isfield(FDTD, 'CartesianSubgridChildLines'), 'no stale XML element') && pass;
 end

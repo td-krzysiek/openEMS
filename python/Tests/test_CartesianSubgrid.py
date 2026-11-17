@@ -162,6 +162,60 @@ class TestCartesianSubgrid(unittest.TestCase):
             with self.assertRaises(ValueError):
                 openEMS().ReadFromXML(path)
 
+    def test_child_coordinate_roundtrip_and_reset(self):
+        axes = [[-2, -1.7, -1, -.1, 0, .4, 1, 1.9, 2], [], [0, .2, 1]]
+        fdtd = openEMS(CartesianSubgridBox=[-1,-1,-1,1,1,1], CartesianSubgridChildLines=axes)
+        fdtd.SetGaussExcite(1e9, 1e9)
+        fdtd.SetCSX(ContinuousStructure())
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, 'child-lines.xml')
+            fdtd.Write2XML(path)
+            def saved():
+                element = ET.parse(path).find('FDTD/CartesianSubgridChildLines')
+                return None if element is None else {key: [float(v) for v in value.split(',')]
+                                                     for key, value in element.attrib.items()}
+            self.assertEqual(saved(), {'X': axes[0], 'Z': axes[2]})
+            restored = openEMS()
+            self.assertTrue(restored.ReadFromXML(path))
+            restored.Write2XML(path)
+            self.assertEqual(saved(), {'X': axes[0], 'Z': axes[2]})
+            fdtd.SetCartesianSubgridChildLines([[], [], []])
+            fdtd.Write2XML(path)
+            self.assertIsNone(saved())
+            restored.ReadFromXML(path)
+            restored.Write2XML(path)
+            self.assertIsNone(saved())
+
+    def test_child_coordinate_invalid_requests_preserve_settings(self):
+        fdtd = openEMS(CartesianSubgridChildLines=[[0, .7, 1], [], []])
+        fdtd.SetGaussExcite(1e9, 1e9)
+        fdtd.SetCSX(ContinuousStructure())
+        invalid = ([[], []], [[0], [], []], [[[0, 1]], [], []],
+                   [[0, 1, 1], [], []], [[0, float('nan')], [], []],
+                   [[0, float('inf')], [], []], [[1, 0], [], []])
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, 'child-lines.xml')
+            for axes in invalid:
+                with self.subTest(axes=axes), self.assertRaises(ValueError):
+                    fdtd.SetCartesianSubgridChildLines(axes)
+                fdtd.Write2XML(path)
+                values = ET.parse(path).find('FDTD/CartesianSubgridChildLines').get('X')
+                self.assertEqual([float(v) for v in values.split(',')], [0, .7, 1])
+
+    def test_child_coordinate_invalid_xml(self):
+        invalid = ('<CartesianSubgridChildLines/>', '<CartesianSubgridChildLines T="0,1"/>',
+                   '<CartesianSubgridChildLines X="0,1,"/>', '<CartesianSubgridChildLines X="0,,1"/>',
+                   '<CartesianSubgridChildLines X="0,1suffix"/>',
+                   '<CartesianSubgridChildLines X="0,1"><Child/></CartesianSubgridChildLines>',
+                   '<CartesianSubgridChildLines X="0,1"/><CartesianSubgridChildLines X="0,1"/>')
+        with tempfile.TemporaryDirectory() as directory:
+            path = os.path.join(directory, 'bad-child.xml')
+            for contents in invalid:
+                with open(path, 'w', encoding='utf-8') as stream:
+                    stream.write('<openEMS><ContinuousStructure/><FDTD>' + contents + '</FDTD></openEMS>')
+                with self.subTest(contents=contents), self.assertRaises(ValueError):
+                    openEMS().ReadFromXML(path)
+
     def test_invalid_xml_never_drops_bad_tokens(self):
         with tempfile.TemporaryDirectory() as directory:
             path = os.path.join(directory, 'bad.xml')
