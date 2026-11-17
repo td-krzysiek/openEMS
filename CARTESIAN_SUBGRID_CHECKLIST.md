@@ -1453,3 +1453,17 @@ Evidence: `packed-edge-addresses-r63/DESIGN.md`,
 `packed-edge-addresses-r63/cpu-admission-r01.json`,
 `packed-edge-addresses-r63/memory-admission-r01.json`,
 `packed-edge-addresses-r63/metal-headroom-r01.json`.
+
+
+R63's independent host-memory comparison now accepts all12 interleaved
+3,932,160-leaf cases:192MiB less accounted storage before/after a CPU write,
+exact geometry/curl/fields/timestep/ownership and unchanged default guards.
+Median grid/domain preparation peak RSS falls15.85/11.26% (patterns) and
+17.67/12.57% (blocks); including the CPU write gives5.66/8.42% lower peak.
+Whole preparation/control medians change-0.08/+0.41% on a shared host; no
+speedup is claimed. Full CPU77 remains running and physical82 is staged only
+after independently reviewed CPU/memory/R62 release. Code stays unpromoted;
+this homogeneous host result does not qualify native PCB/GPU/antenna capacity.
+Evidence: `packed-edge-addresses-r63/memory-independent-r01.json`,
+`packed-edge-addresses-r63/physical-preparation-r02.json`,
+`packed-edge-addresses-r63/physical-enumeration-r01.json`.
