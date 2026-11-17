@@ -594,7 +594,7 @@ Further partial D01/D02/D03/D05/B02/U05: cold PML-domain composition passes
 20 local stages, CTest43/Python14 and11,255 exact arrays. R16's physical pair
 exposes a compact-PML device-context defect after35 retained gates pass. The
 [r17 owning-device correction](CARTESIAN_SUBGRID_DOMAINS.md#compact-pml-owning-device-correction)
-passes the same local replay and five physical4090/3080 PML controls in each
+passes the same local replay and five physical 4090/3080 PML controls in each
 order. Full physical replay passes43 gates/CTest43, including24 PML and58
 constitutive comparisons, with checked terminal source/runtime identities. Native
 selectors/DFT/pause, general scaling and antenna acceptance remain open.
@@ -865,8 +865,8 @@ complexGamma0.011015–0.011168 fails the0.01 sensitivity gate in both engines
 and both conductors; late-time tails pass. RF convergence remains open. This is neither an antenna launch nor asymptotic3D
 convergence. Frozen R37 ratio16 is the separately hash-bound Z1 comparison.
 
-R42 is a separately frozen unpromoted candidate over R40: identical opposite
-face metric coefficients are stored once per pair while all six magnetic
+R42 was separately frozen over R40 and is now promoted after the CPU/physical
+qualification recorded below: identical opposite-face metric coefficients are stored once per pair while all six magnetic
 field/history states remain separate. Its build, independent face-view
 oracle, CPU62/62 and16 exact actual-R40 operator/field files pass. A four-mode
 resident-memory comparison and physical replay remain pending. It changes no equations,
@@ -917,17 +917,18 @@ polygon/priority-air fixtures pass across all axes, mm/micrometre units and
 reversed contours/extrusions. A small octagon-minus-bore volume differs0.051052%
 from analytic CAD;2000-step energy drift is1.55431e-15. R04 corrects only the
 external XML-test fixture's missing excitation/CSX and both API tests pass on
-unchanged R03 library/bindings. Full same-build CPU63 remains running.
+unchanged R03 library/bindings. Full same-build CPU 63/63 and 16 exact R40
+operator/field files now pass, independently reviewed after terminal exit0/noOOM.
 
 R06 independently reviewed reference-device controls pass12 native material
 cases (six geometries on one/three logical workers),256steps each. FP32 fields
 are identical; maximum normalized difference from double is5.79308e-7 under
 retained2e-4/2e-6 double/FP32 gates. Test-only missing-header/oracle/API failures
-are preserved. R07 adds actual backend observations and queues36 new material
-field cases plus32 retained same-build CUDA gates after accepted CPU63 and
-actual R42 physical release. No material source is promoted yet; sampled-loss,
-Metal, mesh/RF, resource/scaling and representative antenna acceptance remain
-open. The production runtime and frozen antenna inputs remain unchanged.
+are preserved. R07 completes 36 material-field cases plus 32 retained same-build
+CUDA gates after accepted CPU63 and actual R42 physical release. Independent
+review checks actual backend models, both pair orders, raw metrics and 763
+source hashes. FP32 fields agree exactly; no material source is promoted yet.
+Metal, mesh/RF, resource/scaling and representative antenna acceptance remain open. The production runtime and frozen antenna inputs remain unchanged.
 
 R42 physical qualification is complete:32 gates, native16 Python cases,
 retained loss/PML/ports/fields and upload lifetime controls pass, terminal
@@ -938,7 +939,39 @@ R45 is a separately frozen unpromoted candidate over R42 (R44 excluded).
 It adds an explicit count-only budget across C++/native/Python/XML/Matlab;
 default construction retains one million leaves. Checked products/region sums
 and a conservative32-bit edge-address ceiling reject before overflow/allocation.
-The index ceiling is not a RAM guarantee or qualified problem size. Small
-boundary/overflow/unchanged-field/API tests are prepared; isolated build and
-externally bounded2M/4M characterization remain pending. No full antenna is
-admitted and interface-factor limits remain unchanged.
+The index ceiling is not a RAM guarantee or qualified problem size. The isolated
+build completes exit 0/no OOM. Small boundary/overflow/unchanged-field/API
+controls and full CPU 63/63 replay pass, with 16 exact R42 operator/field
+files. Externally bounded 2M/4M characterization is running. No full antenna is admitted and
+interface-factor limits remain unchanged.
+
+
+R44 external R10 sampled-loss composition passes 36 reference cases: three
+extrusion axes, two drawing-unit/contour directions and electric/magnetic/both
+constant conductivities, on one and three logical workers. An independent
+analytic octagon-minus-bore midpoint sum, without CSXCAD or the production
+quadrature helper, gives identical native/manual fields and loss ledgers.
+Across 512 steps/case, maximum CPU energy imbalance is 1.28750e-14 and reference
+FP32 field difference from double is 1.48051e-6 under unchanged 2e-4/2e-6 gates.
+R09's external include-order/PI macro compile failure is retained; R10 changes
+only test includes, not the built R03 library. Physical/Metal sampled-loss,
+material-interface RF convergence and full-antenna qualification remain open.
+
+
+R44 external R11 completes 108 sampled bulk-loss cases: reference single/three
+workers, each physical 4090/3080 and both physical pair orders. The independent
+analytic native/manual CPU fields and ledgers agree exactly; physical/reference
+FP32 fields also agree exactly. Maximum normalized FP32 loss-ledger difference
+is 2.13088e-14 and energy imbalance 1.79962e-7, under unchanged bounds. Actual
+terminal exit0/noOOM, GPU UUID/model observations, source/core/binary identities
+and raw reviews are retained in the R44 study. These are small scalar-volume
+bulk-loss controls, not conductor-surface, RF or full-antenna acceptance.
+
+R46 is a separately frozen, unpromoted integration candidate: R42 metrics,
+R44 native shaped-material/bulk-loss support and R45 explicit count budget.
+The previous external R04/R07/R11 test corrections/controls are included as
+normal source, with a new combined API/XML/native setup regression. Both options
+retain their defaults and independent reset behavior; no production/frozen
+runtime changes. Its isolated build is running; own CPU 65, physical/Metal,
+resource scaling and representative RF qualification remain open. Parent
+acceptance does not qualify the combined binary.
