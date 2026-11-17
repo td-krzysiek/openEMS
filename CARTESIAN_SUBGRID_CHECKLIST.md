@@ -1818,3 +1818,17 @@ connected-net isolation or RF. Evidence:
 `cad-candidate-index-r70/metal-independent-r01.json`,
 `cad-candidate-index-r70/promotion-r01.json`,
 `representative-slab-mesh-r66/port-sheet-cad-independent-r01.json`.
+
+
+R70 setup-only diagnostic now passes independent review on1,115,860 native
+leaves. Eight complete parent/candidate sparse reports match exactly, including
+coupled CFL, four probes and source contacts; no engine or FDTD is created.
+Three balanced interleaved repeats per runtime on one Apple M5 Pro CPU thread
+measure median whole-child34.943s versus15.316s, native preparation33.807s
+versus14.201s and maximum child RSS255,131,648 bytes. Nested grid/native timings
+are not additive. This public CAD fixture diagnoses material/PEC lookup cost;
+it is not a master benchmark, FDTD speedup or full-antenna forecast. Existing
+R66 preparation remains unchanged. Physical CUDA/multi-device, full native
+antenna/contact/capacity and RF qualifications remain open. Evidence:
+`cad-candidate-index-r70/setup-benchmark-independent-r01.json`,
+`cad-candidate-index-r70/review_setup_benchmark_r01.py`.
