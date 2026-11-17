@@ -1192,3 +1192,17 @@ integration, Metal, collective pause, matched RF and antenna qualification are
 still required. No R57 source is promoted or production runtime changed.
 Evidence: `device-dft-r57/negative-review-r01.json`,
 `device-dft-r57-r02/focused-reference-r01.json`.
+
+
+R56 R03 now passes physical64/64, exit0/noOOM, after the exact R55 release.
+Independent review rehashes787 source and429 archive files. All48 physical
+native gather cases include96 empty-boundary controls; maximum measured raw
+field/complex-DFT error is0. Combined with CPU72/72 and16 exact parent arrays,
+the exact nine numerical/API/test/build files are promoted. All583 source and
+build files from the frozen snapshot match the canonical branch. The older
+R01 compile failure/R02 corner crash remain preserved. A collector summary
+count was corrected56->64 to match its unchanged64-command assertion; no
+numerical rerun or gate change. Metal, device DFT, collective pause, native RF
+and representative antenna acceptance remain open. Production is unchanged.
+Evidence: `native-field-gather-r56-r03/independent-qualification-r01.json`,
+`native-field-gather-r56-r03/promotion-r01.json`.

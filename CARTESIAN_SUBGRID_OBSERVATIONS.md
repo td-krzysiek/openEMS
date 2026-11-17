@@ -173,3 +173,25 @@ CPU write/step materializes full fields and restores comparable storage. These
 are single homogeneous host observations, not native PCB/GPU/antenna capacity
 or FDTD-throughput measurements. Metal, prepared E/H/DFT and representative
 RF/antenna remain open. Exact numerical/API/test source is promoted.
+
+
+## Prepared native E/H dump gathers — R56 R03
+
+The native application now seals observations after `PA->InitAll()`, before
+advancing; manual C++ callers still seal explicitly or retain eager fallback.
+Raw-region gathers prepare only needed SI support and reuse the existing FDTD
+interpolation, rounding to raw floats before dividing by edge length. A shared
+conservative256MiB table budget rejects whole candidates to the explicit full
+fallback. Empty-support regions retain a one-float sentinel so the interpolator
+does not select nonexistent complete host arrays. Concurrent disjoint readers
+refresh one cache per epoch. Changing interpolation/placement or overlapping
+advance and gather is unsupported. This is host gathered DFT, not device DFT.
+
+CPU72/72,16 exact actual-R55 arrays and64 physical4090/3080 gates pass. Twelve
+reference/48 physical gather cases cover all modes, E/H, source/PML/loss, child
+coordinates, transforms and empty boundaries. Measured raw-field/complex-DFT
+difference is0; the predeclared relative gate remains2e-6 because SI recipes
+can reassociate double operations.787 source/429 archive hashes were rechecked
+before exact promotion. Metal, matched native RF/NF2FF, collective pause and
+antennas remain separately unqualified. Rebuild matching callers; no production
+runtime changes.

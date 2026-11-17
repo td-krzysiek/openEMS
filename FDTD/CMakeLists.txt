@@ -62,6 +62,7 @@ set(SOURCES
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_cpu.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_cpu_kernels.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/operator.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/subgrid_native_field_gather.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/cartesian_subgrid.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/cartesian_subgrid_domains.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/cartesian_subgrid_runtime.cpp

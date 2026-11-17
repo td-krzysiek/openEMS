@@ -18,6 +18,7 @@
 #include "engine_interface_fdtd.h"
 #include "engine_field_gather.h"
 #include "engine_cpu.h"
+#include "operator_cartesiansubgrid.h"
 #include "tools/global.h"
 #include <iostream>
 #include <stdexcept>
@@ -248,6 +249,10 @@ double Engine_Interface_FDTD::CalcFastEnergy() const
 
 Engine_Field_Gather* Engine_Interface_FDTD::CreateFieldGather(bool h_field, const unsigned int numLines[3], unsigned int* const posLines[3]) const
 {
+	if (const auto *local = dynamic_cast<const Operator_CartesianSubgrid *>(m_Op))
+	{
+		return local->CreateFieldGather(this, h_field, numLines, posLines);
+	}
 	// the CPU engine's fields are plain arrays (in a layout of its own), read directly; the per-node path
 	// asks the engine for every edge through virtual calls, a fifth of the time of a model with NF2FF dumps
 	if ((m_Eng==NULL) || (m_Eng->GetType()!=Engine::CPU) || (m_Eng->GetVoltageArray()==NULL) || (m_Eng->GetCurrentArray()==NULL))

@@ -1901,11 +1901,6 @@ int openEMS::SetupFDTD()
 		return 2;
 	}
 
-	if (auto *local = dynamic_cast<Operator_CartesianSubgrid *>(FDTD_Op))
-	{
-		local->SealObservations();
-	}
-
 	// Cleanup all unused material storages...
 	FDTD_Op->CleanupMaterialStorage();
 
@@ -1992,6 +1987,14 @@ void openEMS::RunFDTD()
 
 	//init processings
 	PA->InitAll();
+	if (auto *local = dynamic_cast<Operator_CartesianSubgrid *>(FDTD_Op))
+	{
+		if (!local->NativeObservationInfo().sealed)
+		{
+			local->SealObservations();
+		}
+	}
+
 
 	//add all timesteps to end-crit field processing with max excite amplitude
 	unsigned int maxExcite = FDTD_Op->GetExcitationSignal()->GetMaxExcitationTimestep();

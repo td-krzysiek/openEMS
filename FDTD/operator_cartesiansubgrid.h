@@ -8,6 +8,9 @@
 
 class Operator_Ext_CartesianSubgrid_Conductivity;
 
+class Engine_Field_Gather;
+class Engine_Interface_FDTD;
+
 //! Native API adapter for the experimental compact XYZ numerical core.
 class Operator_CartesianSubgrid : public Operator
 {
@@ -29,6 +32,11 @@ class Operator_CartesianSubgrid : public Operator
 	//! Startup registration; seal only after all native processing has been prepared.
 	std::size_t RegisterObservation(const CartesianSubgrid::Integral &functional) const;
 	void SealObservations();
+	//! Startup-only shared gather budget; exhausted/late gathers retain the explicit full fallback.
+	void SetFieldGatherBudget(std::size_t bytes);
+	std::size_t FieldGatherBudget() const { return m_FieldGatherBudget; }
+	Engine_Field_Gather *CreateFieldGather(const Engine_Interface_FDTD *interface, bool magnetic,
+		const unsigned int count[3], unsigned int *const positions[3]) const;
 	double EvaluateObservation(std::size_t id) const;
 	struct ObservationInfo
 	{
@@ -78,6 +86,7 @@ class Operator_CartesianSubgrid : public Operator
 	mutable bool m_ObservationsValid = true;
 	mutable std::vector<CartesianSubgrid::Integral> m_ObservationFunctions;
 	bool m_ObservationPlanSealed = false;
+	mutable std::size_t m_FieldGatherBudget = std::size_t(256) << 20, m_FieldGatherUsed = 0;
 	//! Non-owning handle; the operator extension list retains ownership.
 	Operator_Ext_CartesianSubgrid_Conductivity *m_NativeConductivity = nullptr;
 };
