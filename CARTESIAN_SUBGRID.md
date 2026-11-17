@@ -1604,3 +1604,22 @@ experimental CLI/Python fixed-domain selector, cold PML/loss composition,
 complete-batch host observations, scoped reference/Metal evidence and pending
 physical native CUDA qualification. It keeps execution placement outside the
 physical XML and does not qualify production scaling or the project antenna.
+
+## Conservative native CAD candidates
+
+Native preparation now caches ordered conservative candidate lists for material
+membership, PEC/opaque selection and the existing material-boundary checks.
+Small lists retain the original path. Larger supported lists use bounded
+Cartesian buckets, preserving their original priority order. Queries crossing
+several buckets, outside/invalid coordinates, unsupported bounds and tables
+exceeding the entry budget reuse the complete original list. Queries do not
+sort, merge or allocate; the original exact CSXCAD membership, quadrature and
+geometry/contact guards still decide the result.
+
+Scoped CPU qualification includes81 tests, exact complete prepared tables and
+public fields against the actual parent. One inherited Clang test-initializer
+portability correction retains both test geometries. Scoped physical Metal
+qualification includes17 controls and16 exact actual-parent native field/U/I
+arrays on one device. Logical domains in these controls do not establish
+physical multi-GPU scaling. CUDA, full representative antenna preparation/RF
+and setup-speed evidence remain separate; no production runtime is changed.

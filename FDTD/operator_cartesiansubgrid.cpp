@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include "operator_cartesiansubgrid.h"
 #include "subgrid_setup_timing.h"
+#include "subgrid_candidate_index.h"
 #include "subgrid_allocation_limits.h"
 #include "subgrid_observations.h"
 #include "gpu_cartesiansubgrid_dft.h"
@@ -1360,7 +1361,50 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 			<< " primitives; explicit isotropic volume quadrature " << m_MaterialSamples
 			<< " samples per axis; mesh and quadrature convergence required" << std::endl;
 	}
-	const auto materialSample = [this, primitives, shapedMaterialBounds](
+	using Bounds = std::array<double, 6>;
+	Bounds drawingDomain;
+	for (unsigned int n = 0; n < 3; ++n)
+	{
+		drawingDomain[2 * n] = discLines[n][0];
+		drawingDomain[2 * n + 1] = discLines[n][numLines[n] - 1];
+	}
+	const double candidateTolerance = CSX->GetDrawingTolerance();
+	using PrimitiveCandidates = CartesianSubgridCandidateIndex<CSPrimitives *>;
+	auto preparePrimitiveCandidates = [&](const std::vector<CSPrimitives *> &objects)
+	{
+		std::vector<Bounds> boxes;
+		boxes.reserve(objects.size());
+		for (auto *primitive : objects)
+		{
+			Bounds box{};
+			const bool exactBox = primitive->GetBoundBox(box.data());
+			// Native validation already restricts polygons to untransformed
+			// Cartesian contours. Their false return means not an exact solid
+			// box; the finite vertex/extrusion bounds remain conservative.
+			if (primitive->HasTransform() || (!exactBox && !dynamic_cast<CSPrimPolygon *>(primitive)))
+			{
+				// Unknown/nonconservative bounds keep the original full-list path.
+				box[0] = std::numeric_limits<double>::quiet_NaN();
+			}
+			boxes.push_back(box);
+		}
+		return std::make_shared<PrimitiveCandidates>(objects, boxes, drawingDomain, candidateTolerance);
+	};
+	const auto primitiveCandidates = preparePrimitiveCandidates(primitives);
+	const auto geometryCandidates = preparePrimitiveCandidates(geometry);
+	using BoundCandidates = CartesianSubgridCandidateIndex<Bounds>;
+	const auto boundCandidates = std::make_shared<BoundCandidates>(bounds, bounds, drawingDomain, candidateTolerance);
+	const auto shapedCandidates = std::make_shared<BoundCandidates>(
+		shapedMaterialBounds, shapedMaterialBounds, drawingDomain, candidateTolerance);
+	std::vector<Bounds> axialBounds;
+	axialBounds.reserve(axialObjects.size());
+	for (const auto &object : axialObjects)
+	{
+		axialBounds.push_back(object.bounds);
+	}
+	const auto axialCandidates = std::make_shared<CartesianSubgridCandidateIndex<AxialObject>>(
+		axialObjects, axialBounds, drawingDomain, candidateTolerance);
+	const auto materialSample = [this, primitiveCandidates, shapedCandidates](
 		const CartesianSubgrid::Point &start, const CartesianSubgrid::Point &stop)
 	{
 		CartesianSubgrid::Point lo, hi;
@@ -1369,7 +1413,8 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 			lo[n] = start[n] / gridDelta + discLines[n][0];
 			hi[n] = stop[n] / gridDelta + discLines[n][0];
 		}
-		const bool shaped = std::any_of(shapedMaterialBounds.begin(), shapedMaterialBounds.end(),
+		const auto &nearbyShapes = shapedCandidates->Overlapping(lo.data(), hi.data());
+		const bool shaped = std::any_of(nearbyShapes.begin(), nearbyShapes.end(),
 			[&](const std::array<double, 6> &box)
 			{
 				return box[0] <= hi[0] && box[1] >= lo[0] && box[2] <= hi[1] &&
@@ -1379,7 +1424,7 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 			[&](const CartesianSubgrid::Point &point)
 			{
 				double coordinate[3] = {point[0], point[1], point[2]};
-				auto *property = CSX->GetPropertyByCoordPriority(coordinate, primitives, true);
+				auto *property = CSX->GetPropertyByCoordPriority(coordinate, primitiveCandidates->At(coordinate), true);
 				auto *material = property ? static_cast<CSPropMaterial *>(property) : nullptr;
 				return CartesianSubgridMaterialQuadrature::Values{
 					(material ? material->GetEpsilon() : GetBackgroundEpsR()) * EPS0,
@@ -1409,7 +1454,7 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 		}
 		// Centre sampling is exact only when every box is constant throughout
 		// this leaf. Do not silently replace a subcell interface by its centre.
-		for (const auto &box : bounds)
+		for (const auto &box : boundCandidates->Overlapping(lo, hi))
 		{
 			bool intersects = true, contains = true;
 			int normal = -1;
@@ -1442,7 +1487,7 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 					"faces to local cell boundaries");
 			}
 		}
-		for (const auto &object : axialObjects)
+		for (const auto &object : axialCandidates->Overlapping(lo, hi))
 		{
 			const unsigned int axis = object.axis;
 			const auto &box = object.bounds;
@@ -1476,7 +1521,7 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 		{
 			centre[n] = (start[n] + stop[n]) / (2 * gridDelta) + discLines[n][0];
 		}
-		auto *property = CSX->GetPropertyByCoordPriority(centre, geometry, true);
+		auto *property = CSX->GetPropertyByCoordPriority(centre, geometryCandidates->At(centre), true);
 		if (property && property->GetType() == CSProperties::METAL)
 		{
 			return true;
@@ -1506,14 +1551,14 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 	{
 		return IsSurfaceMetal(primitive->GetProperty());
 	});
-	auto opaque = [this, geometry](const CartesianSubgrid::Point &start, const CartesianSubgrid::Point &stop)
+	auto opaque = [this, geometryCandidates](const CartesianSubgrid::Point &start, const CartesianSubgrid::Point &stop)
 	{
 		double centre[3];
 		for (unsigned int n = 0; n < 3; ++n)
 		{
 			centre[n] = (start[n] + stop[n]) / (2 * gridDelta) + discLines[n][0];
 		}
-		return IsSurfaceMetal(CSX->GetPropertyByCoordPriority(centre, geometry, true));
+		return IsSurfaceMetal(CSX->GetPropertyByCoordPriority(centre, geometryCandidates->At(centre), true));
 	};
 	CartesianSubgrid::BoundaryConditions boundaries;
 	for (unsigned int i = 0; i < boundaries.size(); ++i)
@@ -1595,7 +1640,7 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 			{
 				throw std::invalid_argument("CartesianSubgrid: native surface metal resolves no excluded volume cells");
 			}
-			auto material = [this, geometry](std::size_t leaf)
+			auto material = [this, geometryCandidates](std::size_t leaf)
 			{
 				const auto lo = m_Grid->LeafStart(leaf), length = m_Grid->LeafLengths(leaf);
 				double centre[3];
@@ -1603,7 +1648,7 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 				{
 					centre[n] = (lo[n] + .5 * length[n]) / gridDelta + discLines[n][0];
 				}
-				auto *property = CSX->GetPropertyByCoordPriority(centre, geometry, true);
+				auto *property = CSX->GetPropertyByCoordPriority(centre, geometryCandidates->At(centre), true);
 				return SurfaceConductivity(property);
 			};
 			auto prepared = CartesianSubgridConductor::Prepare(*m_Grid, material, surfaceMaximumFrequency);

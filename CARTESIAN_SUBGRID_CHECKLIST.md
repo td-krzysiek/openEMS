@@ -1801,3 +1801,20 @@ unpromoted and R66/production runtimes unchanged. Evidence:
 `cad-candidate-index-r70/ctest-format-adapter-r03.json`,
 `cad-candidate-index-r70/cpu-regression-independent-r03.json`,
 `cad-candidate-index-r70/metal-preparation-r01.json`.
+
+R70 now independently accepts physical Metal on Apple M5 Pro:17 explicit
+backend controls and two128-step public native runs. All16 actual-parent
+field/U/I arrays match exactly; the native smooth-copper field error is at
+most2.33987e-6 against the unchanged2e-4 gate. Source review rehashes1,647
+parent/candidate files, retaining the qualified test-only literal correction
+and all original resource bounds. The exact five index/test files are now
+promoted to this experimental PR branch. No R68 accumulator, production,
+frozen or active R66 runtime changes. Physical CUDA/multi-device replay,
+complete representative preparation/RF and setup-speed evidence remain open.
+An additional full-model CAD-only check samples129 points at both ends of
+all three port sheets:774 metal hits; deliberate air samples give zero hits.
+This complements the sparse inspector but does not prove native-grid contact,
+connected-net isolation or RF. Evidence:
+`cad-candidate-index-r70/metal-independent-r01.json`,
+`cad-candidate-index-r70/promotion-r01.json`,
+`representative-slab-mesh-r66/port-sheet-cad-independent-r01.json`.
