@@ -1023,3 +1023,13 @@ including independent analytic SI fields, direct reconstruction, complete-field
 and double/single/domain controls. Qualification remains pending; no native
 memory/transfer, RF or antenna gain is claimed. Exact source/build identities
 and gates are in `physical-observations-r49/` in the project evidence archive.
+
+
+R50 extends the host characterization plan to3.93/7.68/15M leaves with both
+curl layouts on the accepted immutable R48-r04 core. One separately admitted
+GPU-free4CPU/12GiB container retains the80GiB project cap/12GiB host reserve.
+Default one-million rejection, exact region arithmetic/ownership, sampled
+curls/fields and one-step energy are required; failure never automatically
+raises the cap. Results remain pending. This is homogeneous setup/package
+characterization, not native PCB/GPU/antenna resource qualification or a change
+to the public default guard. Evidence: `scaling-budget-r50/` in the project archive.
