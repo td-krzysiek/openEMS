@@ -1171,3 +1171,24 @@ is0; no full read occurs before the explicit fallback. All787 source files
 and the executing test/library/log identities were rechecked. This focused
 receipt does not replace full CPU72, physical64, Metal or RF/antenna acceptance.
 Evidence: `native-field-gather-r56-r03/focused-reference-r03.json`.
+
+
+R56 R03 full CPU72/72 and16 exact actual-R55 parent arrays now pass, exit0/noOOM.
+Independent review rehashes787 source files and the compact raw archive;12
+focused cases include24 empty regions and maximum measured field/DFT error0.
+Physical64 is running after the exact accepted R55 release; no R56 source is
+promoted yet. Evidence: `native-field-gather-r56-r03/independent-cpu-review-r01.json`.
+
+R57 separately implements owned normalized-state DFT through the shared point
+operations and device/coordinator/worker protocols. Inline weights avoid blocking
+uploads; selected states have unique owners, bounded aggregate memory and
+complete-epoch/duplicate-sample checks. The original99,999-sample cancellation
+control exposes correction-accumulator drift (relative2.70533e-4); preserve its
+exact negative/source/build. R02 separately renormalizes the pair without gate
+relaxation. Its isolated build and focused reference control pass (six domain/
+port cases, max complex error1.35356e-14, exact unchanged single-device fields).
+Full CPU73 and physical68 remain pending. Native FieldDFT/DFT-only registry
+integration, Metal, collective pause, matched RF and antenna qualification are
+still required. No R57 source is promoted or production runtime changed.
+Evidence: `device-dft-r57/negative-review-r01.json`,
+`device-dft-r57-r02/focused-reference-r01.json`.
