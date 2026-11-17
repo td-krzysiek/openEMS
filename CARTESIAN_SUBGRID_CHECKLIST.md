@@ -1879,3 +1879,17 @@ production, frozen library, CAD or active R66 input/runtime is changed.
 Evidence: `oblique-interface-r72/independent-r01.json`,
 `oblique-interface-r72/point-sampling-offset-r01.json`,
 `oblique-interface-r72/independent-r02.json`.
+
+
+R73 prepares a same-input Metal replay of the accepted R64 coarse native PEC
+and smooth-copper curved lines: 1,544,144 leaves, common 1 fs / 1 ns, unchanged
+ports and physical geometry. The R70 frozen library is reused. PEC passes its
+native startup gate at epoch 4290 on Apple M5 Pro and is running; copper waits
+for completion and fresh admission. The controller retains 3 GiB owned RSS,
+12.5 GiB reserve and complete-epoch/liveness/input/library checks without a
+second initialization. Terminal raw own-time RF/late-prefix comparison with
+accepted CUDA is pending; no RF or antenna acceptance follows from startup.
+R66 and production/frozen runtimes remain unchanged. Evidence:
+`metal-curved-rf-r73/preparation-r01.json`,
+`metal-curved-rf-r73/owner-r01.json`,
+`metal-curved-rf-r73/review_r01.py`.
