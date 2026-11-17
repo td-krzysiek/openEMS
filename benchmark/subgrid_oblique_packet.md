@@ -27,6 +27,8 @@ diagnostic resolutions are 12/24/36/48, ratios 1/1/1, 2/2/2 and 2/4/1, widths
 30 mm cube, with a centred 10 mm refinement box and a shared timestep no larger
 than either grid's bound. The largest globally fine reference has 884,736 leaves.
 The driver does not enforce an external RAM/time budget; admit it separately.
+The fixed observation window is about 60 ps and still contains a finite tail.
+It is not a completed-pulse or asymptotic reflection measurement.
 
 TE uses a divergence-free E_z initial packet and a half-step Faraday H seed.
 TM uses an H_z packet and PMC Z caps; its initial time-stagger residual is
