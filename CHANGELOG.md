@@ -16,6 +16,12 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Added
 
+- Experimental native Cartesian-subgrid frequency-domain dumps can accumulate
+  selected owned states on the device and reconstruct the existing raw-region
+  output at readback. Dedicated DFT supports no longer require host field reads
+  each sampling batch. Budgeted fallback and explicit time-domain reads remain;
+  recent Metal, RF/NF2FF and representative antenna qualification are pending.
+
 - Experimental Cartesian-subgrid initial E/H fields retain exact implicit zeros
   until CPU writes or explicit complete device imports need dense host values.
   Supplied nonzero fields and precision guards remain unchanged. Rebuild callers.

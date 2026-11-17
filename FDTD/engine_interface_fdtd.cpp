@@ -19,10 +19,12 @@
 #include "engine_field_gather.h"
 #include "engine_cpu.h"
 #include "operator_cartesiansubgrid.h"
+#include "subgrid_native_field_gather.h"
 #include "tools/global.h"
 #include <iostream>
 #include <stdexcept>
 #include <string>
+#include <utility>
 
 using std::cerr;
 using std::cout;
@@ -267,4 +269,78 @@ Engine_Field_Gather* Engine_Interface_FDTD::CreateFieldGather(bool h_field, cons
 		     << (bytes ? "a table of " + std::to_string(bytes>>20) + " MiB" : std::string("interpolated per sample"))
 		     << ", " << (cpu->GatherBudget()>>20) << " MiB left for tables" << endl;
 	return g;
+}
+
+
+int Engine_Interface_FDTD::CreateFieldDFT(const Engine_Field_Gather *gather, unsigned int count)
+{
+	const auto *native = dynamic_cast<const Field_Gather_Subgrid *>(gather);
+	if (!native)
+	{
+		return -1;
+	}
+	// Allocate host bookkeeping before device registration/selection mutation.
+	const auto slot = m_SubgridDFT.emplace(-1, native);
+	if (!slot.second)
+	{
+		throw std::logic_error("CartesianSubgrid: concurrent DFT registration is unsupported");
+	}
+	try
+	{
+		const int id = native->CreateDeviceDFT(this, count);
+		if (id < 0)
+		{
+			m_SubgridDFT.erase(slot.first);
+			return -1;
+		}
+		auto node = m_SubgridDFT.extract(slot.first);
+		node.key() = id;
+		if (!m_SubgridDFT.insert(std::move(node)).inserted)
+		{
+			throw std::logic_error("CartesianSubgrid: duplicate native DFT group identity");
+		}
+		return id;
+	}
+	catch (...)
+	{
+		m_SubgridDFT.erase(-1);
+		throw;
+	}
+}
+
+void Engine_Interface_FDTD::AccumulateFieldDFT(int id, const std::vector<std::complex<float>> &weights)
+{
+	const auto it = m_SubgridDFT.find(id);
+	if (it == m_SubgridDFT.end())
+	{
+		throw std::invalid_argument("CartesianSubgrid: DFT ID does not belong to this interface");
+	}
+	it->second->AccumulateDeviceDFT(this, weights);
+}
+
+bool Engine_Interface_FDTD::ReadFieldDFT(int id,
+	std::vector<ArrayLib::ArrayNIJK<std::complex<float>> *> &fields)
+{
+	const auto it = m_SubgridDFT.find(id);
+	if (it == m_SubgridDFT.end())
+	{
+		return false;
+	}
+	const auto *gather = it->second;
+	if (fields.size() != gather->DFTFrequencyCount())
+	{
+		throw std::invalid_argument("CartesianSubgrid: native DFT output frequency count differs");
+	}
+	for (const auto *field : fields)
+	{
+		if (!field || !gather->DFTOutputMatches(this, *field))
+		{
+			throw std::invalid_argument("CartesianSubgrid: native DFT output shape/null field");
+		}
+	}
+	for (std::size_t frequency = 0; frequency < fields.size(); ++frequency)
+	{
+		gather->ReadDeviceDFT(this, static_cast<unsigned int>(frequency), *fields[frequency]);
+	}
+	return true;
 }

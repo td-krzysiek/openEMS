@@ -2,6 +2,7 @@
 #include "operator_cartesiansubgrid.h"
 #include "subgrid_allocation_limits.h"
 #include "subgrid_observations.h"
+#include "gpu_cartesiansubgrid_dft.h"
 #include <atomic>
 #include <mutex>
 #include "subgrid_material_quadrature.h"
@@ -360,6 +361,64 @@ class Engine_CartesianSubgrid : public Engine
 					  << "; allocated " << (m_Device->StorageBytes() + extensionBytes) << " bytes; no host half-step fallback" << std::endl;
 		}
 	}
+
+	bool HasDevice() const { return bool(m_Device); }
+	std::size_t AddFieldDFT(bool electric, const std::vector<std::uint32_t> &indices,
+		std::size_t frequencies, std::size_t budget)
+	{
+		CheckAdvanceState();
+		if (!m_Device || m_ObservationSealed || numTS != 0)
+		{
+			throw std::logic_error("CartesianSubgrid: native DFT registration requires unsealed device startup");
+		}
+		try
+		{
+			return m_Device->AddObservationDFT(electric, indices, frequencies, budget);
+		}
+		catch (...)
+		{
+			m_AdvanceFailed = true;
+			m_Operator->InvalidateObservations();
+			throw;
+		}
+	}
+	void AccumulateFieldDFT(std::size_t id, const std::vector<std::complex<float>> &weights)
+	{
+		CheckAdvanceState();
+		if (!m_Device || !m_ObservationSealed)
+		{
+			throw std::logic_error("CartesianSubgrid: native device DFT requires sealed observations");
+		}
+		try
+		{
+			m_Device->AccumulateObservationDFT(id, weights);
+		}
+		catch (...)
+		{
+			m_AdvanceFailed = true;
+			m_Operator->InvalidateObservations();
+			throw;
+		}
+	}
+	void ReadFieldDFT(std::size_t id, unsigned int frequency, std::vector<std::complex<double>> &sums)
+	{
+		CheckAdvanceState();
+		if (!m_Device || !m_ObservationSealed)
+		{
+			throw std::logic_error("CartesianSubgrid: native DFT snapshot requires sealed observations");
+		}
+		try
+		{
+			m_Device->ReadObservationDFT(id, frequency, sums);
+		}
+		catch (...)
+		{
+			m_AdvanceFailed = true;
+			m_Operator->InvalidateObservations();
+			throw;
+		}
+	}
+
 	void SealObservations(const std::vector<CartesianSubgrid::Integral> &functionals)
 	{
 		CheckAdvanceState();
@@ -398,10 +457,18 @@ class Engine_CartesianSubgrid : public Engine
 	}
 	Operator_CartesianSubgrid::ObservationInfo ObservationInfo() const
 	{
-		return {m_FullFieldReads, m_SelectedReadbacks, m_EnergyReadbacks,
-			m_Device ? m_Device->EnergyDownloadBytes() : 0,
-			m_Device ? m_Device->HostObservationStorageBytes() : 0,
-			m_ObservationSealed, bool(m_Device)};
+		Operator_CartesianSubgrid::ObservationInfo result;
+		result.fullFieldReads = m_FullFieldReads;
+		result.selectedReadbacks = m_SelectedReadbacks;
+		result.energyReadbacks = m_EnergyReadbacks;
+		result.energyDownloadBytes = m_Device ? m_Device->EnergyDownloadBytes() : 0;
+		result.hostObservationBytes = m_Device ? m_Device->HostObservationStorageBytes() : 0;
+		result.sealed = m_ObservationSealed;
+		result.device = bool(m_Device);
+		result.selectedElectricStates = m_Selected ? m_Selected->SelectedElectricCount() : 0;
+		result.selectedMagneticStates = m_Selected ? m_Selected->SelectedMagneticCount() : 0;
+		result.fieldDFTDownloadBytes = m_Device ? m_Device->ObservationDFTDownloadBytes() : 0;
+		return result;
 	}
 	void PrepareHostObservation() const
 	{
@@ -419,7 +486,7 @@ class Engine_CartesianSubgrid : public Engine
 	}
 	bool IterateTS(unsigned int steps) override
 	{
-		if (m_AdvanceFailed)
+		if (m_AdvanceFailed || !m_Operator->ObservationStateValid())
 		{
 			throw std::logic_error("CartesianSubgrid: failed compact advance cannot continue");
 		}
@@ -617,7 +684,7 @@ class Engine_CartesianSubgrid : public Engine
   private:
 	void CheckAdvanceState() const
 	{
-		if (m_AdvanceFailed)
+		if (m_AdvanceFailed || !m_Operator->ObservationStateValid())
 		{
 			throw std::logic_error("CartesianSubgrid: failed compact advance has no valid observation");
 		}
@@ -1627,7 +1694,15 @@ std::size_t Operator_CartesianSubgrid::RegisterObservation(const CartesianSubgri
 	}
 	// Reuse the exact finite/count checks without binding or downloading fields.
 	CartesianSubgridObservations checked(*m_Grid, {functional});
+	if (m_ObservationFunctions.size() == m_ObservationDeviceOnly.capacity())
+	{
+		const auto capacity = m_ObservationDeviceOnly.capacity();
+		const auto limit = m_ObservationDeviceOnly.max_size();
+		const auto next = capacity <= limit / 2 ? std::max(std::size_t(8), 2 * capacity) : limit;
+		m_ObservationDeviceOnly.reserve(next);
+	}
 	m_ObservationFunctions.push_back(functional);
+	m_ObservationDeviceOnly.push_back(0);
 	return m_ObservationFunctions.size() - 1;
 }
 
@@ -1643,7 +1718,15 @@ void Operator_CartesianSubgrid::SealObservations()
 	{
 		throw std::logic_error("CartesianSubgrid: matching native engine is required");
 	}
-	engine->SealObservations(m_ObservationFunctions);
+	auto selected = m_ObservationFunctions;
+	for (std::size_t i = 0; i < selected.size(); ++i)
+	{
+		if (m_ObservationDeviceOnly.at(i))
+		{
+			selected[i].weights.clear();
+		}
+	}
+	engine->SealObservations(selected);
 }
 
 double Operator_CartesianSubgrid::EvaluateObservation(std::size_t id) const
@@ -1654,11 +1737,140 @@ double Operator_CartesianSubgrid::EvaluateObservation(std::size_t id) const
 	}
 	const auto &functional = m_ObservationFunctions.at(id);
 	const auto *engine = dynamic_cast<const Engine_CartesianSubgrid *>(m_Engine);
-	if (m_ObservationPlanSealed && engine && engine->ObservationInfo().device)
+	if (m_ObservationPlanSealed && engine && engine->ObservationInfo().device && !m_ObservationDeviceOnly.at(id))
 	{
 		return engine->SelectedObservation(id);
 	}
 	return ObservationGrid().Evaluate(functional);
+}
+
+void Operator_CartesianSubgrid::SetFieldDFTBudget(std::size_t bytes)
+{
+	if (m_ObservationPlanSealed || !m_FieldDFTPlans.empty() || (m_Engine && m_Engine->GetNumberOfTimesteps() != 0))
+	{
+		throw std::logic_error("CartesianSubgrid: set native DFT budget before registration/advance");
+	}
+	m_FieldDFTBudget = bytes;
+}
+
+int Operator_CartesianSubgrid::CreateFieldDFT(bool magnetic,
+	const std::vector<std::size_t> &observations, unsigned int frequencies) const
+{
+	auto *engine = dynamic_cast<Engine_CartesianSubgrid *>(m_Engine);
+	if (!engine || !engine->HasDevice() || !frequencies || !m_FieldDFTBudget)
+	{
+		return -1;
+	}
+	if (!m_ObservationsValid || m_ObservationPlanSealed || m_Engine->GetNumberOfTimesteps() != 0)
+	{
+		throw std::logic_error("CartesianSubgrid: native DFT recipes require valid unsealed startup");
+	}
+	if (m_FieldDFTPlans.size() >= std::size_t(std::numeric_limits<int>::max()))
+	{
+		throw std::invalid_argument("CartesianSubgrid: native DFT group ID overflow");
+	}
+	FieldDFTPlan plan;
+	plan.frequencies = frequencies;
+	plan.samples.reserve(observations.size());
+	std::vector<std::uint32_t> support;
+	for (const auto id : observations)
+	{
+		CartesianSubgrid::Integral recipe;
+		recipe.magnetic = magnetic;
+		if (id != std::numeric_limits<std::size_t>::max())
+		{
+			recipe = m_ObservationFunctions.at(id);
+			if (recipe.magnetic != magnetic || m_ObservationDeviceOnly.at(id))
+			{
+				throw std::invalid_argument("CartesianSubgrid: mismatched or already device-only DFT recipe");
+			}
+			for (const auto &term : recipe.weights)
+			{
+				support.push_back(static_cast<std::uint32_t>(term.first));
+			}
+		}
+		plan.samples.push_back(std::move(recipe));
+	}
+	std::sort(support.begin(), support.end());
+	support.erase(std::unique(support.begin(), support.end()), support.end());
+	const auto bytes = CartesianSubgridDFTBytes(support.size(), frequencies);
+	if (m_FieldDFTUsed > m_FieldDFTBudget || bytes > m_FieldDFTBudget - m_FieldDFTUsed)
+	{
+		return -1; // No registry mutation/upload: existing host gathered DFT remains live.
+	}
+	for (auto &recipe : plan.samples)
+	{
+		for (auto &term : recipe.weights)
+		{
+			term.first = std::lower_bound(support.begin(), support.end(), term.first) - support.begin();
+		}
+	}
+	m_FieldDFTPlans.reserve(m_FieldDFTPlans.size() + 1);
+	// Once an upload starts, failures propagate. No silent fallback after partial setup.
+	plan.deviceID = engine->AddFieldDFT(!magnetic, support, frequencies, m_FieldDFTBudget);
+	m_FieldDFTPlans.push_back(std::move(plan));
+	for (const auto id : observations)
+	{
+		if (id != std::numeric_limits<std::size_t>::max())
+		{
+			m_ObservationDeviceOnly[id] = 1;
+		}
+	}
+	m_FieldDFTUsed += bytes;
+	return static_cast<int>(m_FieldDFTPlans.size() - 1);
+}
+
+void Operator_CartesianSubgrid::AccumulateFieldDFT(int id, const std::vector<std::complex<float>> &weights) const
+{
+	if (id < 0 || std::size_t(id) >= m_FieldDFTPlans.size())
+	{
+		throw std::invalid_argument("CartesianSubgrid: invalid native DFT ID");
+	}
+	auto &plan = m_FieldDFTPlans[id];
+	CartesianSubgridDFTWeights(weights, plan.frequencies);
+	if (plan.lastEpoch && *plan.lastEpoch == m_Engine->GetNumberOfTimesteps())
+	{
+		throw std::logic_error("CartesianSubgrid: duplicate native DFT sample epoch");
+	}
+	auto *engine = dynamic_cast<Engine_CartesianSubgrid *>(m_Engine);
+	if (!engine || !m_ObservationsValid)
+	{
+		throw std::logic_error("CartesianSubgrid: native DFT has no valid engine");
+	}
+	engine->AccumulateFieldDFT(plan.deviceID, weights);
+	plan.lastEpoch = engine->GetNumberOfTimesteps();
+}
+
+void Operator_CartesianSubgrid::ReadFieldDFT(int id, unsigned int frequency,
+	std::vector<std::complex<double>> &sums) const
+{
+	if (id < 0 || std::size_t(id) >= m_FieldDFTPlans.size() || frequency >= m_FieldDFTPlans[id].frequencies)
+	{
+		throw std::invalid_argument("CartesianSubgrid: invalid native DFT snapshot ID/frequency");
+	}
+	auto *engine = dynamic_cast<Engine_CartesianSubgrid *>(m_Engine);
+	if (!engine || !m_ObservationsValid)
+	{
+		throw std::logic_error("CartesianSubgrid: native DFT has no valid engine");
+	}
+	const auto &plan = m_FieldDFTPlans[id];
+	std::vector<std::complex<double>> normalized;
+	engine->ReadFieldDFT(plan.deviceID, frequency, normalized);
+	sums.resize(plan.samples.size());
+	for (std::size_t sample = 0; sample < plan.samples.size(); ++sample)
+	{
+		std::complex<double> value{};
+		for (const auto &term : plan.samples[sample].weights)
+		{
+			value += term.second * normalized.at(term.first);
+		}
+		if (!std::isfinite(value.real()) || !std::isfinite(value.imag()))
+		{
+			InvalidateObservations();
+			throw std::runtime_error("CartesianSubgrid: nonfinite reconstructed DFT field");
+		}
+		sums[sample] = value;
+	}
 }
 
 Operator_CartesianSubgrid::ObservationInfo Operator_CartesianSubgrid::NativeObservationInfo() const

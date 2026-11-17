@@ -11,6 +11,7 @@
 #include <vector>
 
 class Operator_CartesianSubgrid;
+class Engine;
 
 //! Startup-only prepared SI samples, delivered through the existing raw-region interpolator.
 //! The interface/operator/engine must outlive this gather; placement and modes remain immutable.
@@ -30,13 +31,26 @@ class Field_Gather_Subgrid : public Field_Gather_FDTD
 	std::size_t EstimatedStorageBytes() const { return m_Estimate; }
 	std::uint64_t Readbacks() const;
 
+	int CreateDeviceDFT(const Engine_Interface_FDTD *caller, unsigned int frequencies) const;
+	void AccumulateDeviceDFT(const Engine_Interface_FDTD *caller, const std::vector<std::complex<float>> &weights) const;
+	void ReadDeviceDFT(const Engine_Interface_FDTD *caller, unsigned int frequency,
+		ArrayLib::ArrayNIJK<std::complex<float>> &field) const;
+	bool DFTOutputMatches(const Engine_Interface_FDTD *caller,
+		const ArrayLib::ArrayNIJK<std::complex<float>> &field) const;
+	unsigned int DFTFrequencyCount() const { return m_DFTFrequencies; }
+
+
   private:
 	struct Sample
 	{
 		std::size_t observation = std::numeric_limits<std::size_t>::max();
 		double length = 0;
 	};
+	void CheckInterface(const Engine_Interface_FDTD *caller) const;
 	const Operator_CartesianSubgrid *m_Local;
+	const Engine *m_EngineIdentity;
+	mutable int m_DFTId = -1;
+	mutable unsigned int m_DFTFrequencies = 0;
 	std::vector<Sample> m_Samples;
 	mutable std::vector<float> m_Raw;
 	mutable std::mutex m_Mutex;

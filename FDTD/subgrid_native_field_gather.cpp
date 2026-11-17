@@ -36,7 +36,7 @@ const Engine_Interface_FDTD *ValidateGather(const Engine_Interface_FDTD *interfa
 Field_Gather_Subgrid::Field_Gather_Subgrid(const Engine_Interface_FDTD *interface,
 	const Operator_CartesianSubgrid *op, bool magnetic, const unsigned int count[3],
 	unsigned int *const positions[3], std::size_t budget)
-	: Field_Gather_FDTD(ValidateGather(interface, op, count, positions), op, nullptr, nullptr, magnetic, count, positions), m_Local(op)
+	: Field_Gather_FDTD(ValidateGather(interface, op, count, positions), op, nullptr, nullptr, magnetic, count, positions), m_Local(op), m_EngineIdentity(interface->GetFDTDEngine())
 {
 	const auto charge = [&](std::size_t number, std::size_t unit)
 	{
@@ -143,6 +143,89 @@ void Field_Gather_Subgrid::Evaluate(std::size_t first, std::size_t last,
 	}
 	// Existing interpolation divides the rounded raw float by its physical edge length.
 	Field_Gather_FDTD::Evaluate(first, last, field, m_Raw.data());
+}
+
+void Field_Gather_Subgrid::CheckInterface(const Engine_Interface_FDTD *caller) const
+{
+	if (caller != m_EngIf || caller->GetFDTDOperator() != m_Local || caller->GetOperator() != m_Local ||
+		caller->GetFDTDEngine() != m_EngineIdentity || m_Local->GetEngine() != m_EngineIdentity ||
+		caller->GetInterpolationType() != m_Mode)
+	{
+		throw std::invalid_argument("CartesianSubgrid: DFT gather interface/engine/interpolation changed");
+	}
+}
+
+int Field_Gather_Subgrid::CreateDeviceDFT(const Engine_Interface_FDTD *caller, unsigned int frequencies) const
+{
+	CheckInterface(caller);
+	if (m_DFTId >= 0)
+	{
+		throw std::logic_error("CartesianSubgrid: native gather DFT is already registered");
+	}
+	std::vector<std::size_t> observations;
+	observations.reserve(m_Samples.size());
+	for (const auto &sample : m_Samples)
+	{
+		observations.push_back(sample.observation);
+	}
+	const int id = m_Local->CreateFieldDFT(m_H, observations, frequencies);
+	if (id >= 0)
+	{
+		m_DFTId = id;
+		m_DFTFrequencies = frequencies;
+	}
+	return id;
+}
+
+void Field_Gather_Subgrid::AccumulateDeviceDFT(const Engine_Interface_FDTD *caller,
+	const std::vector<std::complex<float>> &weights) const
+{
+	CheckInterface(caller);
+	m_Local->AccumulateFieldDFT(m_DFTId, weights);
+}
+
+bool Field_Gather_Subgrid::DFTOutputMatches(const Engine_Interface_FDTD *caller,
+	const ArrayLib::ArrayNIJK<std::complex<float>> &field) const
+{
+	CheckInterface(caller);
+	return field.data() && field.extent(0) == 3 && field.extent(1) == m_PosLines[0].size() &&
+		field.extent(2) == m_PosLines[1].size() && field.extent(3) == m_PosLines[2].size();
+}
+
+void Field_Gather_Subgrid::ReadDeviceDFT(const Engine_Interface_FDTD *caller, unsigned int frequency,
+	ArrayLib::ArrayNIJK<std::complex<float>> &field) const
+{
+	if (!DFTOutputMatches(caller, field))
+	{
+		throw std::invalid_argument("CartesianSubgrid: native DFT output shape differs");
+	}
+	std::vector<std::complex<double>> sums;
+	m_Local->ReadFieldDFT(m_DFTId, frequency, sums);
+	if (sums.size() != m_Samples.size())
+	{
+		throw std::logic_error("CartesianSubgrid: reconstructed DFT raw region size differs");
+	}
+	std::vector<std::complex<float>> raw(sums.empty() ? 1 : sums.size());
+	for (std::size_t i = 0; i < sums.size(); ++i)
+	{
+		raw[i] = std::complex<float>(sums[i] * m_Samples[i].length);
+		if (!std::isfinite(raw[i].real()) || !std::isfinite(raw[i].imag()))
+		{
+			m_Local->InvalidateObservations();
+			throw std::runtime_error("CartesianSubgrid: native DFT raw field exceeds float range");
+		}
+	}
+	// Reconstruction now occurs after accumulation. Per-sample raw-float rounding
+	// is not reproduced: qualify this bounded derivative, never claim bit identity.
+	Field_Gather_FDTD::EvaluateSums(raw.data(), field);
+	for (std::size_t i = 0; i < field.size(); ++i)
+	{
+		if (!std::isfinite(field.data(i).real()) || !std::isfinite(field.data(i).imag()))
+		{
+			m_Local->InvalidateObservations();
+			throw std::runtime_error("CartesianSubgrid: nonfinite interpolated DFT output");
+		}
+	}
 }
 
 std::uint64_t Field_Gather_Subgrid::Readbacks() const

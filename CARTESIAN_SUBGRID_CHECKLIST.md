@@ -1281,3 +1281,21 @@ pending. Physical admission must also follow the exact accepted R59 job release.
 This is staged implementation, not numerical or antenna qualification.
 Evidence: `collective-fence-r60/preparation-r01.json`,
 `collective-fence-r60/DESIGN.md`.
+
+
+R58 physical72/72 now passes exit0/noOOM after the exact accepted R57 release.
+Together with CPU74/74 and16 exact parent arrays, independent review rehashes
+794 source/439 archived files. Forty-eight physical native complex-array cases
+have maximum relative error2.85387e-7, with eleven of twelve cases per lane
+having no host E/H selection. Eight exact code/test files are promoted after
+checking all source/build files against the frozen accepted tree. Native RF
+remains a separate R59 harness: R03 failed linking its external driver before
+FDTD; R04 links existing CSXCAD explicitly with unchanged driver/fixture/gates.
+R60 isolated build and six direct/twelve native reference fence cases pass;
+full CPU76 and physical80 remain pending. Recent Metal admission expired
+without starting a compiler because unchanged headroom guards were not met;
+no Metal acceptance is inferred. No production/antenna runtime changes.
+Evidence: `native-device-dft-r58/independent-qualification-r01.json`,
+`native-device-dft-r58/promotion-r01.json`,
+`native-dft-radiation-r59-r03/failure-review-r01.json`,
+`collective-fence-r60/focused-reference-r01.json`.

@@ -5,6 +5,8 @@
 #include "cartesian_subgrid.h"
 #include "operator.h"
 #include <memory>
+#include <complex>
+#include <optional>
 
 class Operator_Ext_CartesianSubgrid_Conductivity;
 
@@ -37,6 +39,14 @@ class Operator_CartesianSubgrid : public Operator
 	std::size_t FieldGatherBudget() const { return m_FieldGatherBudget; }
 	Engine_Field_Gather *CreateFieldGather(const Engine_Interface_FDTD *interface, bool magnetic,
 		const unsigned int count[3], unsigned int *const positions[3]) const;
+
+	//! Native device DFT recipe IDs; -1 means an explicit unsupported/budget fallback.
+	int CreateFieldDFT(bool magnetic, const std::vector<std::size_t> &observations, unsigned int frequencies) const;
+	void AccumulateFieldDFT(int id, const std::vector<std::complex<float>> &weights) const;
+	void ReadFieldDFT(int id, unsigned int frequency, std::vector<std::complex<double>> &sums) const;
+	void SetFieldDFTBudget(std::size_t bytes);
+	std::size_t FieldDFTStorageBytes() const { return m_FieldDFTUsed; }
+
 	double EvaluateObservation(std::size_t id) const;
 	struct ObservationInfo
 	{
@@ -44,11 +54,15 @@ class Operator_CartesianSubgrid : public Operator
 		std::uint64_t energyDownloadBytes = 0;
 		std::size_t hostObservationBytes = 0;
 		bool sealed = false, device = false;
+		std::size_t selectedElectricStates = 0, selectedMagneticStates = 0;
+		std::uint64_t fieldDFTDownloadBytes = 0;
+
 	};
 	ObservationInfo NativeObservationInfo() const;
 	//! Explicit complete mirror; refreshes lazily in sealed device execution.
 	const CartesianSubgrid &ObservationGrid() const;
 	void InvalidateObservations() const { m_ObservationsValid = false; }
+	bool ObservationStateValid() const { return m_ObservationsValid; }
 	bool SetGeometryCSX(ContinuousStructure *geometry) override;
 	void SetBoundaryCondition(int *conditions) override;
 	void AddExtension(Operator_Extension *extension) override;
@@ -85,6 +99,18 @@ class Operator_CartesianSubgrid : public Operator
 	std::vector<std::unique_ptr<GPU_Backend>> m_DomainBackends;
 	mutable bool m_ObservationsValid = true;
 	mutable std::vector<CartesianSubgrid::Integral> m_ObservationFunctions;
+	mutable std::vector<unsigned char> m_ObservationDeviceOnly;
+	struct FieldDFTPlan
+	{
+		std::size_t deviceID = 0;
+		unsigned int frequencies = 0;
+		std::optional<unsigned int> lastEpoch;
+		std::vector<CartesianSubgrid::Integral> samples;
+	};
+	mutable std::vector<FieldDFTPlan> m_FieldDFTPlans;
+	std::size_t m_FieldDFTBudget = std::size_t(256) << 20;
+	mutable std::size_t m_FieldDFTUsed = 0;
+
 	bool m_ObservationPlanSealed = false;
 	mutable std::size_t m_FieldGatherBudget = std::size_t(256) << 20, m_FieldGatherUsed = 0;
 	//! Non-owning handle; the operator extension list retains ownership.
