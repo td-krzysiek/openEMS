@@ -848,3 +848,11 @@ C++ plans as the default independent path. Its build and six focused
 reference exact-field/lifetime cases pass; the full CPU62 replay, physical
 controls and memory measurement remain pending;
 no code promotion, resource-guard increase or production adoption is implied.
+
+R41 prepares fixed-fine-XY Z sensitivity without increasing guards: eight
+dielectric plus two physical Cu interval midplanes raise587,384 to906,304
+local leaves. Both native PEC/Cu setups pass on accepted R35, with unchanged
+geometry, ports, current contours, XY,5fs timestep and2ns cap. Four new
+local/ordinary RF cases are queued behind R40 physical hardware release;
+results remain pending. This is neither an antenna launch nor asymptotic3D
+convergence. Frozen R37 ratio16 is the separately hash-bound Z1 comparison.
