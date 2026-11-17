@@ -135,6 +135,21 @@ class CartesianSubgridDomainWorker
 	{
 		throw std::logic_error("CartesianSubgrid: worker selective observations unavailable");
 	}
+
+	virtual std::size_t AddObservationDFT(bool, const std::vector<std::uint32_t> &, std::size_t, std::size_t)
+	{
+		throw std::logic_error("CartesianSubgrid: worker device DFT unavailable");
+	}
+	virtual void AccumulateObservationDFT(std::size_t, std::size_t, const std::vector<std::complex<float>> &)
+	{
+		throw std::logic_error("CartesianSubgrid: worker device DFT accumulation unavailable");
+	}
+	virtual void ReadObservationDFT(std::size_t, std::size_t, std::size_t, std::vector<std::complex<double>> &)
+	{
+		throw std::logic_error("CartesianSubgrid: worker device DFT read unavailable");
+	}
+	virtual std::uint64_t ObservationDFTDownloadBytes() const { return 0; }
+
 	virtual std::array<double, 2> ReadAdvanceLedger(std::size_t)
 	{
 		throw std::logic_error("CartesianSubgrid: worker recurrence diagnostics unavailable");

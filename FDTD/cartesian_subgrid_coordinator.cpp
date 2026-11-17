@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include "cartesian_subgrid_domains.h"
 #include "cartesian_subgrid.h"
+#include "gpu_cartesiansubgrid_dft.h"
+#include <optional>
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -364,6 +366,128 @@ class Coordinator : public GPU_CartesianSubgrid
 			throw;
 		}
 	}
+
+	std::size_t AddObservationDFT(bool electric, const std::vector<std::uint32_t> &indices,
+		std::size_t frequencies, std::size_t budget) override
+	{
+		Healthy();
+		Require(!m_Pending && m_Epoch == 0 && !m_DFTStarted,
+			"CartesianSubgrid: coordinator DFT requires unused startup");
+		CartesianSubgridDFTBytes(indices.size(), frequencies);
+		const auto limit = electric ? m_Plan->ElectricCount() : m_Plan->MagneticCount();
+		DFTGroup group;
+		group.count = indices.size();
+		group.frequencies = frequencies;
+		group.destinations.resize(m_Workers.size());
+		std::vector<std::vector<std::uint32_t>> local(m_Workers.size());
+		for (const auto &domain : m_Plan->Domains())
+		{
+			const auto &ids = electric ? domain.globalElectric : domain.globalMagnetic;
+			const auto owned = electric ? domain.ownedElectric : domain.ownedMagnetic;
+			Require(owned <= ids.size() && std::is_sorted(ids.begin(), ids.begin() + owned),
+				"CartesianSubgrid: DFT owner IDs are not canonical");
+		}
+		for (std::size_t query = 0; query < indices.size(); ++query)
+		{
+			Require(indices[query] < limit, "CartesianSubgrid: DFT global selection outside grid");
+			std::size_t found = 0;
+			for (std::size_t worker = 0; worker < m_Workers.size(); ++worker)
+			{
+				const auto &domain = m_Plan->Domains()[worker];
+				const auto &ids = electric ? domain.globalElectric : domain.globalMagnetic;
+				const auto stop = ids.begin() + (electric ? domain.ownedElectric : domain.ownedMagnetic);
+				const auto it = std::lower_bound(ids.begin(), stop, indices[query]);
+				if (it != stop && *it == indices[query])
+				{
+					local[worker].push_back(static_cast<std::uint32_t>(it - ids.begin()));
+					group.destinations[worker].push_back(query);
+					++found;
+				}
+			}
+			Require(found == 1, "CartesianSubgrid: DFT selection requires unique ownership");
+		}
+		// Preflight every worker before the first allocation, including empty groups.
+		std::size_t bytes = m_DFTBytes;
+		for (const auto &selection : local)
+		{
+			const auto increment = CartesianSubgridDFTBytes(selection.size(), frequencies);
+			Require(bytes <= budget && increment <= budget - bytes, "CartesianSubgrid: aggregate DFT budget exceeded");
+			bytes += increment;
+		}
+		try
+		{
+			for (std::size_t worker = 0; worker < m_Workers.size(); ++worker)
+			{
+				group.workerIDs.push_back(m_Workers[worker]->AddObservationDFT(electric, local[worker], frequencies, budget));
+			}
+			m_DFT.push_back(std::move(group));
+			m_DFTBytes = bytes;
+		}
+		catch (...)
+		{
+			m_Failed = true;
+			throw;
+		}
+		return m_DFT.size() - 1;
+	}
+	void AccumulateObservationDFT(std::size_t id, const std::vector<std::complex<float>> &weights) override
+	{
+		CheckDFT(id);
+		auto &group = m_DFT[id];
+		CartesianSubgridDFTWeights(weights, group.frequencies);
+		Require(!group.lastEpoch || *group.lastEpoch != m_Epoch, "CartesianSubgrid: duplicate coordinator DFT sample epoch");
+		try
+		{
+			for (std::size_t worker = 0; worker < m_Workers.size(); ++worker)
+			{
+				m_Workers[worker]->AccumulateObservationDFT(group.workerIDs[worker], m_Epoch, weights);
+			}
+			group.lastEpoch = m_Epoch;
+			m_DFTStarted = true;
+		}
+		catch (...)
+		{
+			m_Failed = true;
+			throw;
+		}
+	}
+	void ReadObservationDFT(std::size_t id, std::size_t frequency,
+		std::vector<std::complex<double>> &sums) override
+	{
+		CheckDFT(id);
+		const auto &group = m_DFT[id];
+		Require(frequency < group.frequencies, "CartesianSubgrid: coordinator DFT frequency outside group");
+		try
+		{
+			sums.resize(group.count);
+			std::vector<std::complex<double>> values;
+			for (std::size_t worker = 0; worker < m_Workers.size(); ++worker)
+			{
+				m_Workers[worker]->ReadObservationDFT(group.workerIDs[worker], m_Epoch, frequency, values);
+				const auto &destinations = group.destinations[worker];
+				Require(values.size() == destinations.size(), "CartesianSubgrid: worker DFT count differs");
+				for (std::size_t k = 0; k < destinations.size(); ++k)
+				{
+					sums[destinations[k]] = values[k];
+				}
+			}
+		}
+		catch (...)
+		{
+			m_Failed = true;
+			throw;
+		}
+	}
+	std::uint64_t ObservationDFTDownloadBytes() const override
+	{
+		std::uint64_t bytes = 0;
+		for (const auto &worker : m_Workers)
+		{
+			bytes += worker->ObservationDFTDownloadBytes();
+		}
+		return bytes;
+	}
+
 	std::size_t HostObservationStorageBytes() const override
 	{
 		std::size_t bytes = (m_Electric.capacity() + m_Magnetic.capacity() +
@@ -375,6 +499,16 @@ class Coordinator : public GPU_CartesianSubgrid
 			for (const auto &destinations : field)
 			{
 				bytes += destinations.capacity() * sizeof(std::size_t);
+			}
+		}
+		bytes += m_DFT.capacity() * sizeof(DFTGroup);
+		for (const auto &group : m_DFT)
+		{
+			bytes += group.workerIDs.capacity() * sizeof(std::size_t);
+			bytes += group.destinations.capacity() * sizeof(std::vector<std::size_t>);
+			for (const auto &positions : group.destinations)
+			{
+				bytes += positions.capacity() * sizeof(std::size_t);
 			}
 		}
 		return bytes;
@@ -484,6 +618,23 @@ class Coordinator : public GPU_CartesianSubgrid
 	}
 
   private:
+
+	struct DFTGroup
+	{
+		std::size_t count = 0, frequencies = 0;
+		std::vector<std::size_t> workerIDs;
+		std::vector<std::vector<std::size_t>> destinations;
+		std::optional<std::size_t> lastEpoch;
+	};
+	std::vector<DFTGroup> m_DFT;
+	std::size_t m_DFTBytes = 0;
+	bool m_DFTStarted = false;
+	void CheckDFT(std::size_t id) const
+	{
+		Healthy();
+		Require(!m_Pending && id < m_DFT.size(), "CartesianSubgrid: DFT requires valid group and complete epoch");
+	}
+
 	std::array<double, 2> ReadConstitutiveLedger(bool surface)
 	{
 		Healthy();

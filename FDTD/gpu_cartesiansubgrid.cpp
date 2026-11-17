@@ -2,6 +2,7 @@
 #include "gpu_cartesiansubgrid.h"
 #include "gpu_cartesiansubgrid_conductivity.h"
 #include "gpu_cartesiansubgrid_energy.h"
+#include "gpu_cartesiansubgrid_dft.h"
 #include "subgrid_device_curl.h"
 #include "subgrid_device_geometry.h"
 #include "gpu_backend.h"
@@ -429,6 +430,73 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 			}
 		}
 	}
+
+	std::size_t AddObservationDFT(bool electric, const std::vector<std::uint32_t> &indices,
+		std::size_t frequencies, std::size_t budget) override
+	{
+		if (m_Started || m_PendingStep != 0 || m_DFTStarted || m_DFTFailed)
+		{
+			throw std::logic_error("CartesianSubgrid: DFT registration requires unused startup");
+		}
+		const auto bytes = CartesianSubgridDFTBytes(indices.size(), frequencies);
+		const auto owned = electric ? m_OwnedElectric : m_OwnedMagnetic;
+		if (m_DFTBytes > budget || bytes > budget - m_DFTBytes ||
+			std::any_of(indices.begin(), indices.end(), [&](std::uint32_t index) { return index >= owned; }))
+		{
+			throw std::invalid_argument("CartesianSubgrid: DFT budget/owned selection invalid");
+		}
+		try
+		{
+			auto accumulator = GPU_CreateCartesianSubgridDFT(m_Backend,
+				electric ? m_Update.electric : m_Curl.output, owned, indices, frequencies);
+			m_DFT.push_back({std::move(accumulator), frequencies, {}});
+			m_DFTBytes += bytes;
+		}
+		catch (...)
+		{
+			// Allocations remain backend-owned. Do not retry a partial upload.
+			m_DFTFailed = true;
+			throw;
+		}
+		return m_DFT.size() - 1;
+	}
+	void AccumulateObservationDFT(std::size_t id, const std::vector<std::complex<float>> &weights) override
+	{
+		CheckDFT(id);
+		auto &group = m_DFT[id];
+		CartesianSubgridDFTWeights(weights, group.frequencies);
+		if (group.lastEpoch && *group.lastEpoch == m_Epoch)
+		{
+			throw std::logic_error("CartesianSubgrid: duplicate DFT sample epoch");
+		}
+		try
+		{
+			group.accumulator->Accumulate(weights);
+			group.lastEpoch = m_Epoch;
+			m_DFTStarted = true;
+		}
+		catch (...)
+		{
+			m_DFTFailed = true;
+			throw;
+		}
+	}
+	void ReadObservationDFT(std::size_t id, std::size_t frequency,
+		std::vector<std::complex<double>> &sums) override
+	{
+		CheckDFT(id);
+		m_DFT[id].accumulator->Read(frequency, sums);
+	}
+	std::uint64_t ObservationDFTDownloadBytes() const override
+	{
+		std::uint64_t result = 0;
+		for (const auto &group : m_DFT)
+		{
+			result += group.accumulator->DownloadBytes();
+		}
+		return result;
+	}
+
 	std::size_t HostObservationStorageBytes() const override
 	{
 		return (m_Electric.capacity() + m_Magnetic.capacity()) * sizeof(float);
@@ -477,7 +545,7 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 
 	std::size_t StorageBytes() const override
 	{
-		return m_StorageBytes + (m_Recurrence ? m_Recurrence->StorageBytes() : 0) +
+		return m_StorageBytes + m_DFTBytes + (m_Recurrence ? m_Recurrence->StorageBytes() : 0) +
 			(m_Energy ? m_Energy->StorageBytes() : 0);
 	}
 	std::array<double, 2> ReadAdvanceLedger() override
@@ -502,6 +570,28 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 	}
 
   private:
+
+	void CheckDFT(std::size_t id) const
+	{
+		if (m_DFTFailed || id >= m_DFT.size() || m_PendingStep != 0)
+		{
+			throw std::logic_error("CartesianSubgrid: DFT requires a valid group and complete step");
+		}
+		if (m_Recurrence)
+		{
+			m_Recurrence->CheckObservation();
+		}
+	}
+	struct DFTGroup
+	{
+		std::unique_ptr<GPU_CartesianSubgridDFT> accumulator;
+		std::size_t frequencies;
+		std::optional<std::size_t> lastEpoch;
+	};
+	std::vector<DFTGroup> m_DFT;
+	std::size_t m_DFTBytes = 0;
+	bool m_DFTStarted = false, m_DFTFailed = false;
+
 	template <class T> T *Upload(const std::vector<T> &values)
 	{
 		const std::size_t bytes = std::max(values.size() * sizeof(T), std::size_t(4));

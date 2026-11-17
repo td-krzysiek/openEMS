@@ -47,6 +47,7 @@ set(TESTS
   test_cartesian_subgrid_native_field_gather
   test_cartesian_subgrid_native_sparse_observations
   test_cartesian_subgrid_device_energy
+  test_cartesian_subgrid_device_dft
   test_cartesian_subgrid_device_ports
   test_cartesian_subgrid_device_pml
   test_cartesian_subgrid_device_precision

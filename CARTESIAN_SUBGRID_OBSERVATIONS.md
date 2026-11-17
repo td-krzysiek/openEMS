@@ -195,3 +195,21 @@ can reassociate double operations.787 source/429 archive hashes were rechecked
 before exact promotion. Metal, matched native RF/NF2FF, collective pause and
 antennas remain separately unqualified. Rebuild matching callers; no production
 runtime changes.
+
+
+## Owned-state device DFT — R57 R02
+
+Optional startup groups select normalized E or H states in a fixed order,
+preserving duplicates. Each distributed entry has one owner; ghost values are
+never accumulated. The shared reference/HIP/Metal point operation uses inline
+complex weights and renormalized FP32 pairs with product residuals, without
+per-sample downloads or blocking buffer uploads. Groups retain separate E/H
+weights/schedules. A group samples a complete epoch at most once; a blocking
+snapshot reads non-resetting sums at a complete collective epoch.
+
+The aggregate device payload budget counts4*N+16*N*F bytes per nonempty group;
+empty groups allocate/launch/transfer nothing. This excludes backend metadata,
+host mappings/snapshots and total RAM/VRAM. See `CARTESIAN_SUBGRID_DEVICE_DFT.md`.
+CPU73/73,16 exact actual-R56 arrays and68 physical gates pass before exact
+promotion;792 source/434 archived files rechecked. Native FieldDFT is separately
+staged R58; recent Metal, RF/NF2FF, pause and antenna acceptance remain open.

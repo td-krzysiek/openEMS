@@ -3,6 +3,7 @@
 #define GPU_CARTESIANSUBGRID_H
 
 #include <cstddef>
+#include <complex>
 #include <array>
 #include "subgrid_device_precision.h"
 #include "subgrid_device_curl.h"
@@ -131,6 +132,26 @@ class GPU_CartesianSubgrid
 	{
 		throw std::logic_error("CartesianSubgrid: selective observations unavailable");
 	}
+
+	//! Startup-only owned normalized-state DFT. Budget caps all groups on this execution.
+	//! Selection order/duplicates are preserved. No implicit host-field fallback.
+	virtual std::size_t AddObservationDFT(bool, const std::vector<std::uint32_t> &, std::size_t, std::size_t)
+	{
+		throw std::logic_error("CartesianSubgrid: device DFT unavailable");
+	}
+	//! Enqueue one weighted sample at a complete epoch; no readback or device fence.
+	//! Each group may sample an epoch once; E/H dumps use separate groups/weights.
+	virtual void AccumulateObservationDFT(std::size_t, const std::vector<std::complex<float>> &)
+	{
+		throw std::logic_error("CartesianSubgrid: device DFT accumulation unavailable");
+	}
+	//! Blocking immutable sum snapshot at the current complete epoch, without resetting.
+	virtual void ReadObservationDFT(std::size_t, std::size_t, std::vector<std::complex<double>> &)
+	{
+		throw std::logic_error("CartesianSubgrid: device DFT read unavailable");
+	}
+	virtual std::uint64_t ObservationDFTDownloadBytes() const { return 0; }
+
 	//! Owned host observation buffers only, excluding device and global-grid storage.
 	virtual std::size_t HostObservationStorageBytes() const { return 0; }
 	virtual std::size_t StructuredRows() const

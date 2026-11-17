@@ -182,6 +182,30 @@ class LocalWorker : public CartesianSubgridDomainWorker
 		Require(!m_Pending && epoch == m_Epoch, "CartesianSubgrid: mixed selective observation epoch");
 		m_Execution->ReadObservations(electric, magnetic);
 	}
+
+	std::size_t AddObservationDFT(bool electric, const std::vector<std::uint32_t> &indices,
+		std::size_t frequencies, std::size_t budget) override
+	{
+		Require(!m_Pending && m_Epoch == 0, "CartesianSubgrid: worker DFT requires startup");
+		return m_Execution->AddObservationDFT(electric, indices, frequencies, budget);
+	}
+	void AccumulateObservationDFT(std::size_t id, std::size_t epoch,
+		const std::vector<std::complex<float>> &weights) override
+	{
+		Require(!m_Pending && epoch == m_Epoch, "CartesianSubgrid: mixed worker DFT sample epoch");
+		m_Execution->AccumulateObservationDFT(id, weights);
+	}
+	void ReadObservationDFT(std::size_t id, std::size_t epoch, std::size_t frequency,
+		std::vector<std::complex<double>> &sums) override
+	{
+		Require(!m_Pending && epoch == m_Epoch, "CartesianSubgrid: mixed worker DFT read epoch");
+		m_Execution->ReadObservationDFT(id, frequency, sums);
+	}
+	std::uint64_t ObservationDFTDownloadBytes() const override
+	{
+		return m_Execution->ObservationDFTDownloadBytes();
+	}
+
 	std::size_t StorageBytes() const override
 	{
 		return m_StorageBytes + m_Execution->StorageBytes() + (m_PML ? m_PML->StorageBytes() : 0);

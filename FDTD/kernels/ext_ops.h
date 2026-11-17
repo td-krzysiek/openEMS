@@ -30,6 +30,7 @@
 #include "subgrid_update.h"
 #include "subgrid_conductivity.h"
 #include "subgrid_energy.h"
+#include "subgrid_dft.h"
 #include "subgrid_pml.h"
 #endif
 
@@ -335,6 +336,7 @@ struct Op_Dispersive
 //! The backends expand the list to their launches (GPU_Backend::RunPoints()), so a new operation goes here and into
 //! GPU_PointOp only
 #define CM_POINT_OPS(X) \
+	X(GPU_OP_SUBGRID_DFT, Op_SubgridDFT, op_subgrid_dft) \
 	X(GPU_OP_SUBGRID_ENERGY_MAX, Op_SubgridEnergyMax, op_subgrid_energy_max) \
 	X(GPU_OP_SUBGRID_ENERGY_TERMS, Op_SubgridEnergyTerms, op_subgrid_energy_terms) \
 	X(GPU_OP_SUBGRID_SURFACE_STATE, Op_SubgridSurfaceState, op_subgrid_surface_state) \

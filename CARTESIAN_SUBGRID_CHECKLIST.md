@@ -1234,3 +1234,19 @@ the exact accepted R56 release. No R57 source is promoted yet. R58 native
 integration build is now running behind that accepted CPU parent, not yet
 qualified; recent Metal still waits for unchanged headroom admission.
 Evidence: `device-dft-r57-r02/independent-cpu-review-r01.json`.
+
+
+R57 R02 physical68/68 now passes exit0/noOOM after exact accepted R56 release.
+Independent review rehashes792 source and434 archive files. Twenty-four physical
+DFT domain/port cases have maximum complex error1.35356e-14; fields remain
+unchanged and accumulation performs no readback. Combined with CPU73/73 and
+16 exact parent arrays, thirteen exact code/API/test/build files are promoted;
+all587 frozen source/build files match. Native FieldDFT remains separate R58: its
+build/twelve focused reference cases pass (max whole-complex error2.85387e-7),
+with eleven cases having no host E/H support and no full reads before explicit
+fallback. Full CPU74 is running; physical72 remains gated. A matched public
+dipole RF/NF2FF host/device/single/pair control is separately staged as R59 R02,
+waiting for actual R58 acceptance. Recent Metal still waits for unchanged
+headroom; no production/antenna runtime changes. Evidence: `device-dft-r57-r02/
+independent-qualification-r01.json`, `device-dft-r57-r02/promotion-r01.json`,
+`native-device-dft-r58/focused-reference-r01.json`.
