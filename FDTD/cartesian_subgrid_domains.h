@@ -116,6 +116,16 @@ class CartesianSubgridDomainWorker
 	virtual void ReadOwned(std::size_t epoch, float *electric, std::size_t electricCount,
 		float *magnetic, std::size_t magneticCount) = 0;
 	virtual std::array<double, 2> ReadLedger(std::size_t epoch) = 0;
+	virtual void ConfigureEnergy(const std::vector<CartesianSubgridEnergyCoupling> &)
+	{
+		throw std::logic_error("CartesianSubgrid: worker field energy unavailable");
+	}
+	virtual std::array<double, 2> ReadEnergy(std::size_t)
+	{
+		throw std::logic_error("CartesianSubgrid: worker field energy observation unavailable");
+	}
+	virtual std::uint64_t EnergyDownloadBytes() const { return 0; }
+
 	//! Owned-local normalized state IDs; transport adapters implement explicitly.
 	virtual void ConfigureObservations(const std::vector<std::uint32_t> &, const std::vector<std::uint32_t> &)
 	{

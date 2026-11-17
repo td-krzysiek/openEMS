@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
+#include "subgrid_energy_test.h"
 #include "ContinuousStructure.h"
 #include "FDTD/engine.h"
 #include "FDTD/operator_cartesiansubgrid.h"
@@ -207,6 +208,8 @@ static void Control(const SubgridDeviceTarget &target, unsigned int normal, unsi
 	target.Verify(*backend);
 	std::cout << "PML_SINGLE_BACKEND backend=" << backend->GetName() << std::endl;
 	auto single = loss ? one.advance->CreateDevice(*backend) : backend->CreateCartesianSubgrid(one.op->Grid());
+	single->ConfigureEnergy(one.op->Grid());
+	distributed->ConfigureEnergy(split.op->Grid());
 	single->RequireFixedTimestep(dt);
 	// Deliberately leave another context current before allocation, every
 	// hook and diagnostics. The PML component must select its own owner.
@@ -246,6 +249,8 @@ static void Control(const SubgridDeviceTarget &target, unsigned int normal, unsi
 	}
 	single->ReadFields(one.op->Grid());
 	distributed->ReadFields(split.op->Grid());
+	CheckSubgridEnergy(*single, one.op->Grid(), 1, "pml-single");
+	CheckSubgridEnergy(*distributed, split.op->Grid(), static_cast<unsigned int>(devices.size()), "pml-domains");
 	const double singleError = FieldError(one.op->Grid(), split.op->Grid());
 	const double cpuError = FieldError(cpu.op->Grid(), split.op->Grid());
 	const double work = distributed->ReadBoundaryWorkOut();

@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
 #include "gpu_cartesiansubgrid.h"
 #include "gpu_cartesiansubgrid_conductivity.h"
+#include "gpu_cartesiansubgrid_energy.h"
 #include "subgrid_device_curl.h"
 #include "subgrid_device_geometry.h"
 #include "gpu_backend.h"
@@ -325,6 +326,52 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 		(electric ? m_ElectricGhostEpoch : m_MagneticGhostEpoch) = epoch;
 	}
 
+	void ConfigureEnergy(const CartesianSubgrid &grid) override
+	{
+		if (m_Domain || grid.EdgeCount() != m_ElectricCount || grid.FaceCount() != m_MagneticCount)
+		{
+			throw std::invalid_argument("CartesianSubgrid: global energy grid differs from single-device fields");
+		}
+		std::vector<CartesianSubgridEnergyCoupling> terms;
+		for (const auto &term : grid.ElectricEnergyCouplings())
+		{
+			if (term.first.second > std::numeric_limits<std::uint32_t>::max())
+			{
+				throw std::invalid_argument("CartesianSubgrid: energy pair exceeds indexing");
+			}
+			terms.push_back({static_cast<std::uint32_t>(term.first.first),
+				static_cast<std::uint32_t>(term.first.second), term.second});
+		}
+		ConfigureEnergyCouplings(terms);
+	}
+	void ConfigureEnergyCouplings(const std::vector<CartesianSubgridEnergyCoupling> &terms) override
+	{
+		if (m_Started || m_PendingStep != 0 || m_EnergyAttempted)
+		{
+			throw std::logic_error("CartesianSubgrid: energy configuration is startup-only and single-use");
+		}
+		m_EnergyAttempted = true;
+		auto owned = Fields();
+		owned.electricCount = m_OwnedElectric;
+		owned.magneticCount = m_OwnedMagnetic;
+		m_Energy = GPU_CreateCartesianSubgridEnergy(m_Backend, owned, terms);
+	}
+	std::array<double, 2> ReadEnergy() override
+	{
+		if (!m_Energy || m_PendingStep != 0)
+		{
+			throw std::logic_error("CartesianSubgrid: field energy requires configured complete step");
+		}
+		if (m_Recurrence)
+		{
+			m_Recurrence->CheckObservation();
+		}
+		return m_Energy->Read();
+	}
+	std::uint64_t EnergyDownloadBytes() const override
+	{
+		return m_Energy ? m_Energy->DownloadBytes() : 0;
+	}
 	void ConfigureObservations(const std::vector<std::uint32_t> &electric,
 		const std::vector<std::uint32_t> &magnetic) override
 	{
@@ -430,7 +477,8 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 
 	std::size_t StorageBytes() const override
 	{
-		return m_StorageBytes + (m_Recurrence ? m_Recurrence->StorageBytes() : 0);
+		return m_StorageBytes + (m_Recurrence ? m_Recurrence->StorageBytes() : 0) +
+			(m_Energy ? m_Energy->StorageBytes() : 0);
 	}
 	std::array<double, 2> ReadAdvanceLedger() override
 	{
@@ -471,6 +519,8 @@ class CartesianSubgridExecution : public GPU_CartesianSubgrid
 	std::size_t m_SpatialRows = 0;
 	GPU_Backend &m_Backend;
 	std::unique_ptr<GPU_CartesianSubgridRecurrence> m_Recurrence;
+	std::unique_ptr<GPU_CartesianSubgridEnergy> m_Energy;
+	bool m_EnergyAttempted = false;
 	std::size_t m_StorageBytes = 0, m_BlockCount = 0, m_SourceCount = 0, m_PortCount = 0;
 	double m_StableStep = 0, m_PortStep = 0, m_FixedStep = 0, m_PendingStep = 0;
 	bool m_Started = false, m_Domain = false, m_TrackSourceWork = false;

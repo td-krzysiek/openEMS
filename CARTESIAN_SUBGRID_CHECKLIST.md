@@ -1040,15 +1040,19 @@ pass. These are single observations of homogeneous host preparation, not native
 PCB/GPU/RF/long-time or full-array admission. Public default remains1M.
 Evidence: `scaling-budget-r50/review-r01.json`.
 
-R51 is a separately frozen, unpromoted optional device field-energy candidate
+R51 is a separately frozen, now CPU/CUDA-qualified optional device field-energy increment
 over R49. It includes off-diagonal Galerkin electric mass, unique owned states,
 scaled compensated reductions and complete-epoch guards; native processing is
 unchanged. The original test configured a resistor after unused soft sources
 and correctly rejected. A preserved test-only correction passes185 energy/
 loss/PML checks on the unchanged core, maximum relative error1.15141e-8. The
 fresh corrected build and CPU68/68 pass, with16 bit-identical actual-R49 arrays
-and779 source hashes rechecked. The52 physical gates have started after exact
-R47/R49 release and fresh admission checks. Metal/native use remains open.
+and779 source hashes rechecked. All52 physical gates finish exit0/noOOM after exact R47/R49 release and fresh
+admission checks;779 source/413 archived files were independently rehashed.
+Exact numerical/API/test source is promoted. The original external collector
+confused52 commands with48 inherited native-box rows; corrected row cardinality
+only, no numerical restart or threshold change. Original failure/audit retained.
+Metal/native use remains open.
 Evidence: `device-energy-r51/`; R01 failure is not overwritten or solver-fixed.
 
 
@@ -1074,3 +1078,16 @@ Matched3.93M host characterization waits for CPU acceptance. Physical48 waits
 for R52 CPU acceptance AND accepted exact R51 physical terminal, then rechecks
 resource/identity guards. Metal and native PCB/antenna scaling remain open.
 No production/default guard change. Evidence: `material-palette-r52/`.
+
+
+R53 separately stages native startup U/I registration, selected batch readback
+and cached scalar device energy over exact R51-r02 (R52 excluded). The native
+application seals after processing setup; manual C++ engines remain eager until
+explicit seal. Generic E/H dumps and explicit ObservationGrid refresh full fields
+once per epoch, guarded for concurrent readers; raw setup Grid references are
+not live mirrors after opting into sealing. Initial double host fields still
+exist; prepared E/H/DFT gathering is required follow-up. A new12-case control
+covers single/two workers, all cuts, PML/bulk loss, U/I/SI functionals, scalar
+energy/cache accounting, exact full fields and concurrent fallback. Frozen build
+is running; CPU69/physical/Metal/native RF qualification remain pending.
+Evidence: `native-sparse-observations-r53/`. No production runtime is changed.

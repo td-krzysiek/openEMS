@@ -193,6 +193,84 @@ class Coordinator : public GPU_CartesianSubgrid
 		m_Pending = 0;
 		++m_Epoch;
 	}
+	void ConfigureEnergy(const CartesianSubgrid &grid) override
+	{
+		Healthy();
+		Require(!m_Pending && !m_Epoch && !m_EnergyAttempted,
+			"CartesianSubgrid: coordinator field energy configuration requires unused startup");
+		Require(grid.EdgeCount() == m_Plan->ElectricCount() && grid.FaceCount() == m_Plan->MagneticCount(),
+			"CartesianSubgrid: coordinator energy grid differs from ownership plan");
+		std::vector<std::vector<CartesianSubgridEnergyCoupling>> terms(m_Workers.size());
+		for (const auto &term : grid.ElectricEnergyCouplings())
+		{
+			std::size_t found = 0;
+			for (std::size_t worker = 0; worker < m_Workers.size(); ++worker)
+			{
+				const auto &domain = m_Plan->Domains()[worker];
+				const auto begin = domain.globalElectric.begin(), stop = begin + domain.ownedElectric;
+				const auto first = std::lower_bound(begin, stop, term.first.first);
+				if (first != stop && *first == term.first.first)
+				{
+					const auto second = std::lower_bound(begin, stop, term.first.second);
+					Require(second != stop && *second == term.first.second,
+						"CartesianSubgrid: energy mass pair crosses owned domains");
+					terms[worker].push_back({static_cast<std::uint32_t>(first - begin),
+						static_cast<std::uint32_t>(second - begin), term.second});
+					++found;
+				}
+			}
+			Require(found == 1, "CartesianSubgrid: energy mass pair has no unique owner");
+		}
+		m_EnergyAttempted = true;
+		try
+		{
+			for (std::size_t worker = 0; worker < m_Workers.size(); ++worker)
+			{
+				m_Workers[worker]->ConfigureEnergy(terms[worker]);
+			}
+			m_EnergyReady = true;
+		}
+		catch (...)
+		{
+			m_Failed = true;
+			throw;
+		}
+	}
+	std::array<double, 2> ReadEnergy() override
+	{
+		Healthy();
+		Require(!m_Pending && m_EnergyReady, "CartesianSubgrid: coordinator field energy requires configured complete step");
+		std::array<double, 2> result{};
+		try
+		{
+			for (auto &worker : m_Workers)
+			{
+				const auto value = worker->ReadEnergy(m_Epoch);
+				for (unsigned int field = 0; field < 2; ++field)
+				{
+					Require(std::isfinite(value[field]) && value[field] >= 0,
+						"CartesianSubgrid: invalid worker field energy");
+					result[field] += value[field];
+					Require(std::isfinite(result[field]), "CartesianSubgrid: field energy overflow");
+				}
+			}
+		}
+		catch (...)
+		{
+			m_Failed = true;
+			throw;
+		}
+		return result;
+	}
+	std::uint64_t EnergyDownloadBytes() const override
+	{
+		std::uint64_t result = 0;
+		for (const auto &worker : m_Workers)
+		{
+			result += worker->EnergyDownloadBytes();
+		}
+		return result;
+	}
 	void ConfigureObservations(const std::vector<std::uint32_t> &electric,
 		const std::vector<std::uint32_t> &magnetic) override
 	{
@@ -458,6 +536,7 @@ class Coordinator : public GPU_CartesianSubgrid
 	std::size_t m_Epoch = 0;
 	double m_Pending = 0, m_Fixed = 0;
 	bool m_Failed = false;
+	bool m_EnergyAttempted = false, m_EnergyReady = false;
 };
 }
 

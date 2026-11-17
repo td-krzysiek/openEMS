@@ -1,4 +1,5 @@
 /* SPDX-License-Identifier: GPL-3.0-or-later */
+#include "subgrid_energy_test.h"
 #include "ContinuousStructure.h"
 #include "FDTD/engine.h"
 #include "FDTD/operator_cartesiansubgrid.h"
@@ -190,6 +191,8 @@ static void Control(const SubgridDeviceTarget &target, unsigned int axis,
 	Require(bool(backend), "single loss backend missing");
 	target.Verify(*backend);
 	auto single = one.advance->CreateDevice(*backend);
+	single->ConfigureEnergy(one.op->Grid());
+	distributed->ConfigureEnergy(split.op->Grid());
 	distributed->RequireFixedTimestep(dt);
 	Reject([&] { distributed->Step(dt * .5, 0); });
 	Reject([&] { one.advance->PrepareDomainData(); });
@@ -211,6 +214,8 @@ static void Control(const SubgridDeviceTarget &target, unsigned int axis,
 	}
 	single->ReadFields(one.op->Grid());
 	distributed->ReadFields(split.op->Grid());
+	CheckSubgridEnergy(*single, one.op->Grid(), 1, "single");
+	CheckSubgridEnergy(*distributed, split.op->Grid(), static_cast<unsigned int>(pointers.size()), "domains");
 	one.advance->ReadDeviceDiagnostics(*single);
 	split.advance->ReadDeviceDiagnostics(*distributed);
 	Reject([&] { cpu.advance->PrepareDomainData(); });
@@ -349,6 +354,8 @@ static void NativeControl(const SubgridDeviceTarget &target, double thickness, b
 	Require(bool(backend), "native single conductor backend missing");
 	target.Verify(*backend);
 	auto single = one.advance->CreateDevice(*backend);
+	single->ConfigureEnergy(one.op->Grid());
+	distributed->ConfigureEnergy(split.op->Grid());
 	for (unsigned int step = 0; step < 512; ++step)
 	{
 		cpu.advance->UpdateElectric(dt, 0);
@@ -358,6 +365,8 @@ static void NativeControl(const SubgridDeviceTarget &target, double thickness, b
 	}
 	single->ReadFields(one.op->Grid());
 	distributed->ReadFields(split.op->Grid());
+	CheckSubgridEnergy(*single, one.op->Grid(), 1, "single");
+	CheckSubgridEnergy(*distributed, split.op->Grid(), static_cast<unsigned int>(pointers.size()), "domains");
 	one.advance->ReadDeviceDiagnostics(*single);
 	split.advance->ReadDeviceDiagnostics(*distributed);
 	const auto &g = split.op->Grid();

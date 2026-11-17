@@ -83,6 +83,13 @@ class GPU_CartesianSubgridRecurrence
 	virtual std::size_t StorageBytes() const = 0;
 };
 
+//! An owned-local normalized electric mass coupling, stored once (first < second).
+struct CartesianSubgridEnergyCoupling
+{
+	std::uint32_t first, second;
+	double weight;
+};
+
 //! Device execution owned by the compact engine, created by its existing backend.
 /*! A backend must reject unsupported physics, never silently advance on CPU.
  *  Steps are queued in order. ReadFields waits and refreshes the CPU observation
@@ -96,6 +103,23 @@ class GPU_CartesianSubgrid
 	virtual void Step(double timestep, double sourceAmplitude) = 0;
 	virtual void ReadFields(CartesianSubgrid &grid) = 0;
 	virtual std::size_t StorageBytes() const = 0;
+	//! Optional startup-only field-energy preparation from the same unchanged grid.
+	virtual void ConfigureEnergy(const CartesianSubgrid &)
+	{
+		throw std::logic_error("CartesianSubgrid: device energy unavailable");
+	}
+	//! Worker-only owned-local metadata; default adapters explicitly reject.
+	virtual void ConfigureEnergyCouplings(const std::vector<CartesianSubgridEnergyCoupling> &)
+	{
+		throw std::logic_error("CartesianSubgrid: local device energy unavailable");
+	}
+	//! Physical positive E/H energy only, excluding modified-step and material-history terms.
+	virtual std::array<double, 2> ReadEnergy()
+	{
+		throw std::logic_error("CartesianSubgrid: device energy observation unavailable");
+	}
+	virtual std::uint64_t EnergyDownloadBytes() const { return 0; }
+
 	//! Startup-only ordered normalized-state selection; duplicates are preserved.
 	//! Unsupported adapters reject rather than download all fields as a fallback.
 	virtual void ConfigureObservations(const std::vector<std::uint32_t> &, const std::vector<std::uint32_t> &)

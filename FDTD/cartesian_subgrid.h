@@ -273,6 +273,12 @@ class CartesianSubgrid
 	}
 	double Energy(double timestep = 0) const;
 	double ElectricEnergy() const;
+	//! Immutable normalized off-diagonal mass terms; each unordered pair appears once.
+	const std::vector<std::pair<std::pair<std::size_t, std::size_t>, double>> &ElectricEnergyCouplings() const
+	{
+		return m_MassOffDiagonal;
+	}
+
 	double MagneticEnergy() const;
 	//! Sum of the six oriented flux changes must vanish per leaf (D C = 0).
 	double CurlDivergenceResidual(const Field &field) const;

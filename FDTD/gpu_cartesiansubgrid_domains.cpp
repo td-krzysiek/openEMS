@@ -156,6 +156,20 @@ class LocalWorker : public CartesianSubgridDomainWorker
 		m_Backend.DeviceDownload(electric, fields.electric, electricCount * sizeof(float));
 		m_Backend.DeviceDownload(magnetic, fields.magnetic, magneticCount * sizeof(float));
 	}
+	void ConfigureEnergy(const std::vector<CartesianSubgridEnergyCoupling> &terms) override
+	{
+		Require(!m_Pending && m_Epoch == 0, "CartesianSubgrid: worker energy configuration requires startup");
+		m_Execution->ConfigureEnergyCouplings(terms);
+	}
+	std::array<double, 2> ReadEnergy(std::size_t epoch) override
+	{
+		Require(!m_Pending && epoch == m_Epoch, "CartesianSubgrid: mixed worker energy epoch");
+		return m_Execution->ReadEnergy();
+	}
+	std::uint64_t EnergyDownloadBytes() const override
+	{
+		return m_Execution->EnergyDownloadBytes();
+	}
 	void ConfigureObservations(const std::vector<std::uint32_t> &electric,
 		const std::vector<std::uint32_t> &magnetic) override
 	{

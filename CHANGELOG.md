@@ -16,6 +16,11 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Added
 
+- Experimental C++ Cartesian-subgrid workers can optionally reduce positive
+  Galerkin field energy at complete epochs, including coupled electric mass
+  and unique domain ownership. Scoped CPU/CUDA controls pass; native processing
+  and Metal qualification remain separate. Rebuild matching callers/plugins.
+
 - Experimental C++ Cartesian-subgrid diagnostics can reconstruct physical E/H
   and existing U/I functionals from startup-selected states. Scoped CPU/CUDA
   controls pass; native processing still downloads full fields, and Metal
