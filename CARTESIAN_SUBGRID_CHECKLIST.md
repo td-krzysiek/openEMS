@@ -1098,6 +1098,26 @@ covers single/two workers, all cuts, PML/bulk loss, U/I/SI functionals, scalar
 energy/cache accounting, exact full fields and concurrent fallback. Frozen build and12 focused reference cases pass: functional discrepancy0,
 maximum energy error7.60313e-9, no full reads across four processing batches,
 and exactly one refreshed full fallback per observed epoch under concurrent
-readers. Full CPU69 is running; physical/Metal/native RF remain pending. The
+readers. Full CPU69/69 and16 actual-parent operator/field files now pass;780 source files were rehashed. Physical56 is running; Metal/native RF remain pending. The
 host-observation byte counter excludes registry/reader/caller memory.
 Evidence: `native-sparse-observations-r53/`. No production runtime is changed.
+
+
+R54 freezes the exact R53 native sparse observation/energy changes with the
+separately CPU/CUDA/RAM-qualified R52 material palette. The matching isolated
+build passes; CPU70 is running. Physical56 waits for CPU70 acceptance and the
+accepted exact R53 physical terminal, with fresh resource checks. No combined
+acceptance is inferred from component tests and no production runtime changes.
+Evidence: `native-material-composition-r54/`.
+
+R55 separately freezes exact implicit initial +0 host E/H storage over R54.
+Logical field sizes and read semantics are retained; CPU writes and complete
+device imports materialize dense arrays. CPU sweeps bind dense storage outside
+their value loops. The new focused test covers a billion logical zeros without
+a value allocation, copy/move/reset, signed zeros and FTZ rejection, metadata/
+domain preparation, exact CPU updates and six selected-observation/device-energy
+controls through explicit full import. Build/CPU71 waits for actual R54 CPU70
+acceptance; physical60 waits for R55 CPU and accepted exact R54 pair release.
+Four matched GPU-free3.93M zero-state memory controls are also queued behind CPU
+acceptance. Implementation is not numerical/RAM/Metal/antenna qualification.
+Evidence: `implicit-zero-state-r55/preparation-r01.json`.
