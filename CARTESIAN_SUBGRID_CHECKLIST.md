@@ -9,8 +9,9 @@ separate tasks; a passing test on one engine does not qualify another engine.
 
 ## Current RF qualification correction —17 November2026
 
-The previous R47 ordinary-Yee spatial-reference acceptance is **withdrawn
-pending a safe-step replay**. R64's stricter preparation caught a forced2fs
+The previous R47 ordinary-Yee spatial-reference acceptance remains **withdrawn**.
+R64-r03 now supplies separately accepted safe-step fixed-Z3 XY evidence below.
+R64's stricter preparation caught a forced2fs
 step above the refined ordinary calculated1.1785fs bound. Audit then found
 three preserved R47 ordinary logs warning that4/5fs exceeded their calculated
 2.88481fs bound. Their finite raw results remain observations, not accepted
@@ -24,7 +25,8 @@ is independent and remains accepted. R64-r02 retains all geometry/old knots/Z
 with a common1fs candidate, strict per-case native CFL rejection, and new
 setup/RF/time gates. No frozen data or numerical tolerances are replaced.
 Evidence: `curved-xy-refinement-r64/prior-cfl-audit-r01.json`,
-`curved-xy-refinement-r64/preparation-r02.json`.
+`curved-xy-refinement-r64/preparation-r02.json`,
+`curved-xy-refinement-r64/independent-rf-review-r03.json`.
 
 ## Baseline and scope
 
@@ -1691,7 +1693,9 @@ shared-host repeats, not a statistical, antenna or FDTD speed claim; native/grid
 intervals are nested. CPU80/80 and56 scripts independently pass, retaining16
 exact actual-R67 files with profiling off and16 with profiling on;824 source
 and554 archive files are rehashed. Source is still unpromoted;
-physical88 is queued after accepted CPU80 and actual pair release, and
+physical88 was held before admission after actual RF completion because the
+fresh physical pair check found another compute process; no preemption or
+numerical restart followed. Its source remains unpromoted, and
 recent Metal remains unadmitted under unchanged headroom guards.
 Evidence: `curl-row-accumulator-r68/benchmark-independent-r01.json`,
 `curl-row-accumulator-r68/cpu-independent-r01.json`,
@@ -1717,3 +1721,27 @@ acceptance follows; antenna copper-contact gates are unchanged.
 Evidence: `octave-interface-r69/independent-r01.json`,
 `octave-interface-r69/review-adapter-r01.json`,
 `octave-interface-r69/tools-qualified-r01.json`.
+
+R64-r03 now independently accepts all six common1fs/1M-step curved-line RF
+cases, PEC and smooth copper, with enforced actual ordinary PR242 conductor
+provider/runtime witnesses. Independent own-time U/I DFT reconstructs501 band
+points with maximum stored-result discrepancy5.124e-13;166 raw/result files
+and819 sources are rehashed. Refined-native versus ordinary maximum complex
+Gamma/phase/magnitude differences are0.0008672/0.001823deg/0.005514dB for PEC
+and0.0017501/0.070900deg/0.007941dB for copper, within unchanged gates. Native
+old/refined XY and strict temporal/late-prefix comparisons also pass. This is
+a second XY level at fixed Z3, not asymptotic3D or representative antenna
+qualification. Sequential shared-host child times establish no speedup.
+The unsafe R47 ordinary results remain withdrawn; no frozen case is altered.
+Evidence: `curved-xy-refinement-r64/independent-rf-review-r03.json`,
+`curved-xy-refinement-r64/README.md`.
+
+R70 stages a conservative native CAD candidate index over accepted R67 source.
+Immutable ordered buckets narrow bounds/primitive lists while retaining exact
+CSXCAD membership, priorities, original material/axial validation and coefficient
+arithmetic. Multi-bin/outside/invalid queries and capped tables fall back to
+the original full list. Source and standalone controls are prepared only;
+not compiled, qualified, promoted or deployed. No large-model phase or speedup
+is inferred from code inspection. Existing R66 preparation is unchanged.
+Evidence: `cad-candidate-index-r70/DESIGN.md`,
+`cad-candidate-index-r70/staging-r01.json`.
