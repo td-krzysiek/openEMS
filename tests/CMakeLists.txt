@@ -29,6 +29,7 @@ set(TESTS
   test_cartesian_subgrid_device_geometry
   test_cartesian_subgrid_regular_curl
   test_cartesian_subgrid_edge_index
+  test_cartesian_subgrid_packed_edges
   test_cartesian_subgrid_domain_map
   test_cartesian_subgrid_domain_owners
   test_cartesian_subgrid_domain_ranks

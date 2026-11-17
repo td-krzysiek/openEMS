@@ -189,3 +189,35 @@ production-scaled loss/PML histories, full structured scheduling, representative
 RF convergence, end-to-end memory/time savings and general interface scaling
 remain open. No million-cell guard is raised. The production/frozen runtimes
 and input models are unchanged.
+
+
+## Exact packed host edge addresses (R63)
+
+Canonical electric-edge addresses use an owning64-bit integer buffer instead
+of five host integers. Three19-bit coordinates, axis and power-of-two length
+retain exact lattice geometry, insertion order and duplicates. Current base/
+refinement guards fit the format; invalid coordinates, axes and lengths reject.
+Decoding returns a value, not a persistent reference. Floating geometry,
+materials, curl coefficients, fields and device equations are unchanged.
+Rebuild matching C++ callers against the new container header.
+
+CPU77/77,16 exact actual-parent arrays and82 physical4090/3080 controls pass.
+Public pause/snapshot single/pair controls retain160 exact arrays each against
+the actual preceding runtime. Independent source/raw review is recorded by
+`packed-edge-addresses-r63/independent-qualification-r04.json` in the project
+evidence; the canonical checklist records this scope separately from Metal.
+
+Three interleaved repetitions per prefix/layout at3,932,160 homogeneous host
+leaves save192MiB accounted storage before and after the first CPU write.
+
+| Median peak RSS reduction | Patterns | Spatial blocks |
+|---|---:|---:|
+| Grid preparation |15.85%|17.67%|
+| Including domain preparation |11.26%|12.57%|
+| Including first CPU write/energy |5.66%|8.42%|
+
+Whole preparation/control medians change-0.08/+0.41% on the shared host; no
+speedup is claimed. This is not60% of total memory, native PCB/antenna capacity
+or a production-scale result. Recent Metal, large native CAD/material/port
+scaling and representative antenna qualification remain open. Defaults,
+resource guards and frozen/production runtimes are unchanged.

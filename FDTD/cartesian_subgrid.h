@@ -4,6 +4,7 @@
 
 #include "subgrid_curl.h"
 #include "subgrid_edge_index.h"
+#include "subgrid_packed_edges.h"
 #include "subgrid_leaf_index.h"
 #include "subgrid_material_palette.h"
 #include "subgrid_field_state.h"
@@ -381,7 +382,7 @@ class CartesianSubgrid
 	std::optional<CartesianSubgridEdgeIndex> m_EdgeIndex;
 	std::set<Edge> m_PECEdges;
 	std::vector<unsigned char> m_PECFaces;
-	std::vector<Edge> m_Edges;
+	CartesianSubgridPackedEdges<Edge> m_Edges;
 	//! Reluctance stores three metrics per leaf; six face states remain distinct.
 	std::vector<double> m_SqrtMass, m_SqrtReluctance;
 	std::vector<MassBlock> m_Blocks;

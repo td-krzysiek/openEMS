@@ -1561,7 +1561,7 @@ std::size_t CartesianSubgrid::StorageBytes() const
 	{
 		bytes += axis.capacity() * sizeof(double);
 	}
-	bytes += m_Edges.capacity() * sizeof(Edge) +
+	bytes += m_Edges.AllocationBytes() +
 			 m_Regions.capacity() * sizeof(Region) + m_Media.StorageBytes() + m_OpaqueCells.capacity();
 	// Structured address buffers are counted by allocated capacity, not a tree-node estimate.
 	bytes += m_EdgeIndex->StorageBytes();

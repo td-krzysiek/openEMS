@@ -16,6 +16,12 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Added
 
+- Experimental Cartesian subgrids store exact edge addresses more compactly.
+  Scoped CPU/CUDA controls retain geometry and fields; interleaved host tests
+  reduce measured preparation memory without a measured speedup. Rebuild
+  matching C++ callers. Recent Metal and antenna resource qualification remain
+  separate.
+
 - Experimental native Cartesian subgrids reuse startup/runtime pauses and
   accumulated DFT snapshots. A paused witness follows complete-epoch worker
   acknowledgement; resuming preserves fields and histories. Scoped CPU/CUDA

@@ -1493,3 +1493,37 @@ Source/storage code remains unpromoted until this gate and independent review
 pass. Recent Metal and representative antenna qualification stay open.
 Evidence: `pcb-pair-rf-r62/independent-review-r01.json`,
 `packed-edge-addresses-r63/cuda-owner-r01.json`.
+
+
+R63 now passes all82 physical controls on actual GPU2RTX4090/GPU6RTX3080,
+including both orders, native ports/materials/PML/DFT and full public application
+pause/snapshot/resume.160 raw final arrays per application lane match both
+uninterrupted execution and actual R61 outputs exactly. Independent review
+rehashes819 source/1062 archive files. The frozen collector's missing CLI-map
+key and inherited CPU archive/test-count assumptions caused an observer-only
+failure after successful numerical completion; the named R04 adapter checks the
+actual application start/end CLI hashes against CPU and all77 tests, retaining
+all other acceptance gates. No numerical rerun or tolerance relaxation occurred.
+
+Exact packed-address core/header/test bytes are promoted only after CPU77,
+16 exact actual-parent arrays, physical82 and the accepted12-case interleaved
+host-memory comparison.192MiB accounted savings at3.93M leaves and measured
+preparation RSS reductions are scoped, not antenna capacity or speed claims.
+Matching C++ callers must be rebuilt. Recent Metal, native large-PCB resources,
+further curved spatial RF convergence and representative antenna remain open.
+Evidence: `packed-edge-addresses-r63/independent-qualification-r04.json`,
+`packed-edge-addresses-r63/collector-review-r04.json`,
+`packed-edge-addresses-r63/promotion-r01.json`.
+
+
+R64 prepares a further XY sensitivity level of the exact accepted curved PCB
+U-line, retaining all old drawing knots, properties/ports, physical copper,
+waveform, boundaries and Z3. Native leaves rise1,544,144 to5,933,200; matched
+ordinary Yee has11,565,280 cells. Six PEC/copper/common2fs controls are frozen.
+Only GPU-free setup is admitted under4CPU/8GiB/reserve12GiB; actual native CFL,
+resources and completed preparation must pass before any RF launch. This is
+not a contour/antenna change or accepted spatial refinement. Runtime is the
+separately qualified R63 candidate; no production binary is modified.
+Evidence: `curved-xy-refinement-r64/DESIGN.md`,
+`curved-xy-refinement-r64/preparation-r01.json`,
+`curved-xy-refinement-r64/setup-admission-r01.json`.
