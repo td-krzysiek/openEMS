@@ -92,6 +92,65 @@ static void IndependentFaceOracle()
 	block.edge[0][0] = 12;
 	Reject([&] { invalid.Configure({block}, {{0, 0}}, 12); });
 }
+static void PairedFaceMetricOracle()
+{
+	using Regular = CartesianSubgridRegularCurl;
+	using Row = std::vector<std::pair<std::size_t, double>>;
+	Regular::Block block;
+	block.cells = {1, 1, 1};
+	block.length = {{{1}, {2}, {3}}};
+	block.edge = {{{0, 1, 2, 3}, {4, 5, 6, 7}, {8, 9, 10, 11}}};
+	std::vector<double> mass(12, 2), paired{3, 5, 7}, expanded{3, 3, 5, 5, 7, 7};
+	const CartesianSubgridMetricView compact{mass.data(), paired.data(), mass.size(), 6, true};
+	const CartesianSubgridMetricView dense{mass.data(), expanded.data(), mass.size(), 6};
+	const std::vector<Row> expected{
+		{{4, 3}, {5, -3}, {8, -4.5}, {9, 4.5}},
+		{{6, 3}, {7, -3}, {10, -4.5}, {11, 4.5}},
+		{{0, -2.5}, {1, 2.5}, {8, 7.5}, {10, -7.5}},
+		{{2, -2.5}, {3, 2.5}, {9, 7.5}, {11, -7.5}},
+		{{0, 3.5}, {2, -3.5}, {4, -7}, {6, 7}},
+		{{1, 3.5}, {3, -3.5}, {5, -7}, {7, 7}}};
+	CartesianSubgridCurl curl;
+	curl.ConfigureBlocks({block}, {{0, 0}}, 12);
+	CartesianSubgridCurl::Builder builder(curl, 6, 12, compact);
+	for (const auto &row : expected)
+	{
+		builder.Append(row.begin(), row.end());
+	}
+	builder.Finish();
+	Require(curl.RegularRowCount() == 6, "paired metric path bypassed structured rows");
+	for (std::size_t face = 0; face < 6; ++face)
+	{
+		Require(compact.Reluctance(face) == expanded[face], "opposite face metric mapping changed");
+		for (const auto &view : {compact, dense})
+		{
+			Row actual;
+			curl.ForEach(face, [&](std::size_t edge, double value) { actual.push_back({edge, value}); }, view);
+			Require(actual == expected[face], "paired metrics changed independent face coefficients");
+		}
+	}
+	// Distinct opposite-face amplitudes must remain distinct physical states.
+	const std::vector<double> magnetic{1, 2, 3, 5, 7, 11};
+	std::vector<double> a(12), b(12), reference(12, 0);
+	curl.ApplyTranspose(magnetic, a, compact);
+	curl.ApplyTranspose(magnetic, b, dense);
+	for (std::size_t face = 0; face < 6; ++face)
+	{
+		for (const auto &term : expected[face])
+		{
+			reference[term.first] += term.second * magnetic[face];
+		}
+	}
+	Require(a == b && a == reference, "paired metrics merged opposite face fields or changed work pairing");
+	Reject([&] { compact.Reluctance(6); });
+	auto odd = compact;
+	odd.faces = 5;
+	Reject([&] { odd.Reluctance(0); });
+	auto missing = compact;
+	missing.reluctance = nullptr;
+	Reject([&] { missing.Reluctance(0); });
+	std::cout << "PAIRED_FACE_METRICS faces=6 stored=3 exact_rows=6 independent_states=6 guards=3" << std::endl;
+}
 static void Compare(const std::string &name)
 {
 	Grid::Axes axes;
@@ -180,6 +239,7 @@ int main()
 {
 	try
 	{
+		PairedFaceMetricOracle();
 		IndependentFaceOracle();
 		for (const std::string name : {"identity", "local", "graded", "multiple", "material", "uniform-fine", "mixed16", "many"})
 		{

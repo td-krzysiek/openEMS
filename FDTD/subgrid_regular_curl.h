@@ -19,6 +19,16 @@ struct CartesianSubgridMetricView
 {
 	const double *mass = nullptr, *reluctance = nullptr;
 	std::size_t edges = 0, faces = 0;
+	//! Opposite faces of one leaf share a metric, never a field/history state.
+	bool pairedReluctance = false;
+	double Reluctance(std::size_t face) const
+	{
+		if (!reluctance || face >= faces || (pairedReluctance && faces % 2))
+		{
+			throw std::invalid_argument("CartesianSubgrid: invalid borrowed face metric view");
+		}
+		return reluctance[pairedReluctance ? face / 2 : face];
+	}
 };
 
 //! Spatial block addressing for ordinary four-edge face curls. Interface,
@@ -251,7 +261,8 @@ class CartesianSubgridRegularCurl
 		{
 			throw std::invalid_argument("CartesianSubgrid: structured curl requires current mass/face metrics");
 		}
-		if (!(metrics.reluctance[row] > 0) || !std::isfinite(metrics.reluctance[row]))
+		const double reluctance = metrics.Reluctance(row);
+		if (!(reluctance > 0) || !std::isfinite(reluctance))
 		{
 			throw std::invalid_argument("CartesianSubgrid: structured curl face metric is invalid");
 		}
@@ -280,7 +291,7 @@ class CartesianSubgridRegularCurl
 				throw std::invalid_argument("CartesianSubgrid: structured curl mass is invalid");
 			}
 			terms[k] = {edge, sign[k] * block.length[direction[k]][cell[direction[k]]] *
-				(metrics.reluctance[row] / metrics.mass[edge])};
+				(reluctance / metrics.mass[edge])};
 			if (!std::isfinite(terms[k].second))
 			{
 				throw std::invalid_argument("CartesianSubgrid: structured curl coefficient overflows");

@@ -574,9 +574,9 @@ void CartesianSubgrid::Build(const MediumSampler &medium, const PECSelector &pec
 	{
 		ConfigureRegularCurl();
 	}
-	m_SqrtReluctance.reserve(6 * m_Leaves.size());
+	m_SqrtReluctance.reserve(3 * m_Leaves.size());
 	const CartesianSubgridMetricView buildMetrics{m_SqrtMass.data(), m_SqrtReluctance.data(),
-		m_SqrtMass.size(), 6 * m_Leaves.size()};
+		m_SqrtMass.size(), 6 * m_Leaves.size(), true};
 	CartesianSubgridCurl::Builder curl(m_CurlOperator, 6 * m_Leaves.size(), m_Edges.size(), buildMetrics);
 	std::vector<std::pair<std::size_t, double>> normalizedRow;
 	normalizedRow.reserve(8);
@@ -634,7 +634,10 @@ void CartesianSubgrid::Build(const MediumSampler &medium, const PECSelector &pec
 					}
 				}
 				maxRow = std::max(maxRow, sum);
-				m_SqrtReluctance.push_back(reluctance);
+				if (side == 0)
+				{
+					m_SqrtReluctance.push_back(reluctance);
+				}
 				curl.Append(normalizedRow.begin(), normalizedRow.end());
 				m_PECFaces.push_back(LeafIsOpaque(cellIndex) || (zeroTrace && touchesPEC));
 				// One half-volume per face. Coincident faces are deliberately
@@ -648,7 +651,7 @@ void CartesianSubgrid::Build(const MediumSampler &medium, const PECSelector &pec
 	std::vector<double>().swap(columns);
 	m_StableStep = 1.98 / bound;
 	m_Electric.assign(m_Edges.size(), 0);
-	m_Magnetic.assign(m_SqrtReluctance.size(), 0);
+	m_Magnetic.assign(6 * m_Leaves.size(), 0);
 	// CPU-only sweep work is allocated on first reference use. Device
 	// preparation and complete-batch field mirrors do not need it.
 }
@@ -1295,7 +1298,7 @@ void CartesianSubgrid::SetMagnetic(const Field &field)
 				}
 				const double value = field(n, position);
 				Require(std::isfinite(value), "CartesianSubgrid: nonfinite initial magnetic field");
-				m_Magnetic[index] = value * m_Media[cell].permeability * area * m_SqrtReluctance[index];
+				m_Magnetic[index] = value * m_Media[cell].permeability * area * m_SqrtReluctance[(index) / 2];
 			}
 		}
 	}
@@ -1419,8 +1422,8 @@ double CartesianSubgrid::Magnetic(unsigned int n, const Point &position) const
 	const double t = LocalFraction(cell, n, position[n]);
 	const double area = Length(cell, (n + 1) % 3) * Length(cell, (n + 2) % 3);
 	const std::size_t first = 6 * index + 2 * n;
-	return ((1 - t) * m_Magnetic[first] / m_SqrtReluctance[first] +
-			t * m_Magnetic[first + 1] / m_SqrtReluctance[first + 1]) /
+	return ((1 - t) * m_Magnetic[first] / m_SqrtReluctance[(first) / 2] +
+			t * m_Magnetic[first + 1] / m_SqrtReluctance[(first + 1) / 2]) /
 		   (area * m_Media[index].permeability);
 }
 
@@ -1473,8 +1476,8 @@ double CartesianSubgrid::CurlDivergenceResidual(const Field &field) const
 		for (unsigned int n = 0; n < 3; ++n)
 		{
 			const std::size_t i = 6 * cell + 2 * n;
-			sum += curl[i + 1] / m_SqrtReluctance[i + 1] - curl[i] / m_SqrtReluctance[i];
-			scale += std::abs(curl[i + 1] / m_SqrtReluctance[i + 1]) + std::abs(curl[i] / m_SqrtReluctance[i]);
+			sum += curl[i + 1] / m_SqrtReluctance[(i + 1) / 2] - curl[i] / m_SqrtReluctance[(i) / 2];
+			scale += std::abs(curl[i + 1] / m_SqrtReluctance[(i + 1) / 2]) + std::abs(curl[i] / m_SqrtReluctance[(i) / 2]);
 		}
 		maximum = std::max(maximum, std::abs(sum) / std::max(scale, 1e-300));
 	}
@@ -1616,7 +1619,7 @@ CartesianSubgrid::Integral CartesianSubgrid::LineIntegral(bool magnetic, const P
 			const double t = LocalFraction(cell, axis, p[axis]);
 			const double area = Length(cell, (axis + 1) % 3) * Length(cell, (axis + 2) % 3);
 			const auto face = 6 * index + 2 * axis + (t < .5 ? 0 : 1);
-			weights[face] += distance / (area * m_Media[index].permeability * m_SqrtReluctance[face]);
+			weights[face] += distance / (area * m_Media[index].permeability * m_SqrtReluctance[(face) / 2]);
 		}
 		else
 		{

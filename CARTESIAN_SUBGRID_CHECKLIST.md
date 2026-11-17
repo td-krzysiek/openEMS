@@ -800,6 +800,8 @@ numerical change invalidates their prior qualification.
 
 | 2026-11-17 | Further partial C03/C05/D01/D05: sequential worker uploads | R40, exact qualified source promoted | [Lifetime contract and measurements](CARTESIAN_SUBGRID_DOMAINS.md#sequential-numeric-worker-upload). CPU62/62,16 exact actual-R36 files and32 physical CUDA gates pass;24 new exact upload/lifetime cases, both pair orders, native observations and losses/PML remain. GPU-free preparation peak RSS falls11.04–18.59% in three interleaved controls. Metal, end-to-end native device RAM, full-array scaling and antenna RF remain open; no guard increase. |
 
+| 2026-11-17 | Further partial C03/C05/U05/D05: paired magnetic metrics | R42, exact qualified source promoted | [Contract and measurements](CARTESIAN_SUBGRID_DOMAINS.md#exact-paired-magnetic-metric-storage). CPU62/62,16 exact actual-R40 operator/field files and32 physical CUDA gates pass in both4090/3080 orders. All six field/history states remain distinct. Four-mode/four-repeat preparation RSS falls a further2.47–5.22% against consumed R40; Metal, steady device RAM/full-array scaling and RF remain open. No guard or production-runtime change. |
+
 ### Pending port follow-ups — 17 November
 
 R35-r02 resolved local port descriptors pass CPU60/60,16 exact actual-parent
@@ -926,3 +928,17 @@ field cases plus32 retained same-build CUDA gates after accepted CPU63 and
 actual R42 physical release. No material source is promoted yet; sampled-loss,
 Metal, mesh/RF, resource/scaling and representative antenna acceptance remain
 open. The production runtime and frozen antenna inputs remain unchanged.
+
+R42 physical qualification is complete:32 gates, native16 Python cases,
+retained loss/PML/ports/fields and upload lifetime controls pass, terminal
+exit0/noOOM on actual4090/3080 pair. Exact source is promoted after independent
+759-source/385-result rehashing. Remaining Metal/scaling/RF status is unchanged.
+
+R45 is a separately frozen unpromoted candidate over R42 (R44 excluded).
+It adds an explicit count-only budget across C++/native/Python/XML/Matlab;
+default construction retains one million leaves. Checked products/region sums
+and a conservative32-bit edge-address ceiling reject before overflow/allocation.
+The index ceiling is not a RAM guarantee or qualified problem size. Small
+boundary/overflow/unchanged-field/API tests are prepared; isolated build and
+externally bounded2M/4M characterization remain pending. No full antenna is
+admitted and interface-factor limits remain unchanged.

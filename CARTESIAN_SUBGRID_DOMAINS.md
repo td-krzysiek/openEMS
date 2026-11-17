@@ -806,3 +806,40 @@ shared host; no repeatable update speedup is inferred. Global topology, double
 field mirrors and processing costs remain. Metal/resource qualification,
 representative antenna RF and all existing allocation guards remain open.
 Project evidence: `experiments/openems-cartesian-local-subgrid-20261112/lossy-materials/streamed-worker-upload-r40/`.
+
+## Exact paired magnetic metric storage
+
+For one leaf and face normal, both opposite faces use the identical coefficient
+`sqrt(volume / (2 * permeability * faceArea * faceArea))`. R42 stores three
+coefficients per leaf instead of six. All six magnetic amplitudes, masks,
+curl rows and constitutive/PML histories remain independent. This shares
+coefficients, not physical states or field samples; no equation, update order,
+precision, timestep or mesh changes. Future face-dependent material metrics
+would require revisiting the assumption.
+
+Borrowed metric views explicitly distinguish paired and expanded storage.
+The independent six-face oracle has three distinct metrics and six unequal
+field amplitudes, checks exact rows/transpose work and invalid views. CPU62/62,
+16 exact actual-R40 operator/field files and32 physical CUDA gates pass on
+RTX4090/3080 in both orders, including retained sources/ports, losses/PML,
+native TD/FD/U/I and24 upload lifetime cases. Actual qualified core SHA256:
+`c6dad20d1f6cc93d018ecce7736ef77d0054c2246d57c1196b4227a4688a30ed`.
+All759 source and385 archived result files were independently rehashed before
+exact numerical/test source promotion. Matching headers/callers/plugins need
+rebuilding. Recent Metal qualification remains open.
+
+Four interleaved GPU-free setup repetitions compare actual R40 and R42, each
+with reusable retained packages and consumed sequential packages:
+
+| Leaves | R40 retained MiB | R40 consumed MiB | R42 retained MiB | R42 consumed MiB | R42 vs consumed R40 |
+|---|---:|---:|---:|---:|---:|
+|491,520|265.295|233.273|253.795|221.795|−4.92%|
+|61,440|81.705|65.375|79.553|63.758|−2.47%|
+|960,000|486.250|426.359|464.043|404.102|−5.22%|
+
+All56 commands complete, retaining exact counts/curls/timestep and24 fewer
+logical metric bytes per leaf. These are measured host preparation RSS values;
+they are not physical transfer timing, steady native device RAM, FDTD speedup
+or full-antenna extrapolation. Global fields/maps, scaling/DFT and representative
+antenna qualification remain open. Production runtimes and all guards remain
+unchanged by this increment.

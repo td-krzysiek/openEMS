@@ -16,6 +16,12 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Added
 
+- Experimental Cartesian subgrid preparation stores identical opposite-face
+  metric coefficients once, retaining all six independent magnetic field and
+  history states. Scoped CPU/CUDA controls pass; measured preparation RAM falls
+  a further2.47–5.22%. Metal and full-array resource qualification remain open.
+  Rebuild matching callers and plugins.
+
 - Experimental native Cartesian-subgrid domain setup uploads one numeric
   package at a time and releases it after upload completion. Explicit C++ plans
   remain reusable by default. Scoped CPU/CUDA controls pass; Metal and full-array

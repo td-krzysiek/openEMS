@@ -321,7 +321,7 @@ class CartesianSubgrid
 	void ConfigureRegularCurl();
 	CartesianSubgridMetricView CurlMetrics() const
 	{
-		return {m_SqrtMass.data(), m_SqrtReluctance.data(), m_SqrtMass.size(), m_SqrtReluctance.size()};
+		return {m_SqrtMass.data(), m_SqrtReluctance.data(), m_SqrtMass.size(), 6 * m_Leaves.size(), true};
 	}
 	Point EdgePoint(const Edge &edge, double fraction) const;
 	double FactorMass(const std::map<std::pair<std::size_t, std::size_t>, double> &offDiagonal);
@@ -358,6 +358,7 @@ class CartesianSubgrid
 	std::set<Edge> m_PECEdges;
 	std::vector<unsigned char> m_PECFaces;
 	std::vector<Edge> m_Edges;
+	//! Reluctance stores three metrics per leaf; six face states remain distinct.
 	std::vector<double> m_SqrtMass, m_SqrtReluctance;
 	std::vector<MassBlock> m_Blocks;
 	std::vector<double> m_InterfaceWork;
