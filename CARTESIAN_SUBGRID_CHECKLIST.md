@@ -1079,9 +1079,11 @@ dense and1472-leaf sample controls pass; full CPU68/68 passes with16 exact froze
 parent arrays. Matched3.93M host characterization also passes:62,914,424 fewer
 accounted bytes, peak RSS1711.08->1650.57MiB patterns /1632.61->1572.60MiB blocks
 (3.54/3.68%). Independent source/raw/terminal review is retained. These single
-homogeneous measurements are not variable-medium/native PCB/GPU capacity. Physical48 waits
-for R52 CPU acceptance AND accepted exact R51 physical terminal, then rechecks
-resource/identity guards. Metal and native PCB/antenna scaling remain open.
+homogeneous measurements are not variable-medium/native PCB/GPU capacity. All48 physical CUDA gates now pass exit0/noOOM on4090/3080 and both orders,
+with775 source and409 archive files independently rehashed. Exact R51 physical
+terminal and fresh resource/identity guards were checked before admission.
+This separately qualifies the R49-based candidate; composition with current
+R51/native-observation source needs its own replay before promotion. Metal and native PCB/antenna scaling remain open.
 No production/default guard change. Evidence: `material-palette-r52/`.
 
 
