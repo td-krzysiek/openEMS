@@ -171,5 +171,17 @@ three cases without changing geometry, timestep or thresholds. Source,
 runtime, test driver and terminal exit0/no-OOM were independently rechecked.
 These are scoped controls, not Metal, full-array, RF-convergence or production
 qualification. Native unequal-coordinate loss composition is separately
-CPU-tested by R30; it is not inferred from equal-subdivision loss controls.
+tested by R30; it is not inferred from equal-subdivision loss controls.
+
+`tests/test_cartesian_subgrid_device_child_loss.cpp` supplies that separate
+composition fixture. Fourteen CPU/reference and58 physical CUDA cases pass
+against the same R28 library, covering each GPU and both pair orders. It
+requires actual unequal child lengths, preserves synthetic surface-path
+anchors and aligns native18/35um volume-copper XY limits to the supplied
+knots. All original field/ledger/passivity thresholds remain. Single/domain
+fields are exact; maximum double-field error is2.033e-6 and normalized energy
+balance error1.543e-7. Source/runtime/fixture/binary identities and terminal
+exit0/no-OOM are independently rechecked. This unchanged standalone fixture
+is now registered in CTest; a combined CTest replay of the new registration
+and physical Metal remain pending. It is not a PCB RF-convergence result.
 Allocation/interface guards remain unchanged.

@@ -6,6 +6,7 @@
 set(TESTS
   test_cartesian_subgrid_child_api
   test_cartesian_subgrid_device_child_knots
+  test_cartesian_subgrid_device_child_loss
   test_cartesian_subgrid_child_knots
   test_arraylib
   test_engine_plan
