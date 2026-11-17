@@ -1889,6 +1889,26 @@ Original point-H failures are retained. No solver or frozen runtime changes.
 Evidence: `oblique-interface-r72/independent-r03.json`,
 `oblique-interface-r72/review_r03.py`.
 
+R72's separate device diagnostic is staged, not promoted or qualified. It
+requires an explicit target and rejects missing/invalid target arguments before
+backend/grid creation. Eight FP32 reference-backend cases are running against
+the immutable double CPU traces. A physical Metal replay is queued behind
+accepted reference checks and the existing R73 terminal RF review. Every raw
+point/volume column retains a per-trace2e-4 CPU gate, with an additional2e-6
+FP32-reference gate for Metal. The original CPU point-H spatial failures remain
+failed. R11 stays open; no numerical library, antenna or production runtime
+changes. Evidence: `oblique-interface-r72/preparation-r04.json`,
+`oblique-interface-r72/negative-controls-r04.json`,
+`oblique-interface-r72/preparation-r05.json`.
+
+R70 CUDA physical replay has a prepared serial worker for both single devices
+and the ordered/reversed mixed pair. Static plan/CLI controls pass76 command
+specifications, including eight native parent/candidate runs. No CUDA build,
+container or numerical execution follows from that plan. Fresh independently
+reviewed build/runtime/dependency identities, host resources, exclusive device
+leases and independent terminal raw review remain mandatory. Evidence:
+`cad-candidate-index-r70/physical-plan-controls-r02.json`.
+
 
 R73 prepares a same-input Metal replay of the accepted R64 coarse native PEC
 and smooth-copper curved lines: 1,544,144 leaves, common 1 fs / 1 ns, unchanged
