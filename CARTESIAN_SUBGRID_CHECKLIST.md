@@ -942,7 +942,8 @@ and a conservative32-bit edge-address ceiling reject before overflow/allocation.
 The index ceiling is not a RAM guarantee or qualified problem size. The isolated
 build completes exit 0/no OOM. Small boundary/overflow/unchanged-field/API
 controls and full CPU 63/63 replay pass, with 16 exact R42 operator/field
-files. Externally bounded 2M/4M characterization is running. No full antenna is admitted and
+files. Externally bounded 2M/4M characterization completes all six cases and
+is independently reviewed. No full antenna is admitted and
 interface-factor limits remain unchanged.
 
 
@@ -972,6 +973,18 @@ R44 native shaped-material/bulk-loss support and R45 explicit count budget.
 The previous external R04/R07/R11 test corrections/controls are included as
 normal source, with a new combined API/XML/native setup regression. Both options
 retain their defaults and independent reset behavior; no production/frozen
-runtime changes. Its isolated build is running; own CPU 65, physical/Metal,
+runtime changes. Its isolated build completes exit0/noOOM; own CPU 65 is running. Physical/Metal,
 resource scaling and representative RF qualification remain open. Parent
 acceptance does not qualify the combined binary.
+
+
+R45 staged host characterization completes six GPU-free homogeneous-grid cases
+at960,000 /2,109,120 /3,932,160 leaves, two curl layouts and four consumed worker
+packages. Independent raw/source/runtime review confirms default rejection above
+one million, exact owned counts,64 sampled curl rows and12 sampled E/H points
+per layout pair. Maximum first-step energy drift is4.66294e-15. Peak process RSS
+at3,932,160 leaves is1,710.26MiB for patterns and1,630.13MiB for spatial blocks,
+under the unchanged6GiB external cap. Single observations do not establish
+statistical performance, long-time stability, device memory or native PCB/RF
+scaling. Larger/full-array admission remains open; do not extrapolate those
+numbers into accepted antenna resource requirements.
