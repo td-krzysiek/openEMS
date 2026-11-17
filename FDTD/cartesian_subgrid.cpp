@@ -2137,6 +2137,146 @@ void CartesianSubgrid::CurlRow(std::size_t face,
 	}, CurlMetrics());
 }
 
+void CartesianSubgrid::CurlTransposeRow(std::size_t id,
+	std::vector<std::pair<std::size_t, double>> &row) const
+{
+	Require(m_PendingMagneticTimestep == 0,
+		"CartesianSubgrid: transpose-row access requires a complete timestep");
+	const auto &edge = m_Edges.at(id);
+	const auto axis = unsigned(edge.axis), a = (axis + 1) % 3, b = (axis + 2) % 3;
+	struct Support
+	{
+		Index root, ratio;
+		std::size_t first;
+	};
+	std::array<Support, 4> supports;
+	std::size_t count = 0;
+	std::array<std::array<unsigned int, 2>, 2> transverse;
+	std::array<unsigned int, 2> sizes{};
+	for (unsigned int side = 0; side < 2; ++side)
+	{
+		const auto n = side ? b : a;
+		const auto coordinate = unsigned(edge.lo[n]);
+		const auto root = coordinate / m_Ratio[n];
+		if (coordinate % m_Ratio[n] == 0 && root != 0)
+		{
+			transverse[side][sizes[side]++] = root - 1;
+		}
+		if (root < m_Cells[n])
+		{
+			transverse[side][sizes[side]++] = root;
+		}
+	}
+	for (unsigned int i = 0; i < sizes[0]; ++i)
+	{
+		for (unsigned int j = 0; j < sizes[1]; ++j)
+		{
+			Index root;
+			root[axis] = unsigned(edge.lo[axis]) / m_Ratio[axis];
+			root[a] = transverse[0][i];
+			root[b] = transverse[1][j];
+			const auto address = RootIndex(root);
+			supports[count++] = {root, m_Leaves.Ratio(address), m_Leaves.First(address)};
+		}
+	}
+	Require(count != 0, "CartesianSubgrid: independent edge has no incident root");
+	bool coarse = edge.size == int(m_Ratio[axis]);
+	for (unsigned int n = 0; n < 3; ++n)
+	{
+		coarse = coarse && edge.lo[n] % int(m_Ratio[n]) == 0;
+	}
+	bool spread = false;
+	if (coarse && !m_UniformFine)
+	{
+		for (std::size_t k = 1; k < count; ++k)
+		{
+			spread = spread || supports[k].ratio != supports[0].ratio;
+		}
+	}
+	row.clear();
+	const auto append = [&](std::size_t face)
+	{
+		// The canonical row is authoritative, including sign, coefficient
+		// and explicit zero terms. Geometry only bounds candidate support.
+		m_CurlOperator.ForEach(face, [&](std::size_t column, double value)
+		{
+			if (column == id)
+			{
+				row.emplace_back(face, value);
+			}
+		}, CurlMetrics());
+	};
+	for (std::size_t k = 0; k < count; ++k)
+	{
+		const auto &support = supports[k];
+		Index begin{}, end{};
+		bool aligned = true;
+		for (unsigned int n = 0; n < 3; ++n)
+		{
+			const auto step = m_Ratio[n] / support.ratio[n];
+			const auto distance = unsigned(edge.lo[n]) - support.root[n] * m_Ratio[n];
+			if (n == axis)
+			{
+				begin[n] = distance / step;
+				end[n] = (distance + unsigned(edge.size) + step - 1) / step;
+			}
+			else if (spread)
+			{
+				end[n] = support.ratio[n];
+			}
+			else
+			{
+				aligned = aligned && distance % step == 0;
+				const auto point = distance / step;
+				begin[n] = point ? point - 1 : 0;
+				end[n] = std::min(point + 1, support.ratio[n]);
+			}
+			Require(begin[n] <= end[n] && end[n] <= support.ratio[n],
+				"CartesianSubgrid: transpose support exceeds an incident root");
+		}
+		if (!aligned)
+		{
+			continue;
+		}
+		for (unsigned int x = begin[0]; x < end[0]; ++x)
+		{
+			for (unsigned int y = begin[1]; y < end[1]; ++y)
+			{
+				for (unsigned int z = begin[2]; z < end[2]; ++z)
+				{
+					const auto leaf = support.first + (std::size_t(x) * support.ratio[1] + y) * support.ratio[2] + z;
+					const auto cell = m_Leaves[leaf];
+					for (unsigned int n : {a, b})
+					{
+						if (spread)
+						{
+							append(6 * leaf + 2 * n);
+							append(6 * leaf + 2 * n + 1);
+						}
+						else if (edge.lo[n] == cell.lo[n])
+						{
+							append(6 * leaf + 2 * n);
+						}
+						else if (edge.lo[n] == cell.lo[n] + cell.size[n])
+						{
+							append(6 * leaf + 2 * n + 1);
+						}
+					}
+				}
+			}
+		}
+	}
+	std::sort(row.begin(), row.end(), [](const auto &first, const auto &second)
+	{
+		return first.first < second.first;
+	});
+	for (std::size_t k = 1; k < row.size(); ++k)
+	{
+		Require(row[k - 1].first < row[k].first,
+			"CartesianSubgrid: duplicate canonical face in transpose support");
+	}
+}
+
 CartesianSubgridDeviceOperators CartesianSubgrid::DeviceCurls(bool spatialBlocks) const
 {
 	Require(m_PendingMagneticTimestep == 0, "CartesianSubgrid: device curls require a complete timestep");

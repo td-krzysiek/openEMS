@@ -2,7 +2,6 @@
 #include "cartesian_subgrid_domains.h"
 #include "cartesian_subgrid.h"
 #include "subgrid_domain_map.h"
-#include "subgrid_incoming_faces.h"
 #include "extensions/engine_ext_cartesiansubgrid_conductivity.h"
 #include "extensions/engine_ext_cartesiansubgrid_pml.h"
 #include <algorithm>
@@ -17,7 +16,7 @@ namespace
 using Index = std::uint32_t;
 using Map = std::unordered_map<Index, Index>;
 // Setup-only row reader. The numerical grid already owns the exact curl.
-// Keep only incoming face IDs for C^T instead of preparing global FP32 C/C^T.
+// Query local integer support for C^T without global FP32 or incoming CSR.
 // Ascending face traversal retains the established transpose sum order.
 class CurlRows
 {
@@ -25,43 +24,7 @@ class CurlRows
 	CurlRows(const CartesianSubgrid &grid, const CartesianSubgridDeviceData &data)
 		: m_Grid(grid), m_Data(data)
 	{
-		if (!data.streamCurls)
-		{
-			return;
-		}
-		m_Row.reserve(8);
-		std::vector<Index> incoming(data.electric.size() + 1, 0);
-		for (std::size_t face = 0; face < data.magnetic.size(); ++face)
-		{
-			grid.CurlRow(face, m_Row);
-			for (const auto &term : m_Row)
-			{
-				++incoming.at(term.first + 1);
-			}
-		}
-		for (std::size_t edge = 0; edge < data.electric.size(); ++edge)
-		{
-			const std::size_t total = std::size_t(incoming[edge]) + incoming[edge + 1];
-			if (total > std::numeric_limits<Index>::max())
-			{
-				throw std::invalid_argument("CartesianSubgrid: incoming curl count overflow");
-			}
-			incoming[edge + 1] = static_cast<Index>(total);
-		}
-		std::vector<Index> faces(incoming.back());
-		// Release the cursor before compressing incoming face addresses.
-		{
-			auto cursor = incoming;
-			for (std::size_t face = 0; face < data.magnetic.size(); ++face)
-			{
-				grid.CurlRow(face, m_Row);
-				for (const auto &term : m_Row)
-				{
-					faces[cursor[term.first]++] = static_cast<Index>(face);
-				}
-			}
-		}
-		m_Incoming.emplace(std::move(incoming), std::move(faces), data.magnetic.size());
+		m_Row.reserve(32);
 	}
 
 	template <class Visitor> void ForEach(bool transpose, Index row, Visitor visitor) const
@@ -87,17 +50,11 @@ class CurlRows
 			}
 			return;
 		}
-		m_Incoming->ForEach(row, [&](Index face)
+		m_Grid.CurlTransposeRow(row, m_Row);
+		for (const auto &term : m_Row)
 		{
-			m_Grid.CurlRow(face, m_Row);
-			const auto term = std::lower_bound(m_Row.begin(), m_Row.end(), row,
-				[](const auto &candidate, Index edge) { return candidate.first < edge; });
-			if (term == m_Row.end() || term->first != row)
-			{
-				throw std::logic_error("CartesianSubgrid: incoming face lost its canonical curl term");
-			}
-			Emit(face, term->second, visitor);
-		});
+			Emit(static_cast<Index>(term.first), term.second, visitor);
+		}
 	}
 
   private:
@@ -118,7 +75,6 @@ class CurlRows
 	}
 	const CartesianSubgrid &m_Grid;
 	const CartesianSubgridDeviceData &m_Data;
-	std::optional<CartesianSubgridIncomingFaces> m_Incoming;
 	// Private to one serial preparation object; never shared by worker threads.
 	mutable std::vector<std::pair<std::size_t, double>> m_Row;
 };

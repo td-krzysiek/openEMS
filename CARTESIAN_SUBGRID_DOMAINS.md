@@ -596,3 +596,51 @@ Permanent grid bytes, local terms, owned/ghost counts and timestep agree.
 The earlier R25 memory regression and all frozen prefixes remain preserved.
 Actual full-array scaling, large interfaces, global fields/observations and
 production resource savings remain open; no allocation guard is increased.
+
+
+## Implicit incoming curl support
+
+R29-r02 removes the global incoming-face CSR from streamed domain preparation.
+`CartesianSubgrid::CurlTransposeRow` derives the at-most-four incident base
+roots from one independent electric edge's integer address, enumerates bounded
+local support, and reads the original normalized double curl rows. It retains
+explicit zero terms and ascending face order; coefficients, field IDs, owner
+choices and numerical updates do not change. Invalid indices and incomplete
+steps fail before changing caller storage. Current separated, non-nested
+powers-of-two<=16 topology limits remain. The expanded oracle and the standalone
+R26 incoming-index controls are retained; default streamed setup no longer
+allocates a global incoming CSR or accumulates its total terms in uint32.
+
+Twenty-four all-row controls compare74,780 rows/625,360 terms exactly against
+the independently expanded transpose: both layouts, graded cells, mixed
+regions, full fine, PEC/PMC/opaque, native unequal child knots, factor16 in
+individual axes and XYZ refinement. Two original fixture failures are retained:
+an invalid magnetic-before-electric call and an opaque slab at an unsupported
+coarse/fine trace. Separately corrected tests pass on the unchanged numerical
+library before inclusion in a fresh source-before-build prefix.
+
+The exact promoted numerical/test source passes Linux CPU54/54,16 exact
+actual-R28 operator/field files, eight native reference and six exact domain
+cases. Eighteen physical CUDA gates pass on4090/3080, including both pair
+orders,48 child-coordinate cases,24 exact domain cases and16 native Python
+cases, retained loss/PML controls and a separately hashed native E/H driver.
+Source/runtime/raw/driver hashes and terminal exit0/no-OOM were independently
+rechecked. Physical Metal, full-array scaling and RF convergence remain open.
+
+Three interleaved repetitions use actual frozen R26/R28 libraries. Results
+below compare the immediately preceding R28; permanent grid storage and
+field/ghost/term counts are unchanged. R26's object-size difference is measured
+explicitly rather than mistaken for dynamic-grid allocation.
+
+| Fixture leaves | R28 peak RSS, bytes | R29 peak RSS, bytes | RSS change | Whole setup change |
+|---:|---:|---:|---:|---:|
+|491,520 uniform|337842176|325898240|−3.54%|+8.84%|
+|61,440 graded|91967488|89870336|−2.28%|+9.09%|
+|960,000 uniform|625360896|601460736|−3.82%|+18.90%|
+
+This is a modest peak-memory improvement with slower CPU preparation, not a
+general speedup. Removing that global allocation/term-count limit is necessary
+for larger streamed plans but does not admit them: allocation/interface guards
+remain. Combined registration with the separate R30 loss fixture is exercised
+by the pending R31 source, not relabelled as this54-test run. New ownership and
+initial-field-copy candidates remain separately unqualified.

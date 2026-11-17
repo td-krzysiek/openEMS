@@ -16,6 +16,11 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Added
 
+- Experimental streamed Cartesian-subgrid domain setup derives incoming curl
+  rows locally instead of allocating a global incoming CSR. Scoped CPU/CUDA
+  controls preserve exact rows/fields; measured peak memory is slightly lower
+  with slower CPU preparation. Size guards and Metal qualification are unchanged.
+
 - Experimental Cartesian subgrids accept optional exact nonuniform child
   coordinates through C++, XML, Python and a supplied Matlab helper. Base
   anchors must match exactly; existing region/size restrictions remain.

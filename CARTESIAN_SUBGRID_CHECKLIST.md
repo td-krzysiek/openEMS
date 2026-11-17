@@ -330,8 +330,11 @@ Its corrected24-case all-row oracle and full CPU54/54 pass, including16 exact
 actual-R28 files, eight native reference and six exact domain cases. Three
 interleaved repetitions reduce peak RSS2.28–3.82% against R28, with slower
 whole setup by8.84–18.90%; this is a structural memory/overflow fix, not a
-preparation speedup. Physical CUDA is running; Metal remains open. Its
-numerical source is not yet promoted. Separate frozen R31 compresses only
+preparation speedup. Eighteen physical CUDA gates pass on4090/3080 in both
+orders, including24 exact domain and16 native Python cases. The exact
+numerical/test source is now promoted; Metal remains open. See the
+[implicit incoming contract](CARTESIAN_SUBGRID_DOMAINS.md#implicit-incoming-curl-support).
+Separate frozen R31 compresses only
 worker ownership labels in256-state uniform/byte-mixed tiles, retaining the
 dense oracle. Thirty storage/address controls and early parent replay pass;
 full CPU56, measured RSS/setup and physical qualification remain pending.
@@ -722,3 +725,5 @@ numerical change invalidates their prior qualification.
 | 2026-11-17 | Further partial C01/C03/C05/D01/D05: direct rows and integer incoming addresses | R26, following unpromoted R25 measurement | [Domain preparation and three-prefix measurements](CARTESIAN_SUBGRID_DOMAINS.md#direct-canonical-rows-and-incoming-face-addresses). CPU50/50,16 exact frozen-parent files,12 coefficient controls,13 physical CUDA gates/24 exact domain cases and16 native cases in both pair orders. Peak RSS−7.59–22.63% against R24; whole setup+10.92/−11.92/+2.39%. Exact numerical/test bytes promoted; Metal, full-array scaling and antenna RF remain open. |
 
 | 2026-11-17 | Further partial M/G/P/U/D: exact native child coordinates | R27-r02/R28; exact qualified source promoted | [API and coordinate contract](CARTESIAN_SUBGRID_RUNTIME.md#exact-native-child-coordinates). CPU53/53,16 exact frozen-parent files,18 physical CUDA gates/48 child-coordinate cases,24 exact domain cases and16 native Python cases pass on4090/3080 in both orders. Metal/Octave, large-scale and antenna qualification remain open; no guard increase. Separate R30 native-coordinate loss composition passes14 CPU/reference and58 physical CUDA cases; combined new CTest registration and Metal remain pending. |
+
+| 2026-11-17 | Further partial C01/C03/C05/D01/D05: implicit incoming curl support | R29-r02, exact qualified source promoted | [Topology query and measured tradeoff](CARTESIAN_SUBGRID_DOMAINS.md#implicit-incoming-curl-support). CPU54/54,16 exact actual-R28 files,24 all-row controls and18 physical CUDA gates/24 exact domain cases/16 native cases pass. Interleaved peak RSS−2.28–3.82%, whole setup+8.84–18.90% against R28. Metal, large-array and RF convergence remain open; guards unchanged. |

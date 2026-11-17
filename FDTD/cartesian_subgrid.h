@@ -261,6 +261,8 @@ class CartesianSubgrid
 	CartesianSubgridDeviceOperators DeviceCurls(bool spatialBlocks = true) const;
 	//! Read one canonical normalized row into reusable setup-only storage.
 	void CurlRow(std::size_t face, std::vector<std::pair<std::size_t, double>> &row) const;
+	//! Exact ascending transpose row from local topology, without a global incoming CSR.
+	void CurlTransposeRow(std::size_t edge, std::vector<std::pair<std::size_t, double>> &row) const;
 	void ImportDeviceLedger(double resistorLoss, double sourceWork);
 	void ImportDeviceFields(const float *electric, std::size_t electricCount,
 							const float *magnetic, std::size_t magneticCount);

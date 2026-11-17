@@ -28,6 +28,7 @@ set(TESTS
   test_cartesian_subgrid_domain_map
   test_cartesian_subgrid_reference_work
   test_cartesian_subgrid_leaf_index
+  test_cartesian_subgrid_transpose_rows
   test_cartesian_subgrid_device_curl_rows
   test_cartesian_subgrid_incoming_faces
   test_cartesian_subgrid_device
