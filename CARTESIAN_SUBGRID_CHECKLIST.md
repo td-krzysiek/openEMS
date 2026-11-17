@@ -365,8 +365,17 @@ promoted; Metal remains open. See the [initial-state contract](CARTESIAN_SUBGRID
 R33 owns finalized labels and precomputes canonical owned ranks using
 uniform-tile bases or exact mixed/dense uint32 ranks, removing mutable global
 address slots. Its frozen implementation builds successfully. Fifty rank size/pattern
-cases, five independent map comparisons and ASan/UBSan controls pass; full
-CPU58, physical and memory qualification remain pending.
+cases, five independent map comparisons, ASan/UBSan, full CPU58/58,16 exact
+actual-parent files and native observations pass. A separately named collector
+corrects only a copied19-versus20 wrapper-command count on the same archive;
+no numerical rerun. Three interleaved repetitions reduce RSS2.43–5.98% against
+R32, with whole setup−1.04% to+1.67%. All22 physical gates are running;
+source is not promoted and Metal remains open. A separately frozen R34 native
+rectangular-port candidate composes geometry-normalized independent G through
+the existing admittance extension, preserving cap electrodes and the64-port
+dense guard. Its original new-test compile error is preserved; r02 changes
+only that test declaration before a fresh build. CPU59, physical, native RF
+and full-antenna qualification remain open.
 No full-PCB, guard increase or production adoption follows.
 
 - [ ] **U01** Define device-resident block fields, interface metadata and update
