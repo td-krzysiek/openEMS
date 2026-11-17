@@ -72,7 +72,7 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 - Experimental Cartesian subgrids can map physical smooth-volume conductor
   boxes and same-metal unions to passive surface states. Native line-box
-  resistors now preserve the ordinary per-cell R/N convention across complete
+  resistors follow the ordinary series-resistance convention across complete
   local-edge paths. Optional CSXCAD metadata is checked explicitly; no PEC
   fallback is used. See `CARTESIAN_SUBGRID_CONDUCTOR.md` for qualification limits.
 
@@ -236,6 +236,11 @@ to what a user notices, in a few lines; the details belong in the commit.
   now, and openEMS prints how long it took.
 
 ### Fixed
+
+- Experimental native Cartesian-subgrid line resistors distribute series
+  resistance by physical segment length on graded grids. Equal-length grids
+  and explicit C++ circuits retain their behavior. Scoped CPU/CUDA controls
+  pass; Metal and representative RF qualification remain pending.
 
 - Experimental compact-subgrid native energy and physical-path U/I reads now
   reject a failed advance, instead of allowing stale energy observations.

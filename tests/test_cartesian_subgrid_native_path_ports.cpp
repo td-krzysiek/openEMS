@@ -68,7 +68,7 @@ struct Fixture
 			const std::vector<double> first{0, .001, .0015, .002, .0025, .003, .004};
 			for (std::size_t i = 1; i < first.size(); ++i)
 			{
-				cells.push_back({{.002, .002, first[i - 1]}, {.002, .002, first[i]}, 50. / 6, 0});
+				cells.push_back({{.002, .002, first[i - 1]}, {.002, .002, first[i]}, 50 * (first[i] - first[i - 1]) / .004, 0});
 			}
 			cells.push_back({{.003, .002, .001}, {.003, .002, .002}, 75. / 2, 0});
 			cells.push_back({{.003, .002, .002}, {.003, .002, .003}, 75. / 2, 0});
@@ -145,7 +145,7 @@ int main(int argc, char **argv)
 			rejected = std::string(error.what()).find("complete local-edge path") != std::string::npos;
 		}
 		Require(rejected, "partial-edge native resistor was admitted");
-		std::cout << "PASS: native multi-edge resistor paths, orientations, manual per-cell series-R oracle and partial-edge guard" << std::endl;
+		std::cout << "PASS: native multi-edge resistor paths, orientations, manual physical-length series-R oracle and partial-edge guard" << std::endl;
 		return 0;
 	}
 	catch (const std::exception &error)

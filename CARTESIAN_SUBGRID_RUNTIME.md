@@ -245,7 +245,29 @@ length, retaining local voltage functionals, reference-port limits and the
 explicit C++ circuit API. It is being built/tested, not promoted. Required
 checks include actual-old-library failure, ordinary coefficients, retained
 interface/passivity/partial-edge controls and physical backends. Evidence:
-`native-line-normalization-r36-diagnosis/`; canonical acceptance remains open.
+`native-line-normalization-r36-diagnosis/`; the correction is qualified below.
+
+## Physical-length native line normalization
+
+R36 changes only the native one-dimensional adapter: segment resistance is
+`R * abs(segmentLength) / totalLength`. The ordinary matching tensor grid has
+constant transverse dual area, so its normalized series conductance implies
+this physical-length weighting. Equal R/N is equivalent only on equal
+longitudinal intervals. The local constrained voltage functionals, rectangular
+ports and explicit C++ circuit semantics remain unchanged.
+
+The new12-case actual ordinary-VV/VI coefficient comparison covers all axes,
+uniform/graded lines and reversal. It fails the first graded case against the
+actual frozen R35 library after two uniform controls. The independent manual
+path fixture retains fields, losses, passivity and partial-edge guards.
+CPU61/61 and16 exact frozen-parent files pass. Physical28-gate qualification
+on RTX4090/RTX3080 in both orders retains24 exact domain cases, losses/PML,
+native boxes and16 native Python cases. The actual qualified Linux core is
+`8a290446557f83301e9268a5325639747a319a38ed737c523e2c377164865a92`.
+Terminal exit0/no OOM and380 archived files/758 source hashes were rechecked
+before promoting exact numerical/test bytes. Project evidence is in
+`experiments/openems-cartesian-local-subgrid-20261112/lossy-materials/native-line-normalization-r36/`.
+Metal, driven copper RF, array scaling and production adoption remain open.
 
 
 ## Reusing resolved native port support

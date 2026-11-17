@@ -63,6 +63,7 @@ set(TESTS
   test_cartesian_subgrid_shaped_surface
   test_cartesian_subgrid_conductor_union
   test_cartesian_subgrid_native_path_ports
+  test_cartesian_subgrid_native_line_normalization
 )
 
 foreach(test ${TESTS})

@@ -1522,9 +1522,13 @@ std::vector<CartesianSubgrid::ResolvedResistor> Operator_CartesianSubgrid::Prepa
 			{
 				throw std::invalid_argument("CartesianSubgrid: native resistor must span a complete local-edge path outside PEC/opaque volume");
 			}
-			// Match the ordinary CSX lumped adapter: N series cells each carry R/N.
-			// A single resistor on the complete voltage functional is a different
-			// nonlocal circuit; the explicit C++ SetResistors API retains that choice.
+			// Ordinary tensor-grid line ports distribute series R by physical
+			// length: transverse dual area is constant along the line. Equal R/N
+			// is only equivalent when every longitudinal interval has equal length.
+			// Retain local voltage functionals (including interface constraints)
+			// and the explicit C++ SetResistors circuit API unchanged.
+			const auto direction = unsigned(resistor->GetDirection());
+			const double totalLength = std::abs(b[direction] - a[direction]);
 			std::set<std::size_t> localOccupied;
 			for (const auto &segment : segments)
 			{
@@ -1537,7 +1541,8 @@ std::vector<CartesianSubgrid::ResolvedResistor> Operator_CartesianSubgrid::Prepa
 					}
 					localOccupied.insert(term.first);
 				}
-				ports.push_back({segment.first, segment.second, resistor->GetResistance() / segments.size(), 0});
+				const double fraction = std::abs(segment.second[direction] - segment.first[direction]) / totalLength;
+				ports.push_back({segment.first, segment.second, resistor->GetResistance() * fraction, 0});
 			}
 			occupied.insert(localOccupied.begin(), localOccupied.end());
 			primitive->SetPrimitiveUsed(true);

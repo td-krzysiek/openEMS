@@ -796,6 +796,8 @@ numerical change invalidates their prior qualification.
 
 | 2026-11-17 | Further partial P01/P02/P05/C05/U04/U05: resolved native port support | R35-r02, exact qualified source promoted | [Descriptor contract, diagnosis and measurements](CARTESIAN_SUBGRID_RUNTIME.md#reusing-resolved-native-port-support). CPU60/60,48 descriptor controls,16 exact actual-R34 files and26 physical CUDA gates on4090/3080 in both orders pass. Original support-cardinality test failure retained; unchanged2e-14 complete-functional bound and wrong-support negatives pass. Actual native294-trace setup improves12.83x/13.24x at16,192/118,720leaves with identical prepared fingerprints. This is scoped setup timing, not full-array/FDTD speedup. Metal, RF and scaling remain open; guards unchanged. |
 
+| 2026-11-17 | Further partial P01/P02/P05: graded native line normalization | R36, exact qualified source promoted | [Physical-length contract](CARTESIAN_SUBGRID_RUNTIME.md#physical-length-native-line-normalization). CPU61/61,16 exact actual-R35 files and28 physical CUDA gates pass; the new12-case ordinary-coefficient oracle fails against the actual old library. Both4090/3080 orders,24 exact domains, losses/PML and16 native Python cases are retained. Metal, driven RF and representative antenna qualification remain open. |
+
 ### Pending port follow-ups — 17 November
 
 R35-r02 resolved local port descriptors pass CPU60/60,16 exact actual-parent
@@ -809,15 +811,38 @@ Metal and representative RF/scaling remain open.
 
 The [retained line-adapter diagnosis](CARTESIAN_SUBGRID_RUNTIME.md#retained-native-line-normalization-diagnosis)
 reproduces graded longitudinal R/N normalization error against actual ordinary
-coefficients. A separately frozen physical-length correction R36 is being
-built. No frozen result, production runtime or allocation guard changed; no
-existing curved RF failure is erased.
+coefficients. The physical-length correction R36 now passes CPU61/61 and28
+physical CUDA gates, with16 exact actual-parent files and both4090/3080 orders.
+Exact qualified source is promoted; Metal and representative RF remain open.
+No frozen result, production runtime or allocation guard changed.
 
 R37 prepares four native finite-width Cu18/PEC U-line models at8/8/1 and
 16/16/1, preserving the previous copper, grids and2ns cap while deliberately
 replacing point launches with full-strip-width sheets and broad fixed current
 contours. All four native setups pass without FDTD; expected CLI setup-only
 exit1 is checked with completed-operator diagnostics, not accepted by itself.
-Eight local/ordinary RF controls are now running on one authorized4090 using
-actual accepted R35 and frozen ordinary PR242. Original band/time/spatial gates
-remain; no RF result or antenna readiness is inferred from preparation.
+All eight local/ordinary RF controls complete on one authorized4090 using
+actual accepted R35 and frozen ordinary PR242. Independent raw/timestamp DFT
+review finds both PEC levels and fine copper pass the original band gates.
+Coarse copper misses complexGamma (0.015748), as does local copper two-level
+sensitivity (0.013325). Time-prefix tails are negligible. The full RF gate
+remains failed; fixed Z and two XY levels do not qualify 3D or antenna convergence.
+
+
+
+### Current scaling and RF follow-ups
+
+R37 finite-width U-line controls improve the former point-launch sensitivity,
+but remain a failed full RF qualification: coarse copper/local two-level
+complexGamma exceeds0.01. Fine copper agrees with ordinary PR242 within
+0.001784 complexGamma/0.16851°/0.00443dB over24–24.25GHz. All time-prefix gates
+pass; no duration extension, failure erasure or threshold relaxation follows.
+
+R38 profiles the unchanged R35 library's C++ allocations on three bounded
+cases. A960k-leaf grid plus three-domain plan requests about528MB; requested
+capacity includes uncommitted pages and is not measured antenna RAM. R39
+tests cold capacity reduction with an interleaved resident-memory benchmark;
+CPU qualification/actual RSS benefit are pending. R40 separately implements
+final topology followed by one-domain prepare/upload/release, with retained
+C++ plans as the default independent path. Its build/CPU62 replay are pending;
+no code promotion, resource-guard increase or production adoption is implied.
