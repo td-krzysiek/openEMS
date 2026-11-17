@@ -7,6 +7,25 @@ to the functionality of the regular Cartesian solver. Check an item only after
 its stated evidence exists. Implementation and numerical qualification are
 separate tasks; a passing test on one engine does not qualify another engine.
 
+## Current RF qualification correction —17 November2026
+
+The previous R47 ordinary-Yee spatial-reference acceptance is **withdrawn
+pending a safe-step replay**. R64's stricter preparation caught a forced2fs
+step above the refined ordinary calculated1.1785fs bound. Audit then found
+three preserved R47 ordinary logs warning that4/5fs exceeded their calculated
+2.88481fs bound. Their finite raw results remain observations, not accepted
+spatial-convergence evidence. The earlier review omitted this warning check;
+this is a project qualification defect, not an established engine defect.
+
+R62's native single/mixed-pair replay still establishes scoped runtime/domain
+agreement on the unchanged native input. It does not validate those ordinary
+references or asymptotic accuracy. R63 CPU77/physical82/host-memory evidence
+is independent and remains accepted. R64-r02 retains all geometry/old knots/Z
+with a common1fs candidate, strict per-case native CFL rejection, and new
+setup/RF/time gates. No frozen data or numerical tolerances are replaced.
+Evidence: `curved-xy-refinement-r64/prior-cfl-audit-r01.json`,
+`curved-xy-refinement-r64/preparation-r02.json`.
+
 ## Baseline and scope
 
 - Development: [fork draft PR #29](https://github.com/td-krzysiek/openEMS/pull/29),
