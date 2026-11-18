@@ -2282,3 +2282,32 @@ aggregate/12GiB reserve authorization. Actual CUDA/mixed-device, Metal and full
 C1 capacity/RF acceptance remain open. Production and frozen inputs/runtimes
 are unchanged. Dense zero magnetic-loss storage and bind temporaries remain
 separate work before accepting representative application capacity.
+
+
+## User-requested pause —18November2026
+
+Work is paused explicitly by the user because of elapsed work and exhausted
+credits. Do not automatically continue, admit another qualification or relaunch
+the full antenna. The concrete C1 field/DFT/NF2FF milestone remains unmet.
+
+R84's isolated CUDA build and all84 CPU/reference tests have now passed separate
+terminal/source/generated-flag review; core
+`ec4b23e1a6be53ca7c1ba34176a672e759d61db990f937231bd2e0f2f250b3d2`.
+This is not physical CUDA/multi-device or full-C1 acceptance. Evidence:
+`device-loss-packing-r84/cuda-host-readback-r02/cuda-build-independent-r01.json`.
+
+R85 implicit-zero magnetic-rate storage and zero-rate bind temporary removal
+remain uncommitted and unqualified. An845-file frozen source, WIP patch and new
+regression are saved in contributor archive `magnetic-zero-r85/`. Twelve Python
+resource/ownership checks pass, but no R85 C++ compiler/test command ran. The
+local owner was interrupted at its memory gate. The remote owner rejected a
+wrong copied ROOT before any container/admission; its terminal log and user
+pause receipt are preserved. Fix and re-pin a named controller only after
+explicit resumption. Do not label this launcher failure a solver defect.
+
+R82's64GiB OOM/zero-FDTD status is unchanged. Other global/domain and retained
+surface allocations remain risks; small capacity improvements do not prove
+full-antenna capacity. The local handoff is
+`docs/OPENEMS_SUBGRID_PAUSE_20261118.md` in the private antenna repository; this
+canonical checklist remains the engineering status authority. No proprietary
+geometry is included in this public branch.
