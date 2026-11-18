@@ -2,6 +2,27 @@
 
 Last reviewed: **18 November 2026**.
 
+## Current execution milestone — 18 November 2026
+
+The user now prioritizes the concrete C1 PCB antenna path. The current
+milestone is accepted native preparation and a first controlled representative
+multi-GPU run with usable ports and DFT/NF2FF. Generic feature parity and
+upstream submission readiness are a separate follow-up. Remaining generic
+items below stay recorded; they are not automatically gates for a model that
+does not use those features. This does not declare them implemented or qualify
+an unsupported antenna path.
+
+The selected frozen C1/A3 inset0.950 reference has manifest
+`ce30b8e776bf690f04493e8514e5ac6aa3b3b686d261a0bca1eea09bd076b7e0`.
+Retain its full board, both networks, materials, ports and hardware in a named
+numerical derivative. Legacy near-duplicate RF Box XY coordinates are explicitly
+canonicalized by at most5e-10mm, with unchanged source XML retained; this is not
+a bit-exact geometry or manufacturing-contour claim. Required gates remain actual runtime/device identity,
+model-specific geometry/contact/CFL and memory checks, physical mixed-device
+controls and finite/nontrivial representative field/port/radiation observations.
+Do not silently replace it with the historical M05 engineering probe. Evidence
+and preparation: `c1-first-run-r82/` in the contributor's study archive.
+
 This is the canonical detailed checklist for extending the Cartesian subgridding prototype
 to the functionality of the regular Cartesian solver. Check an item only after
 its stated evidence exists. Implementation and numerical qualification are
@@ -2021,12 +2042,23 @@ resource/ownership/no-op controls pass in0.55s/30.05MiB peak. The worker uses
 review; no network/GPU/swap, read-only dependencies,80GiB aggregate cap and
 12GiB reserve. Paused/restarting project containers count. This is GPU-free
 build admission, not a GPU lease or full native operator setup admission.
-On 18 November the same owner obtained admission without changing policy or
-restarting: its actual 6GiB GPU-free build container is verified running,
-without OOM. The scoped 4090/3080 pair was also observed idle; that observation
-is not a physical lease or qualification. CPU81 and independent build review
-still have to complete before physical replay.
-No actual new CUDA build or physical test is accepted. Evidence:
+On18November compilation/install completed before the resource guardian
+stopped the container when another80GiB reservation appeared. A first4GiB
+continuation was similarly interrupted after14 more passed tests. All evidence
+is retained. R82 independently accepts the completed825-file CUDA build and
+12+14+55 unique CPU-test chain, without rebuilding or rerunning accepted tests.
+The user then approved a scoped160GiB aggregate allowance for this application
+trial, retaining12GiB host reserve, no swap, actual VRAM limits and the current
+maximum4physical GPUs; shared queue policy and external jobs remain unchanged.
+Independent build acceptance SHA256:
+`6a79e820547dea30327d98deef9375163b1f625fe2c60b273f97818cdd6d249a`.
+The actual4090/3080 and both pair orders pass76 controls; four-device and
+explicit-child-knot replay pass6 further controls. Independent raw-array review
+finds zero difference in these scoped comparisons. Their acceptance SHA256s:
+`c6c674fb3cbef2b748a3bc6686e17b94086f5454b16c32d883eb322bf710fd64`,
+`35a63e4ce05b866c3f7e7cdd793422aca6a54b86363805d38bfd7afb585853d1`.
+This qualifies the pinned R70 isotropic application lane, not subsequent R79/R80
+CUDA material extensions or representative antenna accuracy. Earlier evidence:
 `cad-candidate-index-r70/cuda-host-controls-r01.json`,
 `cad-candidate-index-r70/cuda-host-launch-r01.json`,
 `cad-candidate-index-r70/cuda-host-observation-r01.json`,
@@ -2153,3 +2185,36 @@ Evidence: `python-material-xml-r81/tools-independent-r03.json`,
 `python-material-xml-r81/native-review-owner-r03.json`,
 `python-material-xml-r81/metal-independent-r01.json`,
 `python-material-xml-r81/public-promotion-r01.json`.
+
+
+## R82 concrete-application milestone —18November2026
+
+The selected private C1 reference now has a136,577,808-leaf pilot input,
+refinement4/4/1 and explicit child coordinates. Its RF Z sampling is changed,
+so the reduction from408,572,790 ordinary cells is not a same-mesh speedup
+claim. Independent written-XML review retains the other84 properties and
+checks32 connected patch observations on each of two isolated signal networks,
+unchanged native ports/PML planes and the known bad-port negative. Legacy
+RF-Box coordinate serialization is normalized by at most5e-10mm and separately
+quantified; source/frozen/fabrication contours remain unchanged.
+
+The initial six-device waiting controllers were superseded before admission
+when the current four-card policy was read. No six-card test or antenna run
+occurred. The final fixed memory-first plan uses two4090s and two3080s; device
+memory, total preparation, throughput and antenna RF accuracy remain measured
+gates, not consequences of its geometric leaf-count prediction.
+
+A generic read-only pre-step audit helper matches32 preserved native arrays
+(single/four). An omitted runtime-control ID correctly rejected the first full
+command before model preparation. The named corrected command passes a fresh
+128-step four-device control with16 exact arrays, reusing the compiled helper;
+no numerical runtime/input change or guard bypass. Its actual representative
+native preparation is now running under64GiB/four CPUs/no swap, scoped160GiB
+aggregate and12GiB reserve, with canonical four-GPU leases. The first material/
+opaque mapping phase takes362.26s. Full native contact/CFL/peak-capacity gates,
+first representative field steps and DFT/NF2FF remain pending. Neither this
+startup nor the small controls qualify a converged antenna or upstream parity.
+Evidence: contributor archive `c1-first-run-r82/`, particularly
+`mesh-independent-r01.json`, `completed-runtime-readback-r01/`,
+`completed-four-readback-r01/`, `launch-config-correction-r03.json` and
+`c1-policy-r03-four.json`.
