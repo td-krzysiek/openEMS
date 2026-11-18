@@ -16,6 +16,11 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Added
 
+- Experimental Cartesian-subgrid loss preparation uses bounded sparse pages
+  instead of separate allocations for every volume/surface trace. Trace values
+  and ordering are retained. Rebuild matching C++ callers; application capacity
+  and physical-device qualification remain separate.
+
 - Experimental Cartesian subgrids can also represent constant diagonal electric
   and magnetic conductivities through C++ samplers and native CSXCAD material
   components. Zero loss on individual axes is supported. Rebuild matching C++

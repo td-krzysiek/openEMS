@@ -4,6 +4,7 @@
 # just built. Add a new one to TESTS below, no further wiring needed.
 
 set(TESTS
+  test_cartesian_subgrid_trace_rows
   test_cartesian_subgrid_setup_timing
   test_cartesian_subgrid_candidate_index
   test_cartesian_subgrid_native_candidates
@@ -108,3 +109,8 @@ endforeach()
 
 # Previously failing interface DC stress; keep the original 2e-4 field gate.
 add_test(NAME test_cartesian_subgrid_device_dc COMMAND test_cartesian_subgrid_device_ports --dc-stress)
+
+# Opt-in capacity experiment, not part of the correctness test sweep.
+add_executable(benchmark_subgrid_loss_memory ../benchmark/subgrid_loss_memory.cpp)
+target_include_directories(benchmark_subgrid_loss_memory PRIVATE ${openEMS_SOURCE_DIR})
+target_link_libraries(benchmark_subgrid_loss_memory openEMS)

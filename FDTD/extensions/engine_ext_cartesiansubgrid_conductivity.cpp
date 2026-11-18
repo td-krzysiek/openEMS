@@ -88,8 +88,9 @@ void Engine_Ext_CartesianSubgrid_Conductivity::UpdateElectric(double timestep, d
 		g.ApplyResistors(timestep, drive, c.m_Responses, c.m_PortLower);
 	}
 	// Dissipation is evaluated on the implicit E midpoint BEFORE soft kicks.
-	for (const auto &trace : c.m_Trace)
+	for (std::size_t row = 0; row < c.m_Trace.size(); ++row)
 	{
+		const auto trace = c.m_Trace[row];
 		double field = 0;
 		for (const auto &term : trace)
 		{
@@ -332,8 +333,9 @@ CartesianSubgridConductivityPrepared Engine_Ext_CartesianSubgrid_Conductivity::P
 		}
 		loss.conductance.start.push_back(index(loss.conductance.edge.size()));
 	}
-	for (const auto &trace : c.m_Trace)
+	for (std::size_t row = 0; row < c.m_Trace.size(); ++row)
 	{
+		const auto trace = c.m_Trace[row];
 		for (const auto &term : trace)
 		{
 			append(loss.trace, term.first, term.second);

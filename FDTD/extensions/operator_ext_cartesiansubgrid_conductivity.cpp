@@ -5,6 +5,7 @@
 #include "operator_ext_cartesiansubgrid_mur.h"
 #include "FDTD/operator_cartesiansubgrid.h"
 #include "FDTD/subgrid_interface_limits.h"
+#include "FDTD/subgrid_setup_timing.h"
 #include <algorithm>
 #include <cmath>
 #include <stdexcept>
@@ -40,6 +41,7 @@ void Operator_Ext_CartesianSubgrid_Conductivity::SetSurfaceAdmittances(
 
 bool Operator_Ext_CartesianSubgrid_Conductivity::BuildExtension()
 {
+	CartesianSubgridSetupTiming timing("conductivity");
 	const auto &g = m_Compact->Grid();
 	m_Timestep = m_Compact->GetTimestep();
 	g.CheckStep(m_Timestep);
@@ -58,6 +60,7 @@ bool Operator_Ext_CartesianSubgrid_Conductivity::BuildExtension()
 	m_SurfaceTrace.clear();
 	m_SurfaceRate.clear();
 	m_SurfaceDenominator.clear();
+	timing.Phase("coefficient_allocation");
 	for (std::size_t c = 0; c < g.CellCount(); ++c)
 	{
 		if (g.LeafIsOpaque(c))
@@ -128,9 +131,10 @@ bool Operator_Ext_CartesianSubgrid_Conductivity::BuildExtension()
 			}
 		}
 	}
+	timing.Phase("volume_traces");
 	// Physical conductance and eliminated inductive states have distinct ledgers.
 	const auto addTrace = [](std::vector<double> &diagonal, Couplings &off,
-		const Trace &trace, double weight)
+		const auto &trace, double weight)
 	{
 		for (const auto &a : trace)
 		{
@@ -208,6 +212,7 @@ bool Operator_Ext_CartesianSubgrid_Conductivity::BuildExtension()
 			m_HasLoss = true; // Includes lossless stored inductive energy.
 		}
 	}
+	timing.Phase("surface_traces");
 	m_EffectiveDiagonal = m_Diagonal;
 	m_EffectiveOffDiagonal = m_OffDiagonal;
 	for (std::size_t pole = 0; pole < m_SurfaceTrace.size(); ++pole)
@@ -217,8 +222,10 @@ bool Operator_Ext_CartesianSubgrid_Conductivity::BuildExtension()
 	}
 	if (!m_HasLoss)
 	{
+		timing.Complete();
 		return true;
 	}
+	timing.Phase("effective_conductance");
 	// Mur remains outside the qualified joint recurrence. PML compatibility is
 	// checked after all operators have prepared their actual protected supports.
 	for (std::size_t i = 0; i < m_Compact->GetNumberOfExtentions(); ++i)
@@ -269,7 +276,10 @@ bool Operator_Ext_CartesianSubgrid_Conductivity::BuildExtension()
 		Factor(block);
 		m_Factors.push_back(std::move(block));
 	}
+	timing.Phase("implicit_factors");
 	BuildPortResponses();
+	timing.Phase("port_responses");
+	timing.Complete();
 	return true;
 }
 

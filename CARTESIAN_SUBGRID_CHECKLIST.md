@@ -2224,3 +2224,31 @@ Evidence: contributor archive `c1-first-run-r82/`, particularly
 `mesh-independent-r01.json`, `completed-runtime-readback-r01/`,
 `completed-four-readback-r01/`, `launch-config-correction-r03.json` and
 `c1-policy-r03-four.json`.
+
+## R83 loss-preparation capacity follow-up —18November2026
+
+Ordered bulk/surface traces now use bounded 1,024-row sparse pages instead of
+one heap allocation per trace. Coefficients, row/term order and recurrences are
+unchanged; matching C++ callers require a rebuild. Optional setup diagnostics
+separate coefficient allocation, volume/surface traces, effective conductance,
+implicit factors and port responses. The public bounded reproducer is
+[`benchmark/SUBGRID_LOSS_MEMORY.md`](benchmark/SUBGRID_LOSS_MEMORY.md).
+
+The isolated CPU candidate passes83/83 CTest cases, including the new page/order
+regression and existing independent surface/volume, passivity, PML and domain
+controls. Independent review rechecks841 source files, loaded libraries,
+terminal exits, the JSON test inventory and all83 actual passed-case records.
+The controller's preserved terminal hold is a CTest summary-format assertion,
+not a failed numerical test; it is accepted only by that complete-case review.
+Two AB/BA samples reduce median peak process RSS84.77→51.77MiB for bulk and
+251.41→193.54MiB for repeated seven-pole surfaces, retaining exact printed
+field/energy diagnostics. Core:`125c5a744cb066ab76bb45cccd921e093587b8b3fb220ffa50f6875d632affe3`;
+snapshot:`77f7b1fb99e764e626d93497eb37c3e1b23d3595236dabf85d26e2aa08781661`.
+Evidence: contributor archive `lossy-preparation-memory-r83/`, particularly
+`independent-cpu-r01.json`; the diagnostic is not a full-field bitwise claim.
+
+Physical Metal qualification is queued behind this CPU acceptance and its
+existing memory gate; CUDA/mixed-device and full C1 capacity remain open.
+Other dense arrays and device-packing temporaries remain separate capacity
+risks. R82's failed input/runtime,64GiB cap and zero-FDTD status are preserved;
+this change does not relaunch it or qualify application RF accuracy.

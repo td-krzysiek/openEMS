@@ -4,6 +4,7 @@
 
 #include "cartesiansubgrid_advance.h"
 #include "FDTD/cartesian_subgrid.h"
+#include "FDTD/subgrid_trace_rows.h"
 #include <array>
 #include <functional>
 #include <map>
@@ -79,9 +80,9 @@ class Operator_Ext_CartesianSubgrid_Conductivity : public Operator_Ext_Cartesian
 	std::vector<double> m_EffectiveDiagonal;
 	Couplings m_EffectiveOffDiagonal;
 	std::vector<SurfaceAdmittance> m_Surfaces;
-	std::vector<Trace> m_SurfaceTrace;
+	CartesianSubgridTraceRows m_SurfaceTrace;
 	std::vector<double> m_SurfaceRate, m_SurfaceDenominator;
-	std::vector<Trace> m_Trace;
+	CartesianSubgridTraceRows m_Trace;
 	std::vector<CartesianSubgrid::MassBlock> m_Factors;
 	std::vector<CartesianSubgrid::Integral> m_Responses;
 	std::vector<double> m_PortLower;
