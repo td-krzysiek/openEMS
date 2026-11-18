@@ -38,6 +38,14 @@ case_dir="$(mktemp -d)"
 (cd "$case_dir" && "$bench" sparse 48 --pack)
 ```
 
+Use the same benchmark source for both implementations. For the R83 parent
+(`bc04bf1`), create a fresh checkout, copy the current
+`benchmark/subgrid_loss_memory.cpp` into it as a harness-only change, and build
+its existing `benchmark_subgrid_loss_memory` target with the same flags and
+dependencies. Do not replace any parent solver source or an accepted prefix.
+The original R83 executable does not understand `--pack`. Record each core and
+harness hash, and run every lane/case in a separate fresh directory.
+
 `sparse 48` uses 110,599 leaves and 25,000 passive paths, leaving most electric
 rows empty. Its repeated generic voltage-path resolution dominates the whole
 command time; this is not a native-metal setup speed benchmark.
