@@ -21,6 +21,12 @@ using Grid = CartesianSubgrid;
 using Loss = Operator_Ext_CartesianSubgrid_Conductivity;
 using Advance = Engine_Ext_CartesianSubgrid_Conductivity;
 
+static double DirectionScale(unsigned int n, bool magnetic, bool directional)
+{
+	const std::array<double, 3> electric{0, .7, 1.3}, magneticScale{1.2, 0, .4};
+	return directional ? (magnetic ? magneticScale[n] : electric[n]) : 1;
+}
+
 static void Require(bool condition, const char *message)
 {
 	if (!condition)
@@ -66,7 +72,7 @@ struct Fixture
 	std::unique_ptr<Engine> engine;
 	Advance *advance = nullptr;
 
-	Fixture(bool native, unsigned int axis, bool reverse, unsigned int mode)
+	Fixture(bool native, unsigned int axis, bool reverse, unsigned int mode, bool directional)
 	{
 		const double unit = reverse ? 1e-6 : .001;
 		const Grid::Point origin{31, -23, 17};
@@ -83,10 +89,14 @@ struct Fixture
 		const auto add = [&](bool air)
 		{
 			auto *material = new CSPropMaterial(csx.GetParameterSet());
-			material->SetEpsilon(air ? 1 : 3.556);
-			material->SetMue(air ? 1 : 1.7);
-			material->SetKappa(!air && native && (mode & 1) ? .02 : 0);
-			material->SetSigma(!air && native && (mode & 2) ? 100 : 0);
+			material->SetIsotropy(!directional);
+			for (unsigned int n = 0; n < 3; ++n)
+			{
+				material->SetEpsilon(air ? 1 : 3.556, n);
+				material->SetMue(air ? 1 : 1.7, n);
+				material->SetKappa(!air && native && (mode & 1) ? .02 * DirectionScale(n, false, directional) : 0, n);
+				material->SetSigma(!air && native && (mode & 2) ? 100 * DirectionScale(n, true, directional) : 0, n);
+			}
 			csx.AddProperty(material);
 			if (air)
 			{
@@ -140,7 +150,22 @@ struct Fixture
 			op->AddExtension(new Loss(op.get(), [=](const Grid::Point &lo, const Grid::Point &hi)
 			{
 				const double fraction = Fraction(lo, hi, axis);
-				return Loss::Coefficients{mode & 1 ? .02 * fraction : 0, mode & 2 ? 100 * fraction : 0};
+				const double electric = mode & 1 ? .02 * fraction : 0;
+				const double magnetic = mode & 2 ? 100 * fraction : 0;
+				Loss::Coefficients coefficients{electric * DirectionScale(0, false, directional),
+					magnetic * DirectionScale(0, true, directional)};
+				if (directional)
+				{
+					std::array<double, 3> e{}, h{};
+					for (unsigned int n = 0; n < 3; ++n)
+					{
+						e[n] = electric * DirectionScale(n, false, true);
+						h[n] = magnetic * DirectionScale(n, true, true);
+					}
+					coefficients.electricDiagonal = e;
+					coefficients.magneticDiagonal = h;
+				}
+				return coefficients;
 			}));
 		}
 		Require(op->CalcECOperator() == 0 && op->GetNumberOfExtentions() == 1,
@@ -197,10 +222,10 @@ static double FieldError(const Grid &a, const Grid &b)
 }
 
 static void Control(unsigned int axis, bool reverse, unsigned int mode,
-	const SubgridDeviceTarget &target, bool domains)
+	const SubgridDeviceTarget &target, bool domains, bool directional = false)
 {
-	Fixture cpu(true, axis, reverse, mode), manual(false, axis, reverse, mode),
-		device(true, axis, reverse, mode), fp32(true, axis, reverse, mode);
+	Fixture cpu(true, axis, reverse, mode, directional), manual(false, axis, reverse, mode, directional),
+		device(true, axis, reverse, mode, directional), fp32(true, axis, reverse, mode, directional);
 	const double dt = cpu.op->GetTimestep(), initial = cpu.op->Grid().Energy(dt);
 	Require(dt == manual.op->GetTimestep() && dt == device.op->GetTimestep(), "shaped-loss physical timestep changed");
 	std::vector<std::unique_ptr<GPU_Backend>> owners;
@@ -280,6 +305,7 @@ static void Control(unsigned int axis, bool reverse, unsigned int mode,
 		(mode & 2 ? device.advance->MagneticLoss() > 0 : device.advance->MagneticLoss() == 0),
 		"shaped-loss conductivity mode was dropped or spuriously added");
 	std::cout << "SHAPED_LOSS axis=" << axis << " reversed=" << reverse << " mode=" << mode
+		<< " directional=" << directional
 		<< " workers=" << backends.size() << " steps=512 manual_error=" << manualError
 		<< " manual_ledger=" << manualLedger << " cpu_balance=" << cpuBalance
 		<< " device_error=" << deviceError << " device_ledger=" << deviceLedger
@@ -305,6 +331,7 @@ int main(int argc, char **argv)
 				{
 					Control(axis, reverse, mode, target, domains);
 				}
+				Control(axis, reverse, 3, target, domains, true);
 			}
 		}
 		std::cout << "PASS: native shaped electric/magnetic conductivity, analytic priority fractions and passive device domains\n";

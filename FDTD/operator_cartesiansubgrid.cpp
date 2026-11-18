@@ -916,7 +916,7 @@ void Operator_CartesianSubgrid::ValidateProperties() const
 			(type & ~(CSProperties::EXCITATION | CSProperties::PROBEBOX | CSProperties::DUMPBOX)))
 		{
 			throw std::invalid_argument(
-				"CartesianSubgrid: only constant isotropic materials, PEC, soft E sources "
+				"CartesianSubgrid: only constant Cartesian diagonal materials, PEC, soft E sources "
 				"and E/H observations are supported");
 		}
 		if (type == SurfaceMetalType)
@@ -957,11 +957,11 @@ void Operator_CartesianSubgrid::ValidateProperties() const
 					throw std::invalid_argument(
 						"CartesianSubgrid: positive finite diagonal epsilon and permeability required");
 				}
-				if (material->GetKappa(n) != material->GetKappa() ||
-					material->GetSigma(n) != material->GetSigma())
+				if (!(material->GetKappa(n) >= 0) || !std::isfinite(material->GetKappa(n)) ||
+					!(material->GetSigma(n) >= 0) || !std::isfinite(material->GetSigma(n)))
 				{
 					throw std::invalid_argument(
-						"CartesianSubgrid: directional conductivity is unsupported");
+						"CartesianSubgrid: finite nonnegative diagonal conductivities required");
 				}
 				if (!UnitWeight(material->GetEpsilonWeightFunction(n)) ||
 					!UnitWeight(material->GetMueWeightFunction(n)) ||
@@ -1251,6 +1251,7 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 	// list to be sorted by descending priority, not property insertion order.
 	const auto primitives = CSX->GetAllPrimitives(true, CSProperties::MATERIAL);
 	bool hasDiagonalMaterials = false;
+	bool hasDiagonalConductivity = false;
 	for (CSProperties *property : CSX->GetPropertyByType(CSProperties::MATERIAL))
 	{
 		auto *material = static_cast<CSPropMaterial *>(property);
@@ -1258,6 +1259,8 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 		{
 			hasDiagonalMaterials = hasDiagonalMaterials || material->GetEpsilon(n) != material->GetEpsilon() ||
 				material->GetMue(n) != material->GetMue();
+			hasDiagonalConductivity = hasDiagonalConductivity || material->GetKappa(n) != material->GetKappa() ||
+				material->GetSigma(n) != material->GetSigma();
 		}
 	}
 	const auto geometry = CSX->GetAllPrimitives(
@@ -1446,7 +1449,7 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 				return CartesianSubgridMaterialQuadrature::Values{
 					(material ? material->GetEpsilon(component) : GetBackgroundEpsR()) * EPS0,
 					(material ? material->GetMue(component) : GetBackgroundMueR()) * MUE0,
-					material ? material->GetKappa() : 0, material ? material->GetSigma() : 0};
+					material ? material->GetKappa(component) : 0, material ? material->GetSigma(component) : 0};
 			});
 	};
 	auto sample = [&](const CartesianSubgrid::Point &start, const CartesianSubgrid::Point &stop)
@@ -1644,17 +1647,33 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 	for (CSProperties *property : CSX->GetPropertyByType(CSProperties::MATERIAL))
 	{
 		auto *material = static_cast<CSPropMaterial *>(property);
-		hasConductivity = hasConductivity || material->GetKappa() != 0 || material->GetSigma() != 0;
+		for (unsigned int n = 0; n < 3; ++n)
+		{
+			hasConductivity = hasConductivity || material->GetKappa(n) != 0 || material->GetSigma(n) != 0;
+		}
 	}
 	if (hasConductivity || hasSurfaceMetal || !distributedResistors.empty())
 	{
 		// Keep the sorted pointer snapshot alive through extension setup. Grid
 		// positions are SI offsets; CSXCAD membership uses drawing coordinates.
-		auto conductivity = [materialSample](const CartesianSubgrid::Point &start,
+		auto conductivity = [materialSample, hasDiagonalConductivity](const CartesianSubgrid::Point &start,
 			const CartesianSubgrid::Point &stop)
 		{
 			const auto value = materialSample(start, stop);
-			return Operator_Ext_CartesianSubgrid_Conductivity::Coefficients{value[2], value[3]};
+			Operator_Ext_CartesianSubgrid_Conductivity::Coefficients result{value[2], value[3]};
+			if (hasDiagonalConductivity)
+			{
+				std::array<double, 3> electric{value[2]}, magnetic{value[3]};
+				for (unsigned int n = 1; n < 3; ++n)
+				{
+					const auto directional = materialSample(start, stop, n);
+					electric[n] = directional[2];
+					magnetic[n] = directional[3];
+				}
+				result.electricDiagonal = electric;
+				result.magneticDiagonal = magnetic;
+			}
+			return result;
 		};
 		auto extension = std::make_unique<Operator_Ext_CartesianSubgrid_Conductivity>(this, std::move(conductivity));
 		std::vector<Operator_Ext_CartesianSubgrid_Conductivity::SurfaceAdmittance> admittances;

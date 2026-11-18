@@ -74,23 +74,29 @@ bool Operator_Ext_CartesianSubgrid_Conductivity::BuildExtension()
 		Require(sigma.electric >= 0 && std::isfinite(sigma.electric) &&
 			sigma.magnetic >= 0 && std::isfinite(sigma.magnetic),
 			"CartesianSubgrid requires finite nonnegative conductivities");
-		m_HasLoss = m_HasLoss || sigma.electric != 0 || sigma.magnetic != 0;
+		Require((!sigma.electricDiagonal || sigma.Electric(0) == sigma.electric) &&
+			(!sigma.magneticDiagonal || sigma.Magnetic(0) == sigma.magnetic),
+			"CartesianSubgrid diagonal conductivity component zero must match its scalar alias");
 		for (unsigned int n = 0; n < 3; ++n)
 		{
-			const double rate = sigma.magnetic / g.m_Media[c].Permeability(n);
+			Require(sigma.Electric(n) >= 0 && std::isfinite(sigma.Electric(n)) &&
+				sigma.Magnetic(n) >= 0 && std::isfinite(sigma.Magnetic(n)),
+				"CartesianSubgrid requires finite nonnegative diagonal conductivities");
+			m_HasLoss = m_HasLoss || sigma.Electric(n) != 0 || sigma.Magnetic(n) != 0;
+			const double rate = sigma.Magnetic(n) / g.m_Media[c].Permeability(n);
 			Require(std::isfinite(rate) && std::isfinite(.5 * m_Timestep * rate),
 				"CartesianSubgrid magnetic conductivity rate overflows");
 			m_MagneticRate[6 * c + 2 * n] = rate;
 			m_MagneticRate[6 * c + 2 * n + 1] = rate;
 		}
-		if (sigma.electric == 0)
-		{
-			continue;
-		}
-		const double weight = std::sqrt(sigma.electric * length[0] * length[1] * length[2] / 4);
-		Require(weight > 0 && std::isfinite(weight), "CartesianSubgrid conductivity trace weight is unrepresentable");
 		for (unsigned int n = 0; n < 3; ++n)
 		{
+			if (sigma.Electric(n) == 0)
+			{
+				continue;
+			}
+			const double weight = std::sqrt(sigma.Electric(n) * length[0] * length[1] * length[2] / 4);
+			Require(weight > 0 && std::isfinite(weight), "CartesianSubgrid conductivity trace weight is unrepresentable");
 			for (unsigned int i = 0; i < 2; ++i)
 			{
 				for (unsigned int j = 0; j < 2; ++j)

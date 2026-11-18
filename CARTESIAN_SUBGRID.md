@@ -1672,8 +1672,10 @@ for (unsigned int n = 0; n < 3; ++n)
 ```
 
 When CSXCAD isotropy is disabled, supply all three components, including equal
-conductivity components when those remain isotropic. Directional conductivity,
-spatial property weights and rotated/off-diagonal tensors are not implemented.
+conductivity components when those remain isotropic. The later R80 candidate
+also represents constant diagonal conductivities through the existing midpoint
+extension; see [its contract](CARTESIAN_SUBGRID_CONDUCTIVITY.md#constant-diagonal-conductivity--r80-candidate).
+Spatial property weights and rotated/off-diagonal tensors are not implemented.
 The existing material quadrature is applied to each constitutive component
 when needed; it is not a new conformal anisotropic-interface law. Scalar
 properties retain their previous single-lookup path. Isotropic bulk electric
@@ -1684,8 +1686,9 @@ isotropic homogeneous collars and explicitly reject a directional mismatch.
 The focused fixture `tests/test_cartesian_subgrid_diagonal_material.cpp`
 compares six interior one-step Maxwell coefficients, local-interface modified
 energy, exact native material values, independent constitutive decay and loss
-ledgers. It also rejects invalid/partial coefficients, directional conductivity
-and anisotropic absorber collars. Scoped CPU and FP32-reference focused review
+ledgers. It also rejects invalid/partial coefficients and anisotropic absorber
+collars. R79's original directional-conductivity rejection is superseded only
+by R80's separately qualified scope. Scoped CPU and FP32-reference focused review
 passes. CPU82 and sixteen byte-exact scalar-parent operator/field outputs pass
 independent review. Eighteen explicit physical Apple M5 Pro Metal controls and
 sixteen native scalar-parent arrays also pass source/runtime/raw-field review

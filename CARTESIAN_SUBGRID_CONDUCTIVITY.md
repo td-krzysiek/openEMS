@@ -18,8 +18,10 @@ in ohm/m. Native boxes use the existing CSXCAD `kappa` and `sigma` properties;
 permittivity/permeability, priorities, drawing units and local-cell alignment
 retain their existing meaning. Negative/nonfinite coefficients reject. This is
 not a broadband loss-tangent, surface-impedance, skin-depth or roughness model.
-Background conductivity, anisotropic/spatially weighted loss and unsupported
-material primitives remain rejected.
+Background conductivity, spatially weighted loss and unsupported material
+primitives remain rejected. Constant diagonal loss is implemented by the later
+R80 candidate below, with its own qualification scope; earlier isotropic test
+evidence does not qualify that increment automatically.
 
 The paired `Operator_Ext_CartesianSubgrid_Conductivity` builds the electric loss
 form `G` from local physical-volume quadrature and the same restricted traces as
@@ -189,3 +191,46 @@ regular-Yee comparisons, including spatial/time sensitivity and power.
 Conducting sheets, physical conductor skin/ADE histories, distributed loss/PML,
 DFT/pause and representative lossy PCB/array behavior remain open. These scoped
 checks do not establish scalability, end-to-end speedup or antenna accuracy.
+
+## Constant diagonal conductivity — R80 candidate
+
+The midpoint extension also accepts constant Cartesian diagonal electric and
+magnetic SI conductivities. This candidate extends R79 diagonal epsilon/mu;
+its independent qualification is pending. It is not a rotated/full tensor,
+spatial weight, dispersive loss-tangent or roughness implementation.
+
+For C++ samplers, `Coefficients{electric, magnetic}` still assigns scalar values
+to every direction. Optional `electricDiagonal` and `magneticDiagonal` arrays
+assign three finite nonnegative components. An explicit array's first component
+must equal its scalar alias. A zero component is valid, including an explicit
+all-zero array with zero alias. Rebuild callers using the changed C++ type.
+
+Native CSXCAD uses its existing material fields, without new XML attributes:
+
+```cpp
+material->SetIsotropy(false);
+for (unsigned int n = 0; n < 3; ++n)
+{
+    material->SetEpsilon(epsilonRelative[n], n);
+    material->SetMue(muRelative[n], n);
+    material->SetKappa(electricConductivitySI[n], n);
+    material->SetSigma(magneticConductivitySI[n], n);
+}
+```
+
+Native admission checks every component, including loss present only in Y/Z.
+The existing material-priority/volume quadrature is applied component by
+component when needed. Isotropic conductivity keeps its single material lookup.
+Each electric-axis trace uses `sqrt(sigma_e[n] * volume / 4)` and the existing
+restriction/mass normalization; magnetic faces use `sigma_m[n] / mu[n]`.
+The existing midpoint factors, loss ledgers and normalized device recurrence
+are reused. No backend kernel or field-update branch is added.
+
+Focused tests preserve the original Maxwell, invariant and isotropic-loss
+controls and add analytic per-axis decay, zero-loss directions, isotropic
+epsilon/mu with directional loss and invalid sampler/native values. Shaped-loss
+tests preserve eighteen isotropic cases and add six directional cases with
+independently calculated geometry/priority fractions at refinement interfaces.
+Broader convergence, physical device/domain and antenna qualification must be
+recorded separately; these implementations do not qualify anisotropic absorber
+collars or remove the existing geometry/contact/stability guards.

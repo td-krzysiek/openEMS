@@ -4,14 +4,16 @@
 
 #include "cartesiansubgrid_advance.h"
 #include "FDTD/cartesian_subgrid.h"
+#include <array>
 #include <functional>
 #include <map>
+#include <optional>
 #include <vector>
 
 class Operator_CartesianSubgrid;
 class Engine_Ext_CartesianSubgrid_Conductivity;
 
-//! Constant, isotropic SI conductivities; not a broadband loss-tangent model.
+//! Constant Cartesian diagonal SI conductivities; not a loss-tangent model.
 class Operator_Ext_CartesianSubgrid_Conductivity : public Operator_Ext_CartesianSubgrid_Advance
 {
 	friend class Engine_Ext_CartesianSubgrid_Conductivity;
@@ -20,6 +22,18 @@ class Operator_Ext_CartesianSubgrid_Conductivity : public Operator_Ext_Cartesian
 	{
 		double electric = 0; //!< S/m
 		double magnetic = 0; //!< ohm/m, the magnetic conductivity of Maxwell's equations
+		//! Omitted diagonals retain the scalar value on every axis.
+		//! Explicit diagonals require component zero to match its scalar alias.
+		std::optional<std::array<double, 3>> electricDiagonal;
+		std::optional<std::array<double, 3>> magneticDiagonal;
+		double Electric(unsigned int n) const
+		{
+			return electricDiagonal ? (*electricDiagonal)[n] : electric;
+		}
+		double Magnetic(unsigned int n) const
+		{
+			return magneticDiagonal ? (*magneticDiagonal)[n] : magnetic;
+		}
 	};
 	using Sampler = std::function<Coefficients(const CartesianSubgrid::Point &, const CartesianSubgrid::Point &)>;
 	//! A positive-real admittance on a resolved physical voltage path.

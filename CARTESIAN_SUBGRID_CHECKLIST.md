@@ -2081,3 +2081,25 @@ open. No production/frozen runtime or material assumption changes. Evidence:
 `diagonal-media-r79/metal-preparation-r03.json`,
 `diagonal-media-r79/independent-metal-r03.json`,
 `diagonal-media-r79/metal-review-owner-r03.json`.
+
+R80 implements constant Cartesian diagonal electric/magnetic conductivities
+through the existing midpoint extension and native CSXCAD component sampling.
+Scalar C++ aggregate initialization remains available; optional arrays have
+explicit finite/nonnegative and scalar-alias guards. Native admission detects
+loss on every axis, including zero X loss with nonzero Y/Z loss. Electric
+traces use the corresponding component and magnetic rates use sigma_m[n]/mu[n].
+No device kernel, field-update recurrence or production runtime is changed.
+
+The separate frozen-source CPU candidate has compiled and passed the focused
+Maxwell/energy/decay control, including twelve native CPU/reference loss cases
+and invalid native/sampler values. All 24 shaped-loss cases also pass their
+original analytic-priority, field and passivity gates: eighteen retained
+isotropic cases and six directional cases across local refinement. These
+observations are not yet full independent qualification. The full CPU82 run,
+sixteen-file scalar-parent replay and terminal independent review are queued
+in that order; eighteen physical single-Metal controls follow only after
+accepted CPU evidence. G05 remains partial; broader convergence, script/XML
+roundtrip, physical CUDA/multi-device and antenna evidence remain open.
+Evidence: `directional-loss-r80/preparation-r01.json`,
+`directional-loss-r80/cpu-owner-r01.json`,
+`directional-loss-r80/metal-preparation-r01.json`.

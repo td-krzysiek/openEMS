@@ -16,9 +16,14 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Added
 
+- Experimental Cartesian subgrids can also represent constant diagonal electric
+  and magnetic conductivities through C++ samplers and native CSXCAD material
+  components. Zero loss on individual axes is supported. Rebuild matching C++
+  callers; independent qualification of this candidate is pending.
+
 - Experimental Cartesian subgrids can represent constant positive diagonal
   permittivity and permeability through C++ samplers and native CSXCAD
-  materials. Bulk conductivities and absorbing collars remain isotropic.
+  materials. Absorbing collars remain isotropic.
   Rebuild matching C++ callers. Scoped CPU/reference checks do not establish
   broader physical-device or antenna qualification.
 

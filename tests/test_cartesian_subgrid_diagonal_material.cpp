@@ -211,8 +211,15 @@ static void PaletteAndGuards()
 	std::cout << "DIAGONAL_PALETTE unique=3 invalid_material_guards=4\n";
 }
 
-static void Native(const SubgridDeviceTarget *target, bool magnetic)
+static void Native(const SubgridDeviceTarget *target, bool magnetic, unsigned int mode = 0)
 {
+	const std::array<double, 3> electricLoss = mode == 0 ? std::array<double, 3>{.5, .5, .5} :
+		mode == 1 ? std::array<double, 3>{0, .3, .9} : std::array<double, 3>{.4, 0, 0};
+	const std::array<double, 3> magneticLoss = mode == 0 ? std::array<double, 3>{3000, 3000, 3000} :
+		mode == 1 ? std::array<double, 3>{0, 2500, 7000} : std::array<double, 3>{4000, 0, 0};
+	// Mode 2 isolates conductivity directionality from epsilon/mu directionality.
+	const std::array<double, 3> relativeEpsilon = mode == 2 ? std::array<double, 3>{2, 2, 2} : epsr;
+	const std::array<double, 3> relativeMu = mode == 2 ? std::array<double, 3>{1.2, 1.2, 1.2} : mur;
 	ContinuousStructure csx;
 	csx.GetGrid()->SetDeltaUnit(.001);
 	for (unsigned int n = 0; n < 3; ++n)
@@ -226,10 +233,10 @@ static void Native(const SubgridDeviceTarget *target, bool magnetic)
 	material->SetIsotropy(false);
 	for (unsigned int n = 0; n < 3; ++n)
 	{
-		material->SetEpsilon(epsr[n], n);
-		material->SetMue(mur[n], n);
-		material->SetKappa(magnetic ? 0 : .5, n);
-		material->SetSigma(magnetic ? 3000 : 0, n);
+		material->SetEpsilon(relativeEpsilon[n], n);
+		material->SetMue(relativeMu[n], n);
+		material->SetKappa(magnetic ? 0 : electricLoss[n], n);
+		material->SetSigma(magnetic ? magneticLoss[n] : 0, n);
 	}
 	csx.AddProperty(material);
 	auto *box = new CSPrimBox(csx.GetParameterSet(), material);
@@ -254,7 +261,8 @@ static void Native(const SubgridDeviceTarget *target, bool magnetic)
 		const auto value = op->Grid().LeafMedium(leaf);
 		for (unsigned int n = 0; n < 3; ++n)
 		{
-			Require(value.Epsilon(n) == epsr[n] * EPS0 && value.Permeability(n) == mur[n] * MUE0,
+			Require(value.Epsilon(n) == relativeEpsilon[n] * EPS0 &&
+				value.Permeability(n) == relativeMu[n] * MUE0,
 				"native diagonal CSXCAD/SI material mapping differs");
 		}
 	}
@@ -282,7 +290,8 @@ static void Native(const SubgridDeviceTarget *target, bool magnetic)
 	double error = 0;
 	for (unsigned int n = 0; n < 3; ++n)
 	{
-		const double rate = magnetic ? 3000 / (mur[n] * MUE0) : .5 / (epsr[n] * EPS0);
+		const double rate = magnetic ? magneticLoss[n] / (relativeMu[n] * MUE0) :
+			electricLoss[n] / (relativeEpsilon[n] * EPS0);
 		const double a = .5 * dt * rate, expected = std::pow((1 - a) / (1 + a), 100);
 		const Grid::Point point{.0015, .0015, .0015};
 		const double value = magnetic ? op->Grid().Magnetic(n, point) : op->Grid().Electric(n, point);
@@ -293,12 +302,12 @@ static void Native(const SubgridDeviceTarget *target, bool magnetic)
 	Require(error < (target ? 2e-4 : 2e-10) && balance < (target ? 2e-4 : 2e-10),
 		"directional constitutive midpoint decay or energy ledger differs");
 	std::cout << "DIAGONAL_NATIVE device=" << bool(target) << " magnetic=" << magnetic
-		<< " error=" << error << " balance=" << balance << '\n';
+		<< " mode=" << mode << " error=" << error << " balance=" << balance << '\n';
 }
 
 static void NativeGuards()
 {
-	for (unsigned int mode = 0; mode < 4; ++mode)
+	for (unsigned int mode = 0; mode < 6; ++mode)
 	{
 		Reject([&]
 		{
@@ -317,7 +326,9 @@ static void NativeGuards()
 			{
 				material->SetEpsilon(n == 1 ? 2 : 1, n);
 				material->SetMue(mode == 3 && n == 2 ? -1 : 1, n);
-				material->SetKappa(mode == 2 && n == 1 ? .2 : 0, n);
+				material->SetKappa(mode == 2 && n == 1 ? -.2 :
+					mode == 4 && n == 2 ? std::numeric_limits<double>::infinity() : 0, n);
+				material->SetSigma(mode == 5 && n == 1 ? std::numeric_limits<double>::quiet_NaN() : 0, n);
 			}
 			csx.AddProperty(material);
 			auto *box = new CSPrimBox(csx.GetParameterSet(), material);
@@ -347,9 +358,48 @@ static void NativeGuards()
 			op->SetBoundaryCondition(boundary);
 			Require(op->CalcECOperator() == 0, "negative native diagonal setup returned an unrelated error");
 		}, mode == 0 ? "PML collar" : mode == 1 ? "Mur collar" :
-			mode == 2 ? "directional conductivity" : "positive finite diagonal");
+			mode == 3 ? "positive finite diagonal" : "finite nonnegative diagonal");
 	}
-	std::cout << "DIAGONAL_NATIVE_GUARDS absorber_collars=2 unsupported_conductivity=1 invalid_mu=1\n";
+	std::cout << "DIAGONAL_NATIVE_GUARDS absorber_collars=2 invalid_conductivity=3 invalid_mu=1\n";
+}
+
+static void SamplerGuards()
+{
+	using Loss = Operator_Ext_CartesianSubgrid_Conductivity;
+	for (unsigned int mode = 0; mode < 4; ++mode)
+	{
+		Reject([&]
+		{
+			ContinuousStructure csx;
+			csx.GetGrid()->SetDeltaUnit(.001);
+			for (unsigned int n = 0; n < 3; ++n)
+			{
+				for (unsigned int i = 0; i <= 4; ++i)
+				{
+					csx.GetGrid()->AddDiscLine(n, i);
+				}
+			}
+			Excitation signal;
+			signal.SetupDiracPulse(30e9);
+			std::unique_ptr<Operator_CartesianSubgrid> op(Operator_CartesianSubgrid::New({1, 1, 1, 3, 3, 3}));
+			op->SetExcitationSignal(&signal);
+			Require(op->SetGeometryCSX(&csx), "sampler negative-control geometry rejected");
+			Loss::Coefficients coefficients{.1, 100};
+			coefficients.electricDiagonal = std::array<double, 3>{.1, mode == 0 ? -.2 : .2, .3};
+			coefficients.magneticDiagonal = std::array<double, 3>{mode == 2 ? 200. : 100., 200.,
+				mode == 1 ? std::numeric_limits<double>::infinity() : 300.};
+			if (mode == 3)
+			{
+				coefficients.electric = std::numeric_limits<double>::quiet_NaN();
+			}
+			op->AddExtension(new Loss(op.get(), [coefficients](const Grid::Point &, const Grid::Point &)
+			{
+				return coefficients;
+			}));
+			Require(op->CalcECOperator() == 0, "sampler negative-control setup failed without a diagnostic");
+		}, mode == 2 ? "scalar alias" : "finite nonnegative");
+	}
+	std::cout << "DIAGONAL_SAMPLER_GUARDS invalid_or_alias=4\n";
 }
 
 int main(int argc, char **argv)
@@ -365,13 +415,17 @@ int main(int argc, char **argv)
 		}
 		PaletteAndGuards();
 		NativeGuards();
+		SamplerGuards();
 		const std::array<const SubgridDeviceTarget *, 2> devices{nullptr, &target};
 		for (const auto *device : devices)
 		{
 			Yee(device);
 			Invariant(device);
-			Native(device, false);
-			Native(device, true);
+			for (unsigned int mode = 0; mode < 3; ++mode)
+			{
+				Native(device, false, mode);
+				Native(device, true, mode);
+			}
 		}
 		std::cout << "PASS: directional Maxwell coefficients, interface energy and native constitutive decay\n";
 		return 0;
