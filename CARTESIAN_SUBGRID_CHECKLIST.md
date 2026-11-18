@@ -2061,12 +2061,23 @@ the actual newer summary and all82 unique pass witnesses; no CTest/numerical
 run is repeated to correct that hold. Source/core/control identities and
 resource observations are reviewed independently.
 
-This is partial G05 CPU/reference qualification, not full tensor/feature
-parity. A separate identical-source Metal build/control queue is staged behind
-this acceptance; physical Metal/CUDA, broader directional convergence,
-script/XML roundtrip, multi-device and representative antenna evidence remain
+The identical 835-file source now also passes 18 explicit controls on one
+physical Apple M5 Pro Metal device. Six directional Maxwell curls, interface
+energy and native electric/magnetic decay retain the original gates; maximum
+native field error is 5.911e-7. Sixteen scalar-parent native field/probe arrays
+remain byte-exact. Source, dependencies, compiled artifacts, actual device and
+resource observations pass separate terminal review. A literal-log mismatch
+in the first owner is preserved: its legacy test verified the actual backend
+internally but printed `auto`. The continuation ran only the remaining 13
+controls and native replay; no completed numerical command was repeated.
+
+This is partial G05 CPU/reference/single-Metal qualification, not full tensor
+or feature parity. CUDA, broader directional convergence, script/XML
+roundtrip, physical multi-device and representative antenna evidence remain
 open. No production/frozen runtime or material assumption changes. Evidence:
 `diagonal-media-r79/independent-focused-r03.json`,
 `diagonal-media-r79/cpu-format-adapter-r04.json`,
 `diagonal-media-r79/independent-cpu-r04.json`,
-`diagonal-media-r79/metal-preparation-r02.json`.
+`diagonal-media-r79/metal-preparation-r03.json`,
+`diagonal-media-r79/independent-metal-r03.json`,
+`diagonal-media-r79/metal-review-owner-r03.json`.
