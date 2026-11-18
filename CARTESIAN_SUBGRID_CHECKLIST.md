@@ -1914,26 +1914,21 @@ leases and independent terminal raw review remain mandatory. Evidence:
 `cad-candidate-index-r70/physical-plan-controls-r02.json`.
 
 
-R73 prepares a same-input Metal replay of the accepted R64 coarse native PEC
-and smooth-copper curved lines: 1,544,144 leaves, common 1 fs / 1 ns, unchanged
-ports and physical geometry. The R70 frozen library is reused. PEC passes its
-native startup gate at epoch 4290 on Apple M5 Pro and is running; copper waits
-for completion and fresh admission. The controller retains 3 GiB owned RSS,
-12.5 GiB reserve and complete-epoch/liveness/input/library checks without a
-second initialization. Terminal raw own-time RF/late-prefix comparison with
-accepted CUDA is pending; no RF or antenna acceptance follows from startup.
-R66 and production/frozen runtimes remain unchanged. Evidence:
-`metal-curved-rf-r73/preparation-r01.json`,
+R73's same-input native Metal replay now independently accepts both PEC
+and smooth-copper curved lines: 1,544,144 leaves, common1fs/1ns, unchanged
+ports/geometry and frozen R70 runtime. Both million-step runs acknowledge the
+same-process startup gate at4290, retain3GiB owned RSS/12.5GiB reserve and
+complete without changing production/frozen inputs. Across501 samples at
+24–24.25GHz, PEC maximum Metal/CUDA Gamma/S21 phase/magnitude differences are
+2.027e-8/1.664e-6deg/3.831e-8dB; copper gives3.140e-8/1.020e-6deg/2.042e-7dB.
+All original late-prefix gates pass. Child times are3875.59/5464.28s and peak
+RSS1.934/2.783GB. These are capped fixed-window controls, not energy/spatial
+convergence, a machine-speed comparison or representative antenna acceptance.
+R72's queued physical Metal diagnostics can now clear their prerequisite;
+physical multi-device and broader feature qualification remain open. Evidence:
 `metal-curved-rf-r73/owner-r01.json`,
-`metal-curved-rf-r73/review_r01.py`.
-
-R73's immutable PEC subset now passes separate raw RF review while copper
-continues. Across501 samples at24–24.25GHz, maximum Metal-versus-accepted-CUDA
-complex-Gamma/S21 phase/magnitude discrepancies are2.027e-8/1.664e-6deg/
-3.831e-8dB. Original late-prefix gates pass. This is the completed1ns PEC
-subset only; whole-R73/copper and representative antenna qualification remain
-pending. The running owner, inputs and runtime are unchanged. Evidence:
-`metal-curved-rf-r73/pec-independent-r01.json`.
+`metal-curved-rf-r73/independent-r01.json`,
+`metal-curved-rf-r73/review-owner-r01.json`.
 
 R74 adds an independent continuum modal reference for R72's closed vacuum XY
 packet. Basis/standing-mode/DC/boundary/integral controls and quadrature/modal
@@ -1975,8 +1970,9 @@ synthetic guard controls passing (3.91 s, 26.72 MiB peak). It requires the exact
 825-file snapshot, all 81 individual CPU test witnesses, actual runtime/ELF
 dependencies, pinned compiler/flags and recorded GPU-free container/resource
 evidence. The CLI rejects synthetic input before writing an acceptance. These
-controls do not qualify a CUDA build or physical execution. Host launch and
-independent numerical replay remain pending; no shared guard, foreign job or
+controls do not qualify a CUDA build or physical execution. The separate host
+queue below implements build admission; physical admission and independent
+numerical replay remain pending. No shared guard, foreign job or
 production/frozen runtime changes. Evidence:
 `cad-candidate-index-r70/cuda-build-review-controls-r01.json`,
 `cad-candidate-index-r70/cuda-build-review-policy-r01.json`.
@@ -2017,3 +2013,17 @@ qualification remain pending; no successor full setup or FDTD was launched.
 Evidence: `representative-interface-clearance-r78/preparation-r01.json`,
 `representative-interface-clearance-r78/cad-audit-owner-r02.json`,
 `representative-interface-clearance-r78/independent-r02.json`.
+
+R70's pinned GPU-free source/build/review worker is now uploaded to a fresh
+Monster prefix and one detached owner is waiting for host admission. Actual
+observation records80GiB already reserved by the live Palace job, so no build
+container starts despite abundant available RAM. Twelve local synthetic
+resource/ownership/no-op controls pass in0.55s/30.05MiB peak. The worker uses
+6GiB/two CPUs for CUDA compilation and CPU81, then a separate1GiB/one-CPU
+review; no network/GPU/swap, read-only dependencies,80GiB aggregate cap and
+12GiB reserve. Paused/restarting project containers count. This is GPU-free
+build admission, not a GPU lease or full native operator setup admission.
+No actual new CUDA build or physical test is accepted. Evidence:
+`cad-candidate-index-r70/cuda-host-controls-r01.json`,
+`cad-candidate-index-r70/cuda-host-launch-r01.json`,
+`cad-candidate-index-r70/cuda-host-observation-r01.json`.
