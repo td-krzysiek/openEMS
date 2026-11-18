@@ -2209,11 +2209,17 @@ A generic read-only pre-step audit helper matches32 preserved native arrays
 command before model preparation. The named corrected command passes a fresh
 128-step four-device control with16 exact arrays, reusing the compiled helper;
 no numerical runtime/input change or guard bypass. Its actual representative
-native preparation is now running under64GiB/four CPUs/no swap, scoped160GiB
-aggregate and12GiB reserve, with canonical four-GPU leases. The first material/
-opaque mapping phase takes362.26s. Full native contact/CFL/peak-capacity gates,
-first representative field steps and DFT/NF2FF remain pending. Neither this
-startup nor the small controls qualify a converged antenna or upstream parity.
+native preparation used64GiB/four CPUs/no swap, scoped160GiB aggregate and12GiB
+reserve, with canonical four-GPU leases. It terminated with a confirmed cgroup
+OOM before FDTD: native exit−9/container exit1, `OOMKilled=true`, sampled peak
+67,555,065,856bytes. Grid construction completed4392.61s, port/source406.918s
+and surface-metal181.137s; extension construction did not finish. This is a
+capacity failure of the experimental path, not a demonstrated upstream defect.
+The offending allocation remains to be isolated. The failed input, sealed
+runtime and logs are preserved; no automatic restart, larger cap or geometry
+reduction was substituted. Full native contact/CFL/peak-capacity gates, first
+representative field steps and DFT/NF2FF remain unaccepted. The scoped small
+controls remain valid, but do not qualify large-antenna capacity or upstream parity.
 Evidence: contributor archive `c1-first-run-r82/`, particularly
 `mesh-independent-r01.json`, `completed-runtime-readback-r01/`,
 `completed-four-readback-r01/`, `launch-config-correction-r03.json` and
