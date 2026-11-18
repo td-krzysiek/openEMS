@@ -2013,19 +2013,24 @@ Evidence: `representative-interface-clearance-r78/preparation-r01.json`,
 `representative-interface-clearance-r78/cad-audit-owner-r02.json`,
 `representative-interface-clearance-r78/independent-r02.json`.
 
-R70's pinned GPU-free source/build/review worker is now uploaded to a fresh
-Monster prefix and one detached owner is waiting for host admission. Actual
-observation records80GiB already reserved by the live Palace job, so no build
-container starts despite abundant available RAM. Twelve local synthetic
+R70's pinned GPU-free source/build/review worker is uploaded to a fresh
+Monster prefix. Its initial observation records 80GiB already reserved by a
+live job; no build container started at that observation. Twelve local synthetic
 resource/ownership/no-op controls pass in0.55s/30.05MiB peak. The worker uses
 6GiB/two CPUs for CUDA compilation and CPU81, then a separate1GiB/one-CPU
 review; no network/GPU/swap, read-only dependencies,80GiB aggregate cap and
 12GiB reserve. Paused/restarting project containers count. This is GPU-free
 build admission, not a GPU lease or full native operator setup admission.
+On 18 November the same owner obtained admission without changing policy or
+restarting: its actual 6GiB GPU-free build container is verified running,
+without OOM. The scoped 4090/3080 pair was also observed idle; that observation
+is not a physical lease or qualification. CPU81 and independent build review
+still have to complete before physical replay.
 No actual new CUDA build or physical test is accepted. Evidence:
 `cad-candidate-index-r70/cuda-host-controls-r01.json`,
 `cad-candidate-index-r70/cuda-host-launch-r01.json`,
-`cad-candidate-index-r70/cuda-host-observation-r01.json`.
+`cad-candidate-index-r70/cuda-host-observation-r01.json`,
+`cad-candidate-index-r70/cuda-host-observation-r02.json`.
 
 R72's eight explicit-device cases now pass independent physical Metal review
 against frozen double CPU/FP32 histories, with maximum errors5.1515e-7/4.4837e-7
