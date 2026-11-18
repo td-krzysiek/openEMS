@@ -85,7 +85,7 @@ bool Operator_Ext_CartesianSubgrid_PML::BuildExtension()
 		if (!collar(lo, hi))
 			continue;
 		const auto material = g.LeafMedium(leaf);
-		Require(std::abs(material.epsilon / g.m_Epsilon - 1) < 1e-12 &&
+		Require(material.Isotropic() && std::abs(material.epsilon / g.m_Epsilon - 1) < 1e-12 &&
 					std::abs(material.permeability / g.m_Mu - 1) < 1e-12,
 				"CartesianSubgrid: PML collar must match the homogeneous lossless background");
 		for (std::size_t face = 6 * leaf; face < 6 * (leaf + 1); ++face)

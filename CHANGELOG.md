@@ -16,6 +16,12 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Added
 
+- Experimental Cartesian subgrids can represent constant positive diagonal
+  permittivity and permeability through C++ samplers and native CSXCAD
+  materials. Bulk conductivities and absorbing collars remain isotropic.
+  Rebuild matching C++ callers. Scoped CPU/reference checks do not establish
+  broader physical-device or antenna qualification.
+
 - Experimental Cartesian subgrids can report preparation phase wall times with
   `OPENEMS_SUBGRID_SETUP_PROFILE=1`. Logging is off by default and does not run
   in field updates. Scoped CPU/CUDA controls retain fields and port histories;

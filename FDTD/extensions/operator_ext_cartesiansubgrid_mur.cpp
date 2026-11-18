@@ -66,7 +66,7 @@ bool Operator_Ext_CartesianSubgrid_Mur::BuildExtension()
 		{
 			medium = value;
 		}
-		Require(std::abs(value.epsilon / medium.epsilon - 1) < 1e-12 &&
+		Require(value.Isotropic() && std::abs(value.epsilon / medium.epsilon - 1) < 1e-12 &&
 					std::abs(value.permeability / medium.permeability - 1) < 1e-12,
 				"CartesianSubgrid: Mur collar must be homogeneous and lossless");
 		for (unsigned int n = 0; n < 3; ++n)

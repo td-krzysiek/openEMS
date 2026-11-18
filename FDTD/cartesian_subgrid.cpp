@@ -410,6 +410,22 @@ void CartesianSubgrid::Build(const MediumSampler &medium, const PECSelector &pec
 		Require(value.epsilon > 0 && std::isfinite(value.epsilon) && value.permeability > 0 &&
 					std::isfinite(value.permeability),
 				"CartesianSubgrid: positive finite leaf epsilon and permeability required");
+		const auto validateDiagonal = [](const std::array<double, 3> &diagonal, double scalar)
+		{
+			if (diagonal == std::array<double, 3>{})
+			{
+				return;
+			}
+			Require(diagonal[0] == scalar,
+				"CartesianSubgrid: diagonal first component must match its scalar compatibility value");
+			for (double coefficient : diagonal)
+			{
+				Require(coefficient > 0 && std::isfinite(coefficient),
+					"CartesianSubgrid: diagonal material components must be finite and positive");
+			}
+		};
+		validateDiagonal(value.epsilonDiagonal, value.epsilon);
+		validateDiagonal(value.permeabilityDiagonal, value.permeability);
 		m_Media.Append(value);
 		if (opaque)
 		{
@@ -555,13 +571,13 @@ void CartesianSubgrid::Build(const MediumSampler &medium, const PECSelector &pec
 					const Trace trace = Restrict(LocalEdge(cell, n, i, j));
 					for (const auto &a : trace.weights)
 					{
-						mass[a.first] += material.epsilon * volume / 4 * a.second * a.second;
+						mass[a.first] += material.Epsilon(n) * volume / 4 * a.second * a.second;
 						for (const auto &b : trace.weights)
 						{
 							if (a.first < b.first)
 							{
 								off[{a.first, b.first}] +=
-									material.epsilon * volume / 4 * a.second * b.second;
+									material.Epsilon(n) * volume / 4 * a.second * b.second;
 							}
 						}
 					}
@@ -627,7 +643,7 @@ void CartesianSubgrid::Build(const MediumSampler &medium, const PECSelector &pec
 				edge(b, a, 0, -1);
 				edge(a, b, 1, -1);
 				edge(a, b, 0, 1);
-				const double reluctance = std::sqrt(volume / (2 * material.permeability * area * area));
+				const double reluctance = std::sqrt(volume / (2 * material.Permeability(n) * area * area));
 				if (LeafIsOpaque(cellIndex))
 				{
 					row.clear();
@@ -1315,7 +1331,7 @@ void CartesianSubgrid::SetMagnetic(const Field &field)
 				}
 				const double value = field(n, position);
 				Require(std::isfinite(value), "CartesianSubgrid: nonfinite initial magnetic field");
-				magnetic[index] = value * m_Media[cell].permeability * area * m_SqrtReluctance[(index) / 2];
+				magnetic[index] = value * m_Media[cell].Permeability(n) * area * m_SqrtReluctance[(index) / 2];
 			}
 		}
 	}
@@ -1441,7 +1457,7 @@ double CartesianSubgrid::Magnetic(unsigned int n, const Point &position) const
 	const std::size_t first = 6 * index + 2 * n;
 	return ((1 - t) * m_Magnetic[first] / m_SqrtReluctance[(first) / 2] +
 			t * m_Magnetic[first + 1] / m_SqrtReluctance[(first + 1) / 2]) /
-		   (area * m_Media[index].permeability);
+		   (area * m_Media[index].Permeability(n));
 }
 
 CartesianSubgrid::Integral CartesianSubgrid::ElectricSample(unsigned int n, const Point &position) const
@@ -1484,7 +1500,7 @@ CartesianSubgrid::Integral CartesianSubgrid::MagneticSample(unsigned int n, cons
 	for (unsigned int side = 0; side < 2; ++side)
 	{
 		result.weights.emplace_back(first + side,
-			(side ? t : 1 - t) / (m_SqrtReluctance[(first + side) / 2] * area * m_Media[index].permeability));
+			(side ? t : 1 - t) / (m_SqrtReluctance[(first + side) / 2] * area * m_Media[index].Permeability(n)));
 	}
 	return result;
 }
@@ -1693,7 +1709,7 @@ CartesianSubgrid::Integral CartesianSubgrid::LineIntegral(bool magnetic, const P
 			const double t = LocalFraction(cell, axis, p[axis]);
 			const double area = Length(cell, (axis + 1) % 3) * Length(cell, (axis + 2) % 3);
 			const auto face = 6 * index + 2 * axis + (t < .5 ? 0 : 1);
-			weights[face] += distance / (area * m_Media[index].permeability * m_SqrtReluctance[(face) / 2]);
+			weights[face] += distance / (area * m_Media[index].Permeability(axis) * m_SqrtReluctance[(face) / 2]);
 		}
 		else
 		{

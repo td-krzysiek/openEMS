@@ -73,6 +73,23 @@ class CartesianSubgrid
 	{
 		double epsilon;
 		double permeability;
+		//! Optional absolute Cartesian diagonal; zero arrays retain scalar initialization.
+		//! Explicit diagonals must be positive and their first entry must equal the scalar.
+		std::array<double, 3> epsilonDiagonal{};
+		std::array<double, 3> permeabilityDiagonal{};
+		double Epsilon(unsigned int axis) const
+		{
+			return epsilonDiagonal[0] == 0 ? epsilon : epsilonDiagonal[axis];
+		}
+		double Permeability(unsigned int axis) const
+		{
+			return permeabilityDiagonal[0] == 0 ? permeability : permeabilityDiagonal[axis];
+		}
+		bool Isotropic() const
+		{
+			return Epsilon(0) == Epsilon(1) && Epsilon(0) == Epsilon(2) &&
+				Permeability(0) == Permeability(1) && Permeability(0) == Permeability(2);
+		}
 	};
 	//! Setup-only sampler: physical leaf bounds in metres, absolute SI coefficients.
 	using MediumSampler = std::function<Medium(const Point &, const Point &)>;

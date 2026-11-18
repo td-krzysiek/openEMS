@@ -938,11 +938,6 @@ void Operator_CartesianSubgrid::ValidateProperties() const
 		if (type == CSProperties::MATERIAL)
 		{
 			auto *material = static_cast<CSPropMaterial *>(property);
-			if (!material->GetIsotropy())
-			{
-				throw std::invalid_argument(
-					"CartesianSubgrid: material objects must be isotropic");
-			}
 			if (!(material->GetKappa() >= 0) || !std::isfinite(material->GetKappa()) ||
 				!(material->GetSigma() >= 0) || !std::isfinite(material->GetSigma()))
 			{
@@ -956,6 +951,18 @@ void Operator_CartesianSubgrid::ValidateProperties() const
 			}
 			for (unsigned int n = 0; n < 3; ++n)
 			{
+				if (!(material->GetEpsilon(n) > 0) || !std::isfinite(material->GetEpsilon(n)) ||
+					!(material->GetMue(n) > 0) || !std::isfinite(material->GetMue(n)))
+				{
+					throw std::invalid_argument(
+						"CartesianSubgrid: positive finite diagonal epsilon and permeability required");
+				}
+				if (material->GetKappa(n) != material->GetKappa() ||
+					material->GetSigma(n) != material->GetSigma())
+				{
+					throw std::invalid_argument(
+						"CartesianSubgrid: directional conductivity is unsupported");
+				}
 				if (!UnitWeight(material->GetEpsilonWeightFunction(n)) ||
 					!UnitWeight(material->GetMueWeightFunction(n)) ||
 					!UnitWeight(material->GetKappaWeightFunction(n)) ||
@@ -1243,6 +1250,16 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 	// The primitive-list lookup stops at its first hit; CSXCAD requires this
 	// list to be sorted by descending priority, not property insertion order.
 	const auto primitives = CSX->GetAllPrimitives(true, CSProperties::MATERIAL);
+	bool hasDiagonalMaterials = false;
+	for (CSProperties *property : CSX->GetPropertyByType(CSProperties::MATERIAL))
+	{
+		auto *material = static_cast<CSPropMaterial *>(property);
+		for (unsigned int n = 1; n < 3; ++n)
+		{
+			hasDiagonalMaterials = hasDiagonalMaterials || material->GetEpsilon(n) != material->GetEpsilon() ||
+				material->GetMue(n) != material->GetMue();
+		}
+	}
 	const auto geometry = CSX->GetAllPrimitives(
 		true, (CSProperties::PropertyType)(CSProperties::MATERIAL | CSProperties::METAL));
 	std::vector<std::array<double, 6>> bounds;
@@ -1405,7 +1422,7 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 	const auto axialCandidates = std::make_shared<CartesianSubgridCandidateIndex<AxialObject>>(
 		axialObjects, axialBounds, drawingDomain, candidateTolerance);
 	const auto materialSample = [this, primitiveCandidates, shapedCandidates](
-		const CartesianSubgrid::Point &start, const CartesianSubgrid::Point &stop)
+		const CartesianSubgrid::Point &start, const CartesianSubgrid::Point &stop, unsigned int component = 0)
 	{
 		CartesianSubgrid::Point lo, hi;
 		for (unsigned int n = 0; n < 3; ++n)
@@ -1427,8 +1444,8 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 				auto *property = CSX->GetPropertyByCoordPriority(coordinate, primitiveCandidates->At(coordinate), true);
 				auto *material = property ? static_cast<CSPropMaterial *>(property) : nullptr;
 				return CartesianSubgridMaterialQuadrature::Values{
-					(material ? material->GetEpsilon() : GetBackgroundEpsR()) * EPS0,
-					(material ? material->GetMue() : GetBackgroundMueR()) * MUE0,
+					(material ? material->GetEpsilon(component) : GetBackgroundEpsR()) * EPS0,
+					(material ? material->GetMue(component) : GetBackgroundMueR()) * MUE0,
 					material ? material->GetKappa() : 0, material ? material->GetSigma() : 0};
 			});
 	};
@@ -1512,7 +1529,29 @@ int Operator_CartesianSubgrid::CalcECOperator(DebugFlags flags)
 			}
 		}
 		const auto value = materialSample(start, stop);
-		return CartesianSubgrid::Medium{value[0], value[1]};
+		CartesianSubgrid::Medium result{value[0], value[1]};
+		if (hasDiagonalMaterials)
+		{
+			result.epsilonDiagonal[0] = value[0];
+			result.permeabilityDiagonal[0] = value[1];
+			for (unsigned int n = 1; n < 3; ++n)
+			{
+				const auto directional = materialSample(start, stop, n);
+				result.epsilonDiagonal[n] = directional[0];
+				result.permeabilityDiagonal[n] = directional[1];
+			}
+			if (result.epsilonDiagonal[0] == result.epsilonDiagonal[1] &&
+				result.epsilonDiagonal[0] == result.epsilonDiagonal[2])
+			{
+				result.epsilonDiagonal = {};
+			}
+			if (result.permeabilityDiagonal[0] == result.permeabilityDiagonal[1] &&
+				result.permeabilityDiagonal[0] == result.permeabilityDiagonal[2])
+			{
+				result.permeabilityDiagonal = {};
+			}
+		}
+		return result;
 	};
 	auto pec = [&](unsigned int, const CartesianSubgrid::Point &start, const CartesianSubgrid::Point &stop)
 	{

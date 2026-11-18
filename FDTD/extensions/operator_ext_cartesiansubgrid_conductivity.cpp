@@ -75,9 +75,14 @@ bool Operator_Ext_CartesianSubgrid_Conductivity::BuildExtension()
 			sigma.magnetic >= 0 && std::isfinite(sigma.magnetic),
 			"CartesianSubgrid requires finite nonnegative conductivities");
 		m_HasLoss = m_HasLoss || sigma.electric != 0 || sigma.magnetic != 0;
-		const double rate = sigma.magnetic / g.m_Media[c].permeability;
-		Require(std::isfinite(rate) && std::isfinite(.5 * m_Timestep * rate), "CartesianSubgrid magnetic conductivity rate overflows");
-		std::fill(m_MagneticRate.begin() + 6 * c, m_MagneticRate.begin() + 6 * (c + 1), rate);
+		for (unsigned int n = 0; n < 3; ++n)
+		{
+			const double rate = sigma.magnetic / g.m_Media[c].Permeability(n);
+			Require(std::isfinite(rate) && std::isfinite(.5 * m_Timestep * rate),
+				"CartesianSubgrid magnetic conductivity rate overflows");
+			m_MagneticRate[6 * c + 2 * n] = rate;
+			m_MagneticRate[6 * c + 2 * n + 1] = rate;
+		}
 		if (sigma.electric == 0)
 		{
 			continue;

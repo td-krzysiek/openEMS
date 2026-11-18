@@ -109,7 +109,7 @@ template <class Medium> class CartesianSubgridMaterialPalette
 	}
 
   private:
-	using Key = std::array<std::uint64_t, 2>;
+	using Key = std::array<std::uint64_t, 8>;
 	static Key Bits(const Medium &value)
 	{
 		Key key;
@@ -117,6 +117,11 @@ template <class Medium> class CartesianSubgridMaterialPalette
 		static_assert(sizeof(key[1]) == sizeof(value.permeability), "64-bit material mu required");
 		std::memcpy(&key[0], &value.epsilon, sizeof(key[0]));
 		std::memcpy(&key[1], &value.permeability, sizeof(key[1]));
+		for (unsigned int n = 0; n < 3; ++n)
+		{
+			std::memcpy(&key[2 + n], &value.epsilonDiagonal[n], sizeof(key[0]));
+			std::memcpy(&key[5 + n], &value.permeabilityDiagonal[n], sizeof(key[0]));
+		}
 		return key;
 	}
 	std::vector<Medium> m_Palette, m_Dense;

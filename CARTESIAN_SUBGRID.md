@@ -240,6 +240,10 @@ and `engine=gpu` have the narrower [device contract](#scoped-native-device-execu
 
 ### Lossless material boxes
 
+Constant positive Cartesian diagonal epsilon/mu are also implemented in the
+R79 candidate described below. This is separate from anisotropic *mesh ratios*
+and does not change existing scalar material assumptions.
+
 Use ordinary CSXCAD material properties, with no additional XML attributes:
 
 ```python
@@ -1633,3 +1637,56 @@ It preserves the failed point-H gates and distinguishes the local basis's
 transverse sampling from propagation/interface error. Scoped CPU mean-field
 convergence passes at 30/45 degrees; this does not complete R11, qualify an
 arbitrary-angle reflection coefficient, or change native field interpolation.
+
+
+## Constant diagonal media — R79 candidate
+
+The low-level `Medium{epsilon, permeability}` scalar initialization is retained.
+Optional `epsilonDiagonal` and `permeabilityDiagonal` arrays contain absolute
+SI coefficients in the global Cartesian X/Y/Z directions. An all-zero array
+selects the scalar; an explicit array requires three finite positive values
+and its X entry must equal the scalar compatibility value. Partially specified,
+nonfinite or ambiguous arrays fail before assembly. Material palette identities
+include all directional bits; fully varying dense media incur six additional
+doubles per leaf, while repeated media continue sharing their records.
+
+Electric assembly uses epsilon[n] in the corresponding Galerkin mass terms.
+Each magnetic face uses mu[n] for its normal, including initial H, physical H
+samples, weighted observations and contour integrals. The coupled stability
+bound is calculated from those assembled operators, without a scalar velocity
+substitution. Device kernels still consume normalized rows; this adds no new
+backend or field-update recurrence.
+
+Native mapping reads the existing CSXCAD constant directional coefficients.
+For the in-memory C++ API, for example:
+
+```cpp
+material->SetIsotropy(false);
+for (unsigned int n = 0; n < 3; ++n)
+{
+    material->SetEpsilon(epsilonRelative[n], n);
+    material->SetMue(muRelative[n], n);
+    material->SetKappa(electricConductivitySI, n);
+    material->SetSigma(magneticConductivitySI, n);
+}
+```
+
+When CSXCAD isotropy is disabled, supply all three components, including equal
+conductivity components when those remain isotropic. Directional conductivity,
+spatial property weights and rotated/off-diagonal tensors are not implemented.
+The existing material quadrature is applied to each constitutive component
+when needed; it is not a new conformal anisotropic-interface law. Scalar
+properties retain their previous single-lookup path. Isotropic bulk electric
+and magnetic losses use their established midpoint extension; magnetic rates
+are normalized by the corresponding mu[n]. PML and Mur still require their
+isotropic homogeneous collars and explicitly reject a directional mismatch.
+
+The focused fixture `tests/test_cartesian_subgrid_diagonal_material.cpp`
+compares six interior one-step Maxwell coefficients, local-interface modified
+energy, exact native material values, independent constitutive decay and loss
+ledgers. It also rejects invalid/partial coefficients, directional conductivity
+and anisotropic absorber collars. Scoped CPU and FP32-reference focused review
+passes. CPU82 and sixteen byte-exact scalar-parent operator/field outputs now pass
+independent review. Actual Metal/CUDA, broader diagonal convergence, script/XML
+roundtrip and representative antenna qualification remain separate. Existing physical-device evidence on an earlier scalar build
+does not qualify this changed runtime. Rebuild matching C++ callers.

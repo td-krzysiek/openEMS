@@ -2042,3 +2042,31 @@ physical multi-device and antenna qualification remain open. Evidence:
 `oblique-interface-r72/independent-r06.json`,
 `oblique-interface-r72/review-owner-r06.json`,
 `oblique-interface-r72/public-promotion-r06.json`.
+
+
+R79 implements optional constant positive Cartesian diagonal epsilon/mu,
+retaining scalar initialization and the same normalized device recurrence.
+All directional material bits participate in palette identity; electric mass,
+magnetic normalization/seeding/readouts/contours and magnetic loss use the
+corresponding component. Native mapping retains scalar lookup when possible;
+directional conductivity and anisotropic PML/Mur collars explicitly reject.
+
+Focused CPU/FP32 reference checks independently accept six Maxwell curls,
+local-interface energy, native material values, constitutive decay/loss ledgers
+and invalid/unsupported controls. The complete CPU82 run passes all individual
+witnesses; sixteen scalar-parent operator/field files are byte-exact and64
+fresh field snapshots are finite. Initial compilation/region-fixture errors
+and a later CTest-summary bookkeeping hold remain preserved. R04 validates
+the actual newer summary and all82 unique pass witnesses; no CTest/numerical
+run is repeated to correct that hold. Source/core/control identities and
+resource observations are reviewed independently.
+
+This is partial G05 CPU/reference qualification, not full tensor/feature
+parity. A separate identical-source Metal build/control queue is staged behind
+this acceptance; physical Metal/CUDA, broader directional convergence,
+script/XML roundtrip, multi-device and representative antenna evidence remain
+open. No production/frozen runtime or material assumption changes. Evidence:
+`diagonal-media-r79/independent-focused-r03.json`,
+`diagonal-media-r79/cpu-format-adapter-r04.json`,
+`diagonal-media-r79/independent-cpu-r04.json`,
+`diagonal-media-r79/metal-preparation-r02.json`.
