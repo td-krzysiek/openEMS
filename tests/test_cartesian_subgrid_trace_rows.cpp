@@ -45,9 +45,15 @@ int main()
 			}
 		};
 		compare(packed);
+		std::size_t terms = 0;
+		for (const auto &row : reference)
+		{
+			terms += row.size();
+		}
+		Require(packed.TermCount() == terms, "trace term reservation count differs");
 		auto copy = packed;
 		packed.clear();
-		Require(packed.empty() && packed.size() == 0, "clear retained trace rows");
+		Require(packed.empty() && packed.size() == 0 && packed.TermCount() == 0, "clear retained trace rows");
 		compare(copy);
 		compare(CartesianSubgridTraceRows(copy));
 		packed.push_back({{17, -.25}});

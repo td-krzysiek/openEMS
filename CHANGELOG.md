@@ -16,6 +16,12 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Added
 
+- Experimental Cartesian-subgrid device loss tables use counted sparse assembly
+  instead of full-edge temporary vector lists. Existing coefficients and order
+  are retained; the optional setup profiler also reports device-table stages.
+  Scoped CPU/reference controls pass. Physical-device and application capacity
+  qualification remain separate.
+
 - Experimental Cartesian-subgrid loss preparation uses bounded sparse pages
   instead of separate allocations for every volume/surface trace. Trace values
   and ordering are retained. Rebuild matching C++ callers; application capacity

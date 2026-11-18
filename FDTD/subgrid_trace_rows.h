@@ -57,6 +57,16 @@ class CartesianSubgridTraceRows
 		const auto local = row % RowsPerPage;
 		return {page.terms.begin() + page.offset[local], page.terms.begin() + page.offset[local + 1]};
 	}
+	//! Count terms without visiting individual rows.
+	std::size_t TermCount() const
+	{
+		std::size_t count = 0;
+		for (const auto &page : m_Pages)
+		{
+			count += page.terms.size();
+		}
+		return count;
+	}
 	//! Accounted page payload; excludes allocator and deque-map bookkeeping.
 	std::size_t StorageBytes() const
 	{

@@ -2247,8 +2247,38 @@ snapshot:`77f7b1fb99e764e626d93497eb37c3e1b23d3595236dabf85d26e2aa08781661`.
 Evidence: contributor archive `lossy-preparation-memory-r83/`, particularly
 `independent-cpu-r01.json`; the diagnostic is not a full-field bitwise claim.
 
-Physical Metal qualification is queued behind this CPU acceptance and its
-existing memory gate; CUDA/mixed-device and full C1 capacity remain open.
+Physical Metal admission timed out before building or running a command;
+its15.5GiB/60-second memory gate was retained. CUDA/mixed-device and full C1
+capacity remain open.
 Other dense arrays and device-packing temporaries remain separate capacity
 risks. R82's failed input/runtime,64GiB cap and zero-FDTD status are preserved;
 this change does not relaunch it or qualify application RF accuracy.
+
+## R84 counted device loss-table assembly —18November2026
+
+Conductance and surface-history preparation now count final CSR entries before
+filling them. One32-bit cursor per electric row replaces full-edge nested
+vectors; the two cursor lifetimes do not overlap. Conductance retains unique
+ascending columns, history retains original pole/term order, and trace arrays
+reserve exact sizes. All scalar high/residual conversions and kernels remain
+unchanged. Optional setup diagnostics split the device-table preparation.
+
+CPU84/84 passes independent terminal/source/loaded-library review. The new
+assembly test checks exact float bits, sparse/empty rows, count/phase errors
+and overflow before coefficient allocation. All12 completed AB/BA controls
+retain identical loss-table bytes, checked by both complete file hashes and
+direct streaming comparisons, plus exact printed field/energy diagnostics.
+Independent decoding checks CSR bounds, columns and finite coefficients. Median
+peak process RSS decreases149.41→115.55MiB (bulk48),404.85→294.02MiB (seven-pole
+surfaces) and111.52→93.93MiB (sparse48). These are small host-capacity controls,
+not a device-speed, VRAM or full-field bitwise-equivalence claim.
+
+Core:`872829788399b47c060420bec1fe2df004b816adcae499136064a25890d8e6de`.
+Evidence: contributor archive `device-loss-packing-r84/`, especially
+`independent-cpu-r01.json` and `loss-table-byte-comparison-r01.json`; the
+public reproducer documents `--pack`. An isolated CUDA build/reference test
+container was admitted with6GiB/no swap/no physical GPU, under the scoped160GiB
+aggregate/12GiB reserve authorization. Actual CUDA/mixed-device, Metal and full
+C1 capacity/RF acceptance remain open. Production and frozen inputs/runtimes
+are unchanged. Dense zero magnetic-loss storage and bind temporaries remain
+separate work before accepting representative application capacity.

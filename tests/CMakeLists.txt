@@ -4,6 +4,7 @@
 # just built. Add a new one to TESTS below, no further wiring needed.
 
 set(TESTS
+  test_cartesian_subgrid_loss_rows
   test_cartesian_subgrid_trace_rows
   test_cartesian_subgrid_setup_timing
   test_cartesian_subgrid_candidate_index

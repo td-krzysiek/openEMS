@@ -3,8 +3,11 @@
 #include "FDTD/engine.h"
 #include "FDTD/operator_cartesiansubgrid.h"
 #include "FDTD/extensions/operator_ext_cartesiansubgrid_conductivity.h"
+#include "FDTD/extensions/engine_ext_cartesiansubgrid_conductivity.h"
 #include "tools/useful.h"
 #include <cmath>
+#include <cstdint>
+#include <fstream>
 #include <iomanip>
 #include <iostream>
 #include <memory>
@@ -15,14 +18,14 @@ int main(int argc, char **argv)
 {
 	try
 	{
-		if (argc != 3)
+		if (argc < 3 || argc > 4 || (argc == 4 && std::string(argv[3]) != "--pack"))
 		{
-			throw std::invalid_argument("usage: preparation_benchmark bulk|surface count");
+			throw std::invalid_argument("usage: benchmark_subgrid_loss_memory bulk|surface|sparse count [--pack]");
 		}
 		const std::string mode = argv[1];
 		const auto count = std::stoull(argv[2]);
-		if ((mode != "bulk" && mode != "surface") || count == 0 ||
-			(mode == "bulk" && (count < 4 || count > 48)) || (mode == "surface" && count > 250000))
+		if ((mode != "bulk" && mode != "surface" && mode != "sparse") || count == 0 ||
+			(mode != "surface" && (count < 4 || count > 48)) || (mode == "surface" && count > 250000))
 		{
 			throw std::invalid_argument("bounded diagnostic count exceeded");
 		}
@@ -30,7 +33,7 @@ int main(int argc, char **argv)
 		using Loss = Operator_Ext_CartesianSubgrid_Conductivity;
 		ContinuousStructure csx;
 		csx.GetGrid()->SetDeltaUnit(.001);
-		const auto cells = mode == "bulk" ? count : 4;
+		const auto cells = mode == "surface" ? 4 : count;
 		for (unsigned int n = 0; n < 3; ++n)
 		{
 			for (std::size_t i = 0; i <= cells; ++i)
@@ -54,7 +57,7 @@ int main(int argc, char **argv)
 		{
 			return Loss::Coefficients{mode == "bulk" ? .02 : 0., 0.};
 		});
-		if (mode == "surface")
+		if (mode != "bulk")
 		{
 			Loss::SurfaceAdmittance surface;
 			surface.start = {.001, .0015, .001};
@@ -65,7 +68,7 @@ int main(int argc, char **argv)
 				surface.poles.push_back({10. * (pole + 1), 1e-10 * (pole + 1)});
 			}
 			// Repeated passive paths stress storage, not a physical metal fit.
-			loss->SetSurfaceAdmittances(std::vector<Loss::SurfaceAdmittance>(count, surface));
+			loss->SetSurfaceAdmittances(std::vector<Loss::SurfaceAdmittance>(mode == "surface" ? count : 25000, surface));
 		}
 		op->AddExtension(loss);
 		if (op->CalcECOperator() != 0)
@@ -87,6 +90,51 @@ int main(int argc, char **argv)
 			return 1e-8 * std::cos(933 * point[0] - 331 * point[1] + 211 * point[2] + axis);
 		});
 		std::unique_ptr<Engine> engine(op->CreateEngine());
+		if (argc == 4)
+		{
+			auto *advance = dynamic_cast<Engine_Ext_CartesianSubgrid_Conductivity *>(engine->GetExtension(0));
+			if (!advance)
+			{
+				throw std::runtime_error("missing prepared loss extension");
+			}
+			const auto packed = advance->PrepareDomainData(nullptr, false);
+			if (!packed.loss)
+			{
+				throw std::runtime_error("missing prepared loss tables");
+			}
+			std::ofstream output("loss-tables.bin", std::ios::binary | std::ios::trunc);
+			const auto append = [&](const auto &values)
+			{
+				const std::uint64_t size = values.size();
+				output.write(reinterpret_cast<const char *>(&size), sizeof(size));
+				if (size)
+				{
+					output.write(reinterpret_cast<const char *>(values.data()),
+						static_cast<std::streamsize>(size * sizeof(values[0])));
+				}
+			};
+			const auto &tables = *packed.loss;
+			output.write(reinterpret_cast<const char *>(&tables.timestep), sizeof(tables.timestep));
+			for (const auto *rows : {&tables.conductance, &tables.trace, &tables.surfaceTrace, &tables.surfaceHistory})
+			{
+				append(rows->start);
+				append(rows->edge);
+				append(rows->weight);
+				append(rows->low);
+			}
+			append(tables.surfaceRate);
+			append(tables.magneticRate);
+			output.close();
+			if (!output)
+			{
+				throw std::runtime_error("cannot write loss-table control file");
+			}
+			std::cout << "PACK " << mode << " count=" << count
+				<< " conductance=" << tables.conductance.edge.size()
+				<< " trace=" << tables.trace.edge.size()
+				<< " surface=" << tables.surfaceTrace.edge.size()
+				<< " history=" << tables.surfaceHistory.edge.size() << '\n';
+		}
 		engine->IterateTS(16);
 		std::cout << "BENCHMARK " << mode << " count=" << count << " cells=" << grid.CellCount()
 			<< " E=" << grid.EdgeCount() << " H=" << grid.FaceCount() << std::setprecision(17)

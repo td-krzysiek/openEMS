@@ -4,6 +4,8 @@
 #include "FDTD/operator_cartesiansubgrid.h"
 #include "FDTD/gpu_backend.h"
 #include "FDTD/gpu_cartesiansubgrid_conductivity.h"
+#include "FDTD/subgrid_loss_rows.h"
+#include "FDTD/subgrid_setup_timing.h"
 #include <limits>
 #include <algorithm>
 #include <cmath>
@@ -206,6 +208,7 @@ CartesianSubgridConductivityPrepared Engine_Ext_CartesianSubgrid_Conductivity::P
 
 CartesianSubgridConductivityPrepared Engine_Ext_CartesianSubgrid_Conductivity::PrepareDeviceData(bool expanded, bool includeFields) const
 {
+	CartesianSubgridSetupTiming timing("conductivity_device");
 	const auto &c = *m_Conductivity;
 	const auto index = [](std::size_t value)
 	{
@@ -303,6 +306,7 @@ CartesianSubgridConductivityPrepared Engine_Ext_CartesianSubgrid_Conductivity::P
 		data.sourceOffStart.push_back(index(data.sourceOffEdge.size()));
 	}
 	CartesianSubgridConductivityData loss;
+	timing.Phase("fields_factors_and_ports");
 	loss.timestep = c.m_Timestep;
 	loss.magneticRate = c.m_MagneticRate;
 	const auto append = [&](CartesianSubgridConductivityData::Rows &rows, std::size_t edge, double value)
@@ -311,28 +315,51 @@ CartesianSubgridConductivityPrepared Engine_Ext_CartesianSubgrid_Conductivity::P
 		rows.weight.push_back(scalar(value));
 		rows.low.push_back(scalar(value - double(rows.weight.back())));
 	};
-	std::vector<std::vector<std::pair<std::size_t, double>>> rows(m_Grid.EdgeCount());
-	for (std::size_t edge = 0; edge < rows.size(); ++edge)
+	const auto addAt = [&](auto &builder, std::size_t row, std::size_t column, double value)
 	{
-		if (c.m_EffectiveDiagonal[edge] != 0)
+		const float high = scalar(value);
+		builder.Add(row, index(column), high, scalar(value - double(high)));
+	};
+	{
+		CartesianSubgridLossRows builder(loss.conductance, m_Grid.EdgeCount());
+		for (std::size_t edge = 0; edge < m_Grid.EdgeCount(); ++edge)
 		{
-			rows[edge].emplace_back(edge, c.m_EffectiveDiagonal[edge]);
+			if (c.m_EffectiveDiagonal[edge] != 0)
+			{
+				builder.Count(edge);
+			}
 		}
-	}
-	for (const auto &term : c.m_EffectiveOffDiagonal)
-	{
-		rows[term.first.first].emplace_back(term.first.second, term.second);
-		rows[term.first.second].emplace_back(term.first.first, term.second);
-	}
-	for (auto &row : rows)
-	{
-		std::sort(row.begin(), row.end());
-		for (const auto &term : row)
+		for (const auto &term : c.m_EffectiveOffDiagonal)
 		{
-			append(loss.conductance, term.first, term.second);
+			builder.Count(term.first.first);
+			builder.Count(term.first.second);
 		}
-		loss.conductance.start.push_back(index(loss.conductance.edge.size()));
+		builder.Allocate();
+		for (std::size_t edge = 0; edge < m_Grid.EdgeCount(); ++edge)
+		{
+			if (c.m_EffectiveDiagonal[edge] != 0)
+			{
+				addAt(builder, edge, edge, c.m_EffectiveDiagonal[edge]);
+			}
+		}
+		for (const auto &term : c.m_EffectiveOffDiagonal)
+		{
+			addAt(builder, term.first.first, term.first.second, term.second);
+			addAt(builder, term.first.second, term.first.first, term.second);
+		}
+		builder.Complete(true);
 	}
+	timing.Phase("conductance_rows");
+	const auto reserve = [&](CartesianSubgridConductivityData::Rows &rows,
+		const CartesianSubgridTraceRows &source)
+	{
+		const auto terms = index(source.TermCount());
+		rows.start.reserve(static_cast<std::size_t>(index(source.size())) + 1);
+		rows.edge.reserve(terms);
+		rows.weight.reserve(terms);
+		rows.low.reserve(terms);
+	};
+	reserve(loss.trace, c.m_Trace);
 	for (std::size_t row = 0; row < c.m_Trace.size(); ++row)
 	{
 		const auto trace = c.m_Trace[row];
@@ -342,28 +369,33 @@ CartesianSubgridConductivityPrepared Engine_Ext_CartesianSubgrid_Conductivity::P
 		}
 		loss.trace.start.push_back(index(loss.trace.edge.size()));
 	}
+	timing.Phase("volume_trace_rows");
 	if (!c.m_SurfaceTrace.empty())
 	{
-		std::vector<std::vector<std::pair<std::size_t, double>>> history(m_Grid.EdgeCount());
+		reserve(loss.surfaceTrace, c.m_SurfaceTrace);
+		CartesianSubgridLossRows history(loss.surfaceHistory, m_Grid.EdgeCount());
+		for (std::size_t pole = 0; pole < c.m_SurfaceTrace.size(); ++pole)
+		{
+			for (const auto &term : c.m_SurfaceTrace[pole])
+			{
+				history.Count(term.first);
+			}
+		}
+		history.Allocate();
 		for (std::size_t pole = 0; pole < c.m_SurfaceTrace.size(); ++pole)
 		{
 			for (const auto &term : c.m_SurfaceTrace[pole])
 			{
 				append(loss.surfaceTrace, term.first, term.second);
-				history[term.first].emplace_back(pole, term.second / c.m_SurfaceDenominator[pole]);
+				addAt(history, term.first, pole, term.second / c.m_SurfaceDenominator[pole]);
 			}
 			loss.surfaceTrace.start.push_back(index(loss.surfaceTrace.edge.size()));
 		}
-		for (const auto &row : history)
-		{
-			for (const auto &term : row)
-			{
-				append(loss.surfaceHistory, term.first, term.second);
-			}
-			loss.surfaceHistory.start.push_back(index(loss.surfaceHistory.edge.size()));
-		}
+		history.Complete();
 		loss.surfaceRate = c.m_SurfaceRate;
 	}
+	timing.Phase("surface_trace_and_history_rows");
+	timing.Complete();
 	return {std::move(data), std::move(loss)};
 }
 
