@@ -1895,9 +1895,8 @@ backend/grid creation. Eight FP32 reference-backend cases pass independent
 review against immutable double CPU traces: maximum raw/mean history error
 5.170151298824128e-7, with575,733,760 bytes peak child RSS. The unchanged
 spatial/temporal/invariant and source/runtime/resource gates pass. This is CPU
-reference execution, not a physical GPU result. Metal is queued behind the
-existing R73 terminal RF review. Every raw
-point/volume column retains a per-trace2e-4 CPU gate, with an additional2e-6
+reference execution, not a physical GPU result. The separate physical Metal
+replay is accepted below after R73. Every raw point/volume column retains a per-trace2e-4 CPU gate, with an additional2e-6
 FP32-reference gate for Metal. The original CPU point-H spatial failures remain
 failed. R11 stays open; no numerical library, antenna or production runtime
 changes. Evidence: `oblique-interface-r72/preparation-r04.json`,
@@ -1924,7 +1923,7 @@ complete without changing production/frozen inputs. Across501 samples at
 All original late-prefix gates pass. Child times are3875.59/5464.28s and peak
 RSS1.934/2.783GB. These are capped fixed-window controls, not energy/spatial
 convergence, a machine-speed comparison or representative antenna acceptance.
-R72's queued physical Metal diagnostics can now clear their prerequisite;
+R72's separate physical Metal replay subsequently clears its prerequisite;
 physical multi-device and broader feature qualification remain open. Evidence:
 `metal-curved-rf-r73/owner-r01.json`,
 `metal-curved-rf-r73/independent-r01.json`,
@@ -2027,3 +2026,19 @@ No actual new CUDA build or physical test is accepted. Evidence:
 `cad-candidate-index-r70/cuda-host-controls-r01.json`,
 `cad-candidate-index-r70/cuda-host-launch-r01.json`,
 `cad-candidate-index-r70/cuda-host-observation-r01.json`.
+
+R72's eight explicit-device cases now pass independent physical Metal review
+against frozen double CPU/FP32 histories, with maximum errors5.1515e-7/4.4837e-7
+under the unchanged2e-4/2e-6 gates. Spatial volume5%, temporal1% and
+invariant5e-4 gates pass; peak child RSS597,032,960bytes. The initial reviewer
+selected the CPU-owner file for a Metal-owner hash and failed before numerical
+analysis. That receipt/log is preserved; named R06 corrects only that selection,
+keeps the original numerical/resource comparison block exact and does not rerun
+or modify the solver/raw data. The byte-exact executed fixture and reproduction
+instructions are `benchmark/subgrid_device_packet.cpp` and `.md`. Point-H
+spatial failures, other planes, independent ordinary comparison, broader R11,
+physical multi-device and antenna qualification remain open. Evidence:
+`oblique-interface-r72/reviewer-source-selection-r06.json`,
+`oblique-interface-r72/independent-r06.json`,
+`oblique-interface-r72/review-owner-r06.json`,
+`oblique-interface-r72/public-promotion-r06.json`.
