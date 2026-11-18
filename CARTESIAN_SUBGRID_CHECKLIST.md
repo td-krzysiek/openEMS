@@ -1994,3 +1994,26 @@ point API. All original point failures and broader R11 remain open. Byte-exact
 executed fixtures and limits are in `benchmark/subgrid_point_readout.md`.
 Evidence: `native-point-readout-r76/independent-r01.json`,
 `native-point-readout-r76/public-promotion-r01.json`.
+
+R66's preserved full-model preparation is now terminal and rejected after
+25,102.36 s, with no OOM and zero FDTD steps. The native error is PEC pattern
+not representable by the coarse interface trace. No complete operator/CFL
+witness is present; the queued full inspector correctly held. Independent
+review preserves the actual input/runtime/source and failure artifacts. A
+bounds scan identifies fasteners crossing the refinement slab, without claiming
+the exact failed edge or an engine defect. Evidence:
+`representative-slab-mesh-r66/setup-failure-review-r02.json`.
+
+R78 separately prepares an air-interface mesh derivative with all properties,
+geometry, ports and effective RF coordinates retained. Predicted leaves rise
+to162,324,420 under the unchanged explicit180M allowance; counts are not capacity
+or performance proof. The small named R02 CAD inspector reports all951 metal
+bounds clear of the new interfaces and retains an old-input crossing negative.
+Its initial R01 API-flag interpretation failure is preserved. Independent
+review now accepts exact nonmesh XML/effective coordinates/PML planes and
+checks all 951 native bounds against XML extrema. This is conservative CAD
+clearance only: full native operator/contact/CFL, CUDA and antenna
+qualification remain pending; no successor full setup or FDTD was launched.
+Evidence: `representative-interface-clearance-r78/preparation-r01.json`,
+`representative-interface-clearance-r78/cad-audit-owner-r02.json`,
+`representative-interface-clearance-r78/independent-r02.json`.
