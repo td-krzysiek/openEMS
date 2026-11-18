@@ -1980,3 +1980,17 @@ independent numerical replay remain pending; no shared guard, foreign job or
 production/frozen runtime changes. Evidence:
 `cad-candidate-index-r70/cuda-build-review-controls-r01.json`,
 `cad-candidate-index-r70/cuda-build-review-policy-r01.json`.
+
+R76 independently diagnoses the remaining H point discrepancy without changing
+fields or acceptance: six actual native geometries and 18 affine direct/weighted
+controls prove the H_z transverse-centre readout in this Z-invariant fixture.
+Twelve unchanged magnetic histories are compared with converged independent
+continuum modes at requested and actual native-centre positions, using the
+same H times and fixed original normalization, without fitted delay/gain.
+At N96 the maximum requested-point error remains 13.276%; the native-centre
+residual is 1.379%. N48's broader case still has a 5.624% centre residual.
+This separates a large sampling effect, not a pure interface error or a fixed
+point API. All original point failures and broader R11 remain open. Byte-exact
+executed fixtures and limits are in `benchmark/subgrid_point_readout.md`.
+Evidence: `native-point-readout-r76/independent-r01.json`,
+`native-point-readout-r76/public-promotion-r01.json`.
