@@ -2094,12 +2094,57 @@ The separate frozen-source CPU candidate has compiled and passed the focused
 Maxwell/energy/decay control, including twelve native CPU/reference loss cases
 and invalid native/sampler values. All 24 shaped-loss cases also pass their
 original analytic-priority, field and passivity gates: eighteen retained
-isotropic cases and six directional cases across local refinement. These
-observations are not yet full independent qualification. The full CPU82 run,
-sixteen-file scalar-parent replay and terminal independent review are queued
-in that order; eighteen physical single-Metal controls follow only after
-accepted CPU evidence. G05 remains partial; broader convergence, script/XML
-roundtrip, physical CUDA/multi-device and antenna evidence remain open.
+isotropic cases and six directional cases across local refinement. CPU82,
+sixteen bit-exact scalar-parent operator/field files and 64 finite field
+snapshots now pass independent source/runtime/resource review. Eighteen actual
+single-Metal controls also pass separate review on the same source; sixteen
+native scalar-parent field/probe arrays are bit-exact. Maximum native decay
+field error is 5.911e-7; maximum shaped-loss device field error is 1.674e-6
+under unchanged 2e-4 gates. G05 remains partial; broader convergence,
+physical CUDA/multi-device and antenna evidence remain open. Script/XML
+qualification has its separate R81 record below.
 Evidence: `directional-loss-r80/preparation-r01.json`,
 `directional-loss-r80/cpu-owner-r01.json`,
-`directional-loss-r80/metal-preparation-r01.json`.
+`directional-loss-r80/metal-preparation-r01.json`,
+`directional-loss-r80/independent-cpu-r01.json`,
+`directional-loss-r80/independent-metal-r01.json`.
+
+R81 qualifies actual CSXCAD Python constant-diagonal material construction,
+getters, XML write/reload and native CPU/FP32 constitutive fields. Five cases
+cover directional epsilon/mu, electric/magnetic losses, loss-free axes and
+zero loss. Each original and Python-reloaded XML runs electric/magnetic seeds
+on both backends: 40 positive field/energy controls pass. Independent XML
+inspection verifies every component, isotropy flag, drawing unit, grid,
+primitive bounds and priority; three malformed-material inputs reject during
+native admission before a prepared grid or device exists.
+
+The optional isolated Python environment uses 78 archived public files from
+CSXCAD cc37cb4ee0ef20c6794acc3361b5f56953eb5189, 43 matched native headers and
+the accepted dependency library. The first build selected older headers from
+an auxiliary prefix; its failure is retained. The corrected include order
+builds the unchanged seven binding modules. An independent reviewer initially
+assumed eight modules; its retained failure is corrected by exact comparison
+against the seven archived .pyx files, without rebuilding. A diagnostic outer
+catch reports exit1 for malformed XML rejected by SetGeometryCSX; the initial
+owner's hold is retained, and only the two remaining invalid inputs run after
+that actual admission-stage observation. No positive field case is repeated.
+
+Source, wheel/installed bytes, actual native runtime, XML, all field/rejection
+logs and resource evidence pass independent terminal review. No project
+dependency, production prefix or antenna runtime changes. This does not
+qualify the full openEMS Python FDTD wrapper, proprietary Matlab, broader
+material/interface convergence or representative antenna.
+
+The identical 13 Python-generated XML files also pass independent physical
+Apple M5 Pro Metal review on the accepted R80 runtime: 20 field/energy controls
+and three native-admission rejections. Every positive case retains the exact
+CPU/reference timestep. Maximum field/balance errors are 9.013e-7/5.118e-7
+under the original 2e-4 gates. This is one physical Metal device, not physical
+CUDA/multi-GPU or antenna qualification. Byte-exact executed generic controls
+and reproduction notes are `benchmark/subgrid_material_xml.cpp`, `.py` and
+`.md`; no private geometry or runtime is included.
+Evidence: `python-material-xml-r81/tools-independent-r03.json`,
+`python-material-xml-r81/native-independent-r03.json`,
+`python-material-xml-r81/native-review-owner-r03.json`,
+`python-material-xml-r81/metal-independent-r01.json`,
+`python-material-xml-r81/public-promotion-r01.json`.

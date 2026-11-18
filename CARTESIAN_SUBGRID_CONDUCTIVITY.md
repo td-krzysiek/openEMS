@@ -196,7 +196,8 @@ checks do not establish scalability, end-to-end speedup or antenna accuracy.
 
 The midpoint extension also accepts constant Cartesian diagonal electric and
 magnetic SI conductivities. This candidate extends R79 diagonal epsilon/mu;
-its independent qualification is pending. It is not a rotated/full tensor,
+its scoped CPU/reference and single-Metal controls pass independent review.
+It is not a rotated/full tensor,
 spatial weight, dispersive loss-tangent or roughness implementation.
 
 For C++ samplers, `Coefficients{electric, magnetic}` still assigns scalar values
@@ -231,6 +232,17 @@ controls and add analytic per-axis decay, zero-loss directions, isotropic
 epsilon/mu with directional loss and invalid sampler/native values. Shaped-loss
 tests preserve eighteen isotropic cases and add six directional cases with
 independently calculated geometry/priority fractions at refinement interfaces.
-Broader convergence, physical device/domain and antenna qualification must be
+CPU82, sixteen bit-exact scalar-parent files, eighteen physical Apple M5 Pro
+Metal controls and sixteen exact native field/probe arrays pass independent
+review. Maximum native decay field error is 5.911e-7 and maximum shaped-loss
+device field error is 1.674e-6 under the retained 2e-4 gates. R81 additionally
+qualifies actual CSXCAD Python material/XML roundtrip with 40 native CPU/FP32
+field/energy controls and three intended admission rejections. It does not
+qualify the full openEMS Python FDTD wrapper. The same XML additionally passes
+20 physical Metal field/energy controls and three admission rejections with
+the exact accepted CPU/reference timestep. Reproduce the public synthetic
+controls using [the XML diagnostic](benchmark/subgrid_material_xml.md).
+
+Broader convergence, physical CUDA/domain and antenna qualification must be
 recorded separately; these implementations do not qualify anisotropic absorber
 collars or remove the existing geometry/contact/stability guards.
