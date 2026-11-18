@@ -1686,7 +1686,9 @@ compares six interior one-step Maxwell coefficients, local-interface modified
 energy, exact native material values, independent constitutive decay and loss
 ledgers. It also rejects invalid/partial coefficients, directional conductivity
 and anisotropic absorber collars. Scoped CPU and FP32-reference focused review
-passes. CPU82 and sixteen byte-exact scalar-parent operator/field outputs now pass
-independent review. Actual Metal/CUDA, broader diagonal convergence, script/XML
-roundtrip and representative antenna qualification remain separate. Existing physical-device evidence on an earlier scalar build
-does not qualify this changed runtime. Rebuild matching C++ callers.
+passes. CPU82 and sixteen byte-exact scalar-parent operator/field outputs pass
+independent review. Eighteen explicit physical Apple M5 Pro Metal controls and
+sixteen native scalar-parent arrays also pass source/runtime/raw-field review
+on the identical candidate source. These are scoped single-device controls;
+CUDA, broader diagonal convergence, script/XML roundtrip and representative
+antenna qualification remain separate. Rebuild matching C++ callers.
