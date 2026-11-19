@@ -22,7 +22,7 @@ class LossyMetalControl:
         fdtd.set('endCriteria', '1e-30')
         pulse = fdtd.find('Excitation')
         pulse.attrib.clear()
-        pulse.attrib.update(Type='1', f0='24125000000')
+        pulse.attrib.update(Type='1', f0='20000000000')
         ET.ElementTree(root).write(filename, encoding='utf-8', xml_declaration=True)
 
 

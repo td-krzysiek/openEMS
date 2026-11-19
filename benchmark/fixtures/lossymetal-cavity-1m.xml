@@ -1,7 +1,7 @@
 <?xml version='1.0' encoding='utf-8'?>
 <openEMS>
   <FDTD NumberOfTimesteps="1" endCriteria="1e-5" TimeStepMethod="3">
-    <Excitation Type="0" f0="24125000000" fc="4000000000" />
+    <Excitation Type="0" f0="20000000000" fc="4000000000" />
     <BoundaryCond xmin="PEC" xmax="PEC" ymin="PEC" ymax="PEC" zmin="PEC" zmax="PEC" />
   </FDTD>
   <ContinuousStructure CoordSystem="0">

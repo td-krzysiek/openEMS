@@ -105,7 +105,7 @@ int main(int argc, char** argv)
     bool captured = false;
     unsigned int surfaces = 0;
     Excitation excitation;
-    excitation.SetupGaussianPulse(24.125e9, 4e9);
+    excitation.SetupGaussianPulse(20e9, 4e9);
     std::unique_ptr<Operator> op(Operator::New(std::stoi(argv[2])));
     op->SetEngineType(Engine_Types::BASIC);
     op->SetQuarterCellMaterialAvg();
