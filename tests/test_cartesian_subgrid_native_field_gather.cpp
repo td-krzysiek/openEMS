@@ -118,7 +118,7 @@ static void Control(const SubgridDeviceTarget &target, unsigned int axis, bool l
 			dump->gather->Evaluate(0, lines, dump->values);
 			Require(gather->Readbacks() == batch + 1, "same-epoch gather was not cached");
 			double delta = 0, scale = 0;
-			const auto weight = std::polar(.1f, static_cast<float>(-2 * std::acos(-1.) * 24.125e9 *
+			const auto weight = std::polar(.1f, static_cast<float>(-2 * std::acos(-1.) * 20e9 *
 				dump->direct->GetTime(dump->magnetic)));
 			for (unsigned int i = 0; i < counts[0]; ++i)
 			{

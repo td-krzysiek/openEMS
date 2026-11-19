@@ -53,7 +53,7 @@ static void Control(unsigned int axis, bool graded, bool refined, bool unequal, 
 	}
 	const Grid::Region region = refined ? Grid::Region{{{1, 1, 1}, {3, 3, 3}}, {2, 2, 2}} :
 		Grid::Region{{{2, 2, 2}, {6, 6, 6}}, {1, 1, 1}};
-	Grid grid(refined ? base : fine, EPS0 * 3.556, MUE0, {region}, false, {}, {}, {}, {},
+	Grid grid(refined ? base : fine, EPS0 * 3.25, MUE0, {region}, false, {}, {}, {}, {},
 		Grid::CurlLayout::Patterns, refined && unequal ? fine : Grid::Axes{});
 	grid.SetElectric([](unsigned int n, const Grid::Point &p)
 	{

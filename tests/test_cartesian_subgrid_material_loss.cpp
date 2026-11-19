@@ -92,7 +92,7 @@ struct Fixture
 			material->SetIsotropy(!directional);
 			for (unsigned int n = 0; n < 3; ++n)
 			{
-				material->SetEpsilon(air ? 1 : 3.556, n);
+				material->SetEpsilon(air ? 1 : 3.25, n);
 				material->SetMue(air ? 1 : 1.7, n);
 				material->SetKappa(!air && native && (mode & 1) ? .02 * DirectionScale(n, false, directional) : 0, n);
 				material->SetSigma(!air && native && (mode & 2) ? 100 * DirectionScale(n, true, directional) : 0, n);
@@ -181,7 +181,7 @@ struct Fixture
 			}
 			const double fraction = Fraction(lo, hi, axis);
 			const auto medium = op->Grid().LeafMedium(leaf);
-			Require(std::abs(medium.epsilon / (EPS0 * (1 + 2.556 * fraction)) - 1) < 2e-13 &&
+			Require(std::abs(medium.epsilon / (EPS0 * (1 + (3.25 - 1) * fraction)) - 1) < 2e-13 &&
 				std::abs(medium.permeability / (MUE0 * (1 + .7 * fraction)) - 1) < 2e-13,
 				"independent analytic material fraction disagrees before loss execution");
 			partial += fraction > 0 && fraction < 1;

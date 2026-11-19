@@ -41,7 +41,7 @@ static Grid Make(unsigned int mode, Grid::CurlLayout layout)
 	}
 	const auto medium = [&](const Grid::Point &, const Grid::Point &hi)
 	{
-		return Grid::Medium{epsilon * (hi[0] <= base[0][4] ? 3.556 : 1), mu};
+		return Grid::Medium{epsilon * (hi[0] <= base[0][4] ? 3.25 : 1), mu};
 	};
 	const auto pec = [&](unsigned int, const Grid::Point &lo, const Grid::Point &hi)
 	{

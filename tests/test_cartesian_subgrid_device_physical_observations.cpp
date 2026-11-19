@@ -55,7 +55,7 @@ static Grid Fixture(bool opaque)
 	}
 	const auto medium = [&](const Grid::Point &lo, const Grid::Point &)
 	{
-		return Grid::Medium{Epsilon * (lo[0] >= axes[0][4] ? 3.556 : 1), 1.3 * Mu};
+		return Grid::Medium{Epsilon * (lo[0] >= axes[0][4] ? 3.25 : 1), 1.3 * Mu};
 	};
 	const auto metal = [&](const Grid::Point &lo, const Grid::Point &)
 	{

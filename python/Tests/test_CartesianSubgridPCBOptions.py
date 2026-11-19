@@ -24,7 +24,7 @@ class TestPCBOptions(unittest.TestCase):
             mesh.SetDeltaUnit(.001)
             for axis in 'xyz':
                 mesh.SetLines(axis, base)
-            csx.AddMaterial('dielectric', epsilon=3.556, kappa=.02).AddBox([0, 0, 0], [4, 4, 4])
+            csx.AddMaterial('dielectric', epsilon=3.25, kappa=.02).AddBox([0, 0, 0], [4, 4, 4])
             fdtd.SetCSX(csx)
             self.assertTrue(fdtd.Write2XML(str(path)))
             setup = ET.parse(path).find('FDTD')

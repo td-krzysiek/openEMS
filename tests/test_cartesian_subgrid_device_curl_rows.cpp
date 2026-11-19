@@ -42,7 +42,7 @@ static Grid Fixture(unsigned int mode, Grid::CurlLayout layout)
 	}
 	const auto material = [&](const Grid::Point &, const Grid::Point &hi)
 	{
-		return Grid::Medium{epsilon * (hi[0] <= axes[0][5] ? 3.556 : 1), mu};
+		return Grid::Medium{epsilon * (hi[0] <= axes[0][5] ? 3.25 : 1), mu};
 	};
 	const auto pec = [&](unsigned int, const Grid::Point &lo, const Grid::Point &hi)
 	{

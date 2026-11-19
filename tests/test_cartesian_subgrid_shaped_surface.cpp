@@ -118,7 +118,7 @@ static Result Run(const Settings &settings, bool boxes, const SubgridDeviceTarge
 			csx.GetGrid()->AddDiscLine(n, draw(i));
 		}
 	}
-	const double bottom = .77178;
+	const double bottom = .8;
 	const double top = bottom + settings.thickness / .001;
 	for (double z : {0., .5, bottom, top, 1.5, 2.})
 	{
@@ -202,7 +202,7 @@ static Result Run(const Settings &settings, bool boxes, const SubgridDeviceTarge
 	if (settings.bulk)
 	{
 		auto *substrate = new CSPropMaterial(csx.GetParameterSet());
-		substrate->SetEpsilon(3.556);
+		substrate->SetEpsilon(3.25);
 		substrate->SetKappa(.02);
 		csx.AddProperty(substrate);
 		addBox(substrate, 0, 0, 4, 4, .5, bottom, 0);
@@ -335,7 +335,7 @@ int main(int argc, char **argv)
 		Require(argc <= 2, "expected optional --metal or --cuda");
 		const auto target = argc == 2 ? SubgridDeviceTarget::FromFlag(argv[1]) : SubgridDeviceTarget{};
 		for (const Settings settings : {Settings{}, Settings{Shape::Curve}, Settings{Shape::Cylinder},
-			Settings{Shape::Barrel, 2, .00027178}, Settings{Shape::Curve, 2, 35e-6, .001, 0, true, true},
+			Settings{Shape::Barrel, 2, .0003}, Settings{Shape::Curve, 2, 35e-6, .001, 0, true, true},
 			Settings{Shape::Concave, 0}, Settings{Shape::Curve, 1, 18e-6, 1e-6, 10},
 			Settings{Shape::Concave, 2, 18e-6, .001, 0, true, true, true}})
 		{

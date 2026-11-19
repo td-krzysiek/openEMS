@@ -4,24 +4,22 @@ Last reviewed: **18 November 2026**.
 
 ## Current execution milestone — 18 November 2026
 
-The user now prioritizes the concrete C1 PCB antenna path. The current
-milestone is accepted native preparation and a first controlled representative
+The current application-capacity milestone is accepted native preparation and a first controlled representative
 multi-GPU run with usable ports and DFT/NF2FF. Generic feature parity and
 upstream submission readiness are a separate follow-up. Remaining generic
 items below stay recorded; they are not automatically gates for a model that
 does not use those features. This does not declare them implemented or qualify
 an unsupported antenna path.
 
-The selected frozen C1/A3 inset0.950 reference has manifest
-`ce30b8e776bf690f04493e8514e5ac6aa3b3b686d261a0bca1eea09bd076b7e0`.
-Retain its full board, both networks, materials, ports and hardware in a named
+The selected private application reference is identified in private evidence.
+Retain its complete geometry, materials, ports and auxiliary structures in a named
 numerical derivative. Legacy near-duplicate RF Box XY coordinates are explicitly
 canonicalized by at most5e-10mm, with unchanged source XML retained; this is not
 a bit-exact geometry or manufacturing-contour claim. Required gates remain actual runtime/device identity,
 model-specific geometry/contact/CFL and memory checks, physical mixed-device
 controls and finite/nontrivial representative field/port/radiation observations.
-Do not silently replace it with the historical M05 engineering probe. Evidence
-and preparation: `c1-first-run-r82/` in the contributor's study archive.
+Do not silently replace it with the earlier engineering probe. Evidence
+and preparation are retained in the private R82 application-capacity archive.
 
 This is the canonical detailed checklist for extending the Cartesian subgridding prototype
 to the functionality of the regular Cartesian solver. Check an item only after
@@ -883,7 +881,7 @@ remains failed; fixed Z and two XY levels do not qualify 3D or antenna convergen
 R37 finite-width U-line controls improve the former point-launch sensitivity,
 but remain a failed full RF qualification: coarse copper/local two-level
 complexGamma exceeds0.01. Fine copper agrees with ordinary PR242 within
-0.001784 complexGamma/0.16851°/0.00443dB over24–24.25GHz. All time-prefix gates
+0.001784 complexGamma/0.16851°/0.00443dB over the recorded evaluation band. All time-prefix gates
 pass; no duration extension, failure erasure or threshold relaxation follows.
 
 R38 profiles the unchanged R35 library's C++ allocations on three bounded
@@ -1474,7 +1472,7 @@ RTX4090, then actual4090/3080 domains in both worker orders. Fresh4CPU/6GiB,
 FDTD progress is verified. The original observer quoting issue affected only
 status reads; its named replacement retains the same running container ID.
 Predeclared runtime/domain RF gates are complexGamma1e-5,S21 phase0.01deg and
-magnitude0.001dB over24.000–24.250GHz. Running is not numerical acceptance,
+magnitude0.001dB over the recorded evaluation band. Running is not numerical acceptance,
 and this small-network replay does not qualify a representative antenna,
 large-PCB resources or general three-dimensional curved convergence.
 Evidence: `pcb-pair-rf-r62/preparation-r01.json`, `pcb-pair-rf-r62/DESIGN.md`,
@@ -2189,11 +2187,11 @@ Evidence: `python-material-xml-r81/tools-independent-r03.json`,
 
 ## R82 concrete-application milestone —18November2026
 
-The selected private C1 reference now has a136,577,808-leaf pilot input,
+The selected private application reference now has a136,577,808-leaf pilot input,
 refinement4/4/1 and explicit child coordinates. Its RF Z sampling is changed,
 so the reduction from408,572,790 ordinary cells is not a same-mesh speedup
 claim. Independent written-XML review retains the other84 properties and
-checks32 connected patch observations on each of two isolated signal networks,
+checks all intended observation contacts and signal-network isolation,
 unchanged native ports/PML planes and the known bad-port negative. Legacy
 RF-Box coordinate serialization is normalized by at most5e-10mm and separately
 quantified; source/frozen/fabrication contours remain unchanged.
@@ -2220,10 +2218,10 @@ runtime and logs are preserved; no automatic restart, larger cap or geometry
 reduction was substituted. Full native contact/CFL/peak-capacity gates, first
 representative field steps and DFT/NF2FF remain unaccepted. The scoped small
 controls remain valid, but do not qualify large-antenna capacity or upstream parity.
-Evidence: contributor archive `c1-first-run-r82/`, particularly
+Private R82 evidence includes
 `mesh-independent-r01.json`, `completed-runtime-readback-r01/`,
 `completed-four-readback-r01/`, `launch-config-correction-r03.json` and
-`c1-policy-r03-four.json`.
+the private four-device admission receipt.
 
 ## R83 loss-preparation capacity follow-up —18November2026
 
@@ -2248,7 +2246,7 @@ Evidence: contributor archive `lossy-preparation-memory-r83/`, particularly
 `independent-cpu-r01.json`; the diagnostic is not a full-field bitwise claim.
 
 Physical Metal admission timed out before building or running a command;
-its15.5GiB/60-second memory gate was retained. CUDA/mixed-device and full C1
+its15.5GiB/60-second memory gate was retained. CUDA/mixed-device and full-application
 capacity remain open.
 Other dense arrays and device-packing temporaries remain separate capacity
 risks. R82's failed input/runtime,64GiB cap and zero-FDTD status are preserved;
@@ -2286,14 +2284,13 @@ separate work before accepting representative application capacity.
 
 ## User-requested pause —18November2026
 
-Work is paused explicitly by the user because of elapsed work and exhausted
-credits. Do not automatically continue, admit another qualification or relaunch
-the full antenna. The concrete C1 field/DFT/NF2FF milestone remains unmet.
+Qualification is paused by contributor decision. Do not automatically continue, admit another qualification or relaunch
+the full antenna. The representative application field/DFT/NF2FF milestone remains unmet.
 
 R84's isolated CUDA build and all84 CPU/reference tests have now passed separate
 terminal/source/generated-flag review; core
 `ec4b23e1a6be53ca7c1ba34176a672e759d61db990f937231bd2e0f2f250b3d2`.
-This is not physical CUDA/multi-device or full-C1 acceptance. Evidence:
+This is not physical CUDA/multi-device or full-application acceptance. Evidence:
 `device-loss-packing-r84/cuda-host-readback-r02/cuda-build-independent-r01.json`.
 
 R85 implicit-zero magnetic-rate storage and zero-rate bind temporary removal
@@ -2308,6 +2305,6 @@ explicit resumption. Do not label this launcher failure a solver defect.
 R82's64GiB OOM/zero-FDTD status is unchanged. Other global/domain and retained
 surface allocations remain risks; small capacity improvements do not prove
 full-antenna capacity. The local handoff is
-`docs/OPENEMS_SUBGRID_PAUSE_20261118.md` in the private antenna repository; this
+the private qualification handoff; this
 canonical checklist remains the engineering status authority. No proprietary
 geometry is included in this public branch.

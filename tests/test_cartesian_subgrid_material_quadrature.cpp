@@ -31,7 +31,7 @@ static void Require(bool ok, const char *message)
 
 static void Quadrature()
 {
-	const Q::Values background{1, 1, 0, 0}, slab{3.556, 1.7, .01, .02};
+	const Q::Values background{1, 1, 0, 0}, slab{3.25, 1.7, .01, .02};
 	for (unsigned int count : {0, 2, 4, 8})
 	{
 		unsigned int calls = 0;
@@ -128,7 +128,7 @@ static void PassiveCore()
 		const auto average = Q::Average(lo, hi, 4, [](const Q::Point &p)
 		{
 			const bool inside = std::hypot(p[0] - .003, p[1] - .003) < .00135;
-			return Q::Values{EPS0 * (inside ? 3.556 : 1), MUE0, 0, 0};
+			return Q::Values{EPS0 * (inside ? 3.25 : 1), MUE0, 0, 0};
 		});
 		return Grid::Medium{average[0], average[1]};
 	};
@@ -238,7 +238,7 @@ static void NativeShape(unsigned int axis, double unit, bool reverse, const Subg
 	const auto add = [&](bool air)
 	{
 		auto *material = new CSPropMaterial(csx.GetParameterSet());
-		material->SetEpsilon(air ? 1 : 3.556);
+		material->SetEpsilon(air ? 1 : 3.25);
 		material->SetMue(air ? 1 : 1.7);
 		csx.AddProperty(material);
 		if (air)
@@ -321,14 +321,14 @@ static void NativeShape(unsigned int axis, double unit, bool reverse, const Subg
 			const bool slab = z > 1 && z < 5 && u > 1 && u < 5 && v > 1 && v < 5 &&
 				u + v > 2.6 && u + v < 9.4 && u - v < 3.4 && v - u < 3.4;
 			const bool bore = z > 1 && z < 5 && std::hypot(u - 3, v - 3) < .6;
-			return Q::Values{EPS0 * (slab && !bore ? 3.556 : 1),
+			return Q::Values{EPS0 * (slab && !bore ? 3.25 : 1),
 				MUE0 * (slab && !bore ? 1.7 : 1), 0, 0};
 		});
 		const auto actual = op->Grid().LeafMedium(leaf);
 		Require(std::abs(actual.epsilon / expected[0] - 1) < 2e-13 &&
 			std::abs(actual.permeability / expected[1] - 1) < 2e-13,
 			"native material priority, axis, units or finite-leaf fraction differs from analytic CAD");
-		const double fraction = (actual.epsilon / EPS0 - 1) / 2.556;
+		const double fraction = (actual.epsilon / EPS0 - 1) / (3.25 - 1);
 		partial += fraction > 1e-8 && fraction < 1 - 1e-8;
 		air += fraction < 1e-8;
 		volume += fraction * length[0] * length[1] * length[2] * 1e9;

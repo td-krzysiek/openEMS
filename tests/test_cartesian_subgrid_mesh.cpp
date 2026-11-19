@@ -193,7 +193,7 @@ static void NativeGradedYee(bool dielectric = false)
 	const double boundary = lines[0][3];
 	auto medium = [&](const Grid::Point &start, const Grid::Point &stop)
 	{
-		return Grid::Medium{epsilon * (dielectric && (start[0] + stop[0]) / 2 > boundary ? 3.556 : 1.), mu};
+		return Grid::Medium{epsilon * (dielectric && (start[0] + stop[0]) / 2 > boundary ? 3.25 : 1.), mu};
 	};
 	Grid compact(lines, epsilon, mu, regions, true, medium);
 	ContinuousStructure csx;
@@ -201,7 +201,7 @@ static void NativeGradedYee(bool dielectric = false)
 	if (dielectric)
 	{
 		auto *material = new CSPropMaterial(csx.GetParameterSet());
-		material->SetEpsilon(3.556);
+		material->SetEpsilon(3.25);
 		csx.AddProperty(material);
 		auto *box = new CSPrimBox(csx.GetParameterSet(), material);
 		for (unsigned int n = 0; n < 3; ++n)

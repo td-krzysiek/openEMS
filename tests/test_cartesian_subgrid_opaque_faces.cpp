@@ -11,7 +11,7 @@
 
 using Grid = CartesianSubgrid;
 static constexpr double epsilon = 8.85418781762e-12, mu = 1.2566370614359173e-6;
-static constexpr double bottom = .00077178, top = .00078978;
+static constexpr double bottom = .0008, top = .000818;
 static void Require(bool condition, const char *message)
 {
 	if (!condition)

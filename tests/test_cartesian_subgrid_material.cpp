@@ -55,7 +55,7 @@ static void Invariant(unsigned int steps)
 	// Both dielectric and permeability discontinuities cross refinement faces.
 	auto medium = [](const Grid::Point &lo, const Grid::Point &hi)
 	{
-		return Grid::Medium{epsilon * ((lo[0] + hi[0]) / 2 < .006 ? 1 : 3.556),
+		return Grid::Medium{epsilon * ((lo[0] + hi[0]) / 2 < .006 ? 1 : 3.25),
 							mu * ((lo[1] + hi[1]) / 2 < .006 ? 1 : 1.7)};
 	};
 	Grid grid(Lines(6), epsilon, mu, Regions(6), false, medium);
@@ -248,7 +248,7 @@ static void NativeOccupancy()
 	};
 	// Insert the higher priority first: insertion order is not the priority.
 	add(6, 1.7, 9, {3, 2, 2}, {4, 4, 4});
-	add(3.556, 1, 2, {3, 0, 0}, {6, 6, 6});
+	add(3.25, 1, 2, {3, 0, 0}, {6, 6, 6});
 	Excitation excitation;
 	excitation.SetupDiracPulse(30e9);
 	std::unique_ptr<Operator_CartesianSubgrid> op(
@@ -269,7 +269,7 @@ static void NativeOccupancy()
 		}
 		const bool high = centre[0] > 3 && centre[0] < 4 && centre[1] > 2 && centre[1] < 4 && centre[2] > 2 &&
 						  centre[2] < 4;
-		const double wantEps = high ? 6 : centre[0] > 3 ? 3.556 : 1;
+		const double wantEps = high ? 6 : centre[0] > 3 ? 3.25 : 1;
 		const double wantMu = high ? 1.7 : 1;
 		const auto value = grid.LeafMedium(i);
 		Require(std::abs(value.epsilon / epsilon - wantEps) < 1e-8 &&

@@ -27,7 +27,7 @@ static void Control(double thickness, const SubgridDeviceTarget *target)
 			axes[n].push_back(.001 * i);
 		}
 	}
-	axes[2] = {0, .0005, .00077178, .00077178 + thickness, .0015, .002};
+	axes[2] = {0, .0005, .0008, .0008 + thickness, .0015, .002};
 	const std::vector<Grid::Region> regions{{{{1, 1, 1}, {3, 3, 4}}, {2, 2, 1}}};
 	const auto opaque = [&](const Grid::Point &lo, const Grid::Point &hi)
 	{

@@ -247,7 +247,7 @@ and does not change existing scalar material assumptions.
 Use ordinary CSXCAD material properties, with no additional XML attributes:
 
 ```python
-slab = csx.AddMaterial('slab', epsilon=3.556, mue=1.0)
+slab = csx.AddMaterial('slab', epsilon=3.25, mue=1.0)
 slab.AddBox(start=[0, -8, -8], stop=[8, 8, 8], priority=2)
 ```
 
@@ -342,7 +342,7 @@ is not a conformal-boundary method or fabrication-contour qualification.
 ```python
 trace = csx.AddMetal('finite_trace')
 trace.AddLinPoly(points=[[0, 2, 2, 0], [0, 0, .4, .4]],
-                 norm_dir=2, elevation=.27178, length=.018, priority=10)
+                 norm_dir=2, elevation=.3, length=.018, priority=10)
 ```
 
 Coordinates use the configured drawing unit. Normals X/Y/Z, reversed vertex

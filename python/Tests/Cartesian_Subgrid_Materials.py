@@ -33,7 +33,7 @@ def fixture(offset=(0, 0, 0), drawing_scale=1, reverse=False):
         point([-6, 0, -2]), point([-6, 0, 2]))
     csx.AddProbe('received', p_type=2).AddPoint(point([2, 2, 2]))
     csx.AddProbe('magnetic', p_type=3).AddPoint(point([2, 2, 2]))
-    definitions = [('slab', 3.556, 1, 2, [0, -8, -8], [8, 8, 8]),
+    definitions = [('slab', 3.25, 1, 2, [0, -8, -8], [8, 8, 8]),
                    ('priority', 6, 1.7, 9, [0, -2, -2], [2, 2, 2])]
     for name, eps, mue, priority, start, stop in (reversed(definitions) if reverse else definitions):
         csx.AddMaterial(name, epsilon=eps, mue=mue).AddBox(point(start), point(stop), priority=priority)

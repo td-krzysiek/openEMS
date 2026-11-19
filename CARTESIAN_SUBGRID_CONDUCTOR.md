@@ -262,7 +262,7 @@ pinned ordinary PR242 runtimes. No engine change follows from the comparison.
 | PEC | 0.002923 | 0.35744 deg | 0.00314 dB | 0.22067 ohm |
 | Smooth copper | 0.012696 | 0.96489 deg | 0.04453 dB | 0.94782 ohm |
 
-Values are maxima over24.000–24.250GHz. PEC passes the predeclared diagnostic
+Values are maxima over the recorded evaluation band. PEC passes the predeclared diagnostic
 limits; copper misses complex-S11<0.01. Independent interior-voltage phase
 error reaches0.94166deg, so the residual is not only current-port extraction.
 Raw-TD prefix extraction agrees with the official full port extraction and
@@ -278,8 +278,9 @@ production speedup or relaxed acceptance threshold is claimed.
 
 ## Compact curved-line two-resolution diagnosis
 
-R23 retains a separate public terminal-scale U: physical Cu18,139.105um
-width,250um centreline radius,0.5mm legs, fixed Z and400,000steps/5fs.
+R23 records a historical curved-line diagnostic with fixed Z and
+400,000steps/5fs. Its application-derived dimensions are retained privately;
+this summary is not an independently reproducible public fixture.
 All eight frozen native inputs complete on one physical RTX4090. Local
 execution uses qualified frozen R22 core SHA256
 `778c6ee7478fc284889a0c26acc5a4f233cc06a0486b8d37c39c10f25db7fb14`;
@@ -296,7 +297,7 @@ the two half-weight current files are summed once.
 |16/16/1|Smooth copper|0.006944176|0.008171deg|0.034716dB|Pass|
 
 The original gates remain complex S11<0.01, phase<1deg and magnitude<0.1dB
-over24.000–24.250GHz. Although the finer copper comparison passes, changing
+over the recorded evaluation band. Although the finer copper comparison passes, changing
 XY resolution8→16 changes phase3.37–3.43deg and complex S11 by0.0308–0.0331
 in both local and ordinary engines. All four two-level spatial-sensitivity
 gates fail. The1.5ns-to-full2ns complex-S11 change is at most2.44e-8; every

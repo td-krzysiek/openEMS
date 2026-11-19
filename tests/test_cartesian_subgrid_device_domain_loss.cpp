@@ -275,8 +275,8 @@ struct NativeFixture
 				csx.GetGrid()->AddDiscLine(n, i);
 			}
 		}
-		const double top = .77178 + thickness / .001;
-		for (double z : {0., .5, .77178, top, 1.5, 2.})
+		const double top = .8 + thickness / .001;
+		for (double z : {0., .5, .8, top, 1.5, 2.})
 		{
 			csx.GetGrid()->AddDiscLine(2, z);
 		}
@@ -286,21 +286,21 @@ struct NativeFixture
 		auto *box = new CSPrimBox(csx.GetParameterSet(), metal);
 		for (unsigned int n = 0; n < 3; ++n)
 		{
-			box->SetCoord(2 * n, n == 2 ? .77178 : 1.5);
+			box->SetCoord(2 * n, n == 2 ? .8 : 1.5);
 			box->SetCoord(2 * n + 1, n == 2 ? top : 2.5);
 		}
 		box->SetPriority(10);
 		if (bulk)
 		{
 			auto *substrate = new CSPropMaterial(csx.GetParameterSet());
-			substrate->SetEpsilon(3.556);
+			substrate->SetEpsilon(3.25);
 			substrate->SetKappa(.02);
 			csx.AddProperty(substrate);
 			auto *slab = new CSPrimBox(csx.GetParameterSet(), substrate);
 			for (unsigned int n = 0; n < 3; ++n)
 			{
 				slab->SetCoord(2 * n, n == 2 ? .5 : 0.);
-				slab->SetCoord(2 * n + 1, n == 2 ? .77178 : 4.);
+				slab->SetCoord(2 * n + 1, n == 2 ? .8 : 4.);
 			}
 		}
 		signal.SetupDiracPulse(30e9);

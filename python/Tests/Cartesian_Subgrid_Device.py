@@ -52,7 +52,7 @@ def fixture(kind='local', steps=2048, source_x=-10):
     for name, quantity in [('ef', 10), ('hf', 11)]:
         csx.AddDump(name, dump_type=quantity, file_type=1, frequency=[10e9,13e9,16e9]).AddBox([-4,-4,0], [4,4,0])
     if kind == 'material-pec':
-        csx.AddMaterial('dielectric', epsilon=3.556).AddBox([0,-16,-16], [16,16,16])
+        csx.AddMaterial('dielectric', epsilon=3.25).AddBox([0,-16,-16], [16,16,16])
         csx.AddMetal('pec-sheet').AddBox([-8,-4,-4], [-8,4,4])
     return fdtd, csx
 

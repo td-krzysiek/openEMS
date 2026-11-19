@@ -43,7 +43,7 @@ static Result Run(Shape shape, const SubgridDeviceTarget *target)
 			csx.GetGrid()->AddDiscLine(n, i);
 		}
 	}
-	const double lower = .77178, upper = .78978, middle = .5 * (lower + upper);
+	const double lower = .8, upper = .78978, middle = .5 * (lower + upper);
 	for (double z : {0., .5, lower, middle, upper, 1.5, 2.})
 	{
 		csx.GetGrid()->AddDiscLine(2, z);

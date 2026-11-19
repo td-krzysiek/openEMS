@@ -97,7 +97,7 @@ static void GridControl()
 	{
 		const auto material = [&](const Grid::Point &lo, const Grid::Point &)
 		{
-			return Grid::Medium{8.85418781762e-12 * (varying ? 1 + 19 * lo[0] + 29 * lo[1] + 43 * lo[2] : 3.556),
+			return Grid::Medium{8.85418781762e-12 * (varying ? 1 + 19 * lo[0] + 29 * lo[1] + 43 * lo[2] : 3.25),
 				1.2566370614359173e-6 * (varying && lo[2] >= .004 ? 1.7 : 1)};
 		};
 		Grid grid(lines, 8.85418781762e-12, 1.2566370614359173e-6, regions, false, material);
