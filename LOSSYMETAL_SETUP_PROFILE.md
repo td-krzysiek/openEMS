@@ -37,7 +37,7 @@ that a performance problem is a numerical defect.
 `benchmark/fixtures/lossymetal-cavity-1m.xml` is a preprocessing-only derivative
 of the public TE101 cavity geometry in PR242's `python/Tests/Lossy_Metal.py`:
 136×64×120 mesh lines, 1,012,095 geometric cells (1,044,480 grid locations), six
-1-mm wall boxes. It uses smooth58MS/m copper, Rq0 and a24.125GHz/4GHz Gaussian
+1-mm wall boxes. It uses smooth58MS/m copper, Rq0 and a Gaussian excitation
 frequency definition. It has no source primitive and is not the original
 cavity-Q validation. Run the command above in a disposable working directory,
 using this XML path. No project antenna or supplier geometry is included.
@@ -50,3 +50,7 @@ The on/off timing difference is within the observed short-run variability.
 The change is diagnostic, not a setup acceleration or a production-runtime
 recommendation. `--debug-operator --debug-PEC` outputs were byte-identical for
 all three variants;9/9 CTest checks passed. No FDTD steps were run.
+
+Recorded timings refer to their archived inputs and builds. Current public
+fixture parameters are independent generic defaults; old timing records do
+not establish new measurements for the revised fixtures.
