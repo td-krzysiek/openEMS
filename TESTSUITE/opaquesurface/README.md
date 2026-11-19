@@ -28,3 +28,8 @@ The checks are opt-in because they perform full field decay on about1.6million
 grid nodes. Boundary geometry remains restricted to disjoint conforming boxes;
 these checks do not qualify arbitrary connected copper, roughness, DC transfer
 or a full antenna. Frozen simulation results remain unchanged.
+
+The checked-in synthetic fixture uses independent generic parameters. Earlier
+recorded qualification numbers refer to their archived inputs and builds;
+they do not certify the replacement fixture. Keep numerical acceptance gates
+when running the current controls.

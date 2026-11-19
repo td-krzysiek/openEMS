@@ -59,7 +59,7 @@ def solve(binary,engine='multithreaded',pec=False):
                     if line and not line.startswith('%')]
                 if len(values)>1:
                     dt=values[1][0]-values[0][0]
-                    dfts[name]=sum(v*cmath.exp(-2j*math.pi*24.125e9*t) for t,v in values)*dt
+                    dfts[name]=sum(v*cmath.exp(-2j*math.pi*20e9*t) for t,v in values)*dt
         result=dict(exit=process.returncode,reason=reason,converged='reached after' in text,
             capped='Max. number of timesteps was reached' in text,
             dt=float(step.group(1)) if step else None,finite=all(math.isfinite(v) for v in samples),
@@ -111,7 +111,7 @@ class SurfaceStability(unittest.TestCase):
         self.assertIsNone(result['reason'])
         self.assertFalse(result['capped'])
         # Printed log precision; the native unspecialized grid timestep is fixed.
-        self.assertAlmostEqual(result['dt'],1.59336e-14,delta=1e-19)
+        self.assertAlmostEqual(result['dt'],1.65649e-14,delta=1e-19)
 
 
 if __name__=='__main__':unittest.main()
