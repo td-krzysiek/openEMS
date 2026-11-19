@@ -29,7 +29,7 @@ def fixture(rotation,pec=False,uniform=False):
     for face in fdtd.find('BoundaryCond').attrib:fdtd.find('BoundaryCond').set(face,'MUR')
     grid=root.find('ContinuousStructure/RectilinearGrid')
     lines=[[-2+i*.5 for i in range(49)],[-3+i*.5 for i in range(13)],
-           [-1.5,-1.,-.5,-.035,0.,.13589,.27178,.30678,.5,1.,1.5,2.]]
+           [-1.5,-1.,-.5,-.035,0.,.15,.3,.335,.5,1.,1.5,2.]]
     lines[1]+= [-.30060727534,0.,.30060727534]
     for node in root.iter():
         if all(a in node.attrib for a in 'XYZ'):
@@ -121,7 +121,7 @@ class OpaqueGPU(unittest.TestCase):
                         error=max(abs(a[1]-b[1]) for a,b in zip(ref,rows))/peak
                         self.assertLess(error,1e-4,(engine,rotation,name,error))
                         complex_error=0.
-                        for f in [22e9,24.125e9,26e9]:
+                        for f in [18e9,20e9,22e9]:
                             a=sum(v*cmath.exp(-2j*math.pi*f*t) for t,v in ref)
                             b=sum(v*cmath.exp(-2j*math.pi*f*t) for t,v in rows)
                             delta=abs(a-b)/max(abs(a),1e-30)
