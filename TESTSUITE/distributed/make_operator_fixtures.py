@@ -29,14 +29,14 @@ def main():
                 values += .008 * np.sin(np.arange(n) * .7)
             grid.AddLine(axis, values)
 
-        material = csx.AddMaterial('dielectric', epsilon=3.556)
+        material = csx.AddMaterial('dielectric', epsilon=3.25)
         material.AddBox([.8, .25, .2], [2.6, 1.4, 1.0], priority=1)
         metal = csx.AddMetal('PEC')
         metal.AddBox([.9, .9, .5], [2.4, 1.3, .7], priority=2)
 
         fdtd = openEMS(NrTS=120, EndCriteria=0)
         fdtd.SetCSX(csx)
-        fdtd.SetGaussExcite(24.125e9, 2e9)
+        fdtd.SetGaussExcite(20e9, 2e9)
         fdtd.SetBoundaryCond(['PEC'] * 6)
         fdtd.Write2XML(str(path))
 
