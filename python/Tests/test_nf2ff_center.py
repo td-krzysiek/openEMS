@@ -19,7 +19,7 @@ class NF2FFCenterTest(unittest.TestCase):
         obj=recording()
         np.testing.assert_allclose(obj._validate_center([0,0,.00013589]),[0,0,.00013589])
         with self.assertRaisesRegex(ValueError,'metres'):
-            obj.CalcNF2FF('unused',24e9,[0],[0],center=[0,0,.13589])
+            obj.CalcNF2FF('unused',24e9,[0],[0],center=[0,0,.15])
 
     def test_invalid_vector_and_boundary(self):
         obj=recording()
