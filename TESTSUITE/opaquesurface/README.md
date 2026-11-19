@@ -33,8 +33,8 @@ or a full antenna. Frozen simulation results remain unchanged.
 
 `test_gpu.py` uses small coarse versions of the same line, rotated through all
 three axes, with unequal fit orders (including 128 branches) and a PEC control.
-It compares the complete probe waveforms and complex DFTs at 22, 24.125 and
-26 GHz against the basic CPU engine. Peak waveform error must be below 1e-4;
+It compares the complete probe waveforms and complex DFTs at 18, 20 and
+22 GHz against the basic CPU engine. Peak waveform error must be below 1e-4;
 relative complex error must be below 5e-4. The CPU GPU-reference backend also
 runs, and is expected to reproduce the CPU boundary without FP32 device casts.
 These fixed-length cases test indexing and state updates, not field decay or
@@ -51,7 +51,7 @@ The optional backend string is checked against the actual solver log; use the
 reported HIP backend name when checking HIP/CUDA. With GPU enabled, both tests
 require all extensions on the device and reject host fallback. The stability
 test additionally compares the entire pulse with a 1e-4 relative peak tolerance
-and the 24.125-GHz complex probe voltages within 3e-5. It requires full decay to
+and the 20-GHz complex probe voltages within 3e-5. It requires full decay to
 -70 dB for each of standard CPU, tiled CPU and GPU.
 
 `OPENEMS_TEST_OUTPUT` retains XML, logs, probes and JSON comparison records.
@@ -84,3 +84,8 @@ and matching GPU plugins; wrapper executables may set those paths. Optional
 full decay or antenna qualification. Raw logs, XML, traces and timing records
 are retained; the unchanged full-decay case must reach −70 dB at the same step
 with identical before/after samples.
+
+The checked-in synthetic fixture uses independent generic parameters. Earlier
+recorded qualification numbers refer to their archived inputs and builds;
+they do not certify the replacement fixture. Keep numerical acceptance gates
+when running the current controls.
