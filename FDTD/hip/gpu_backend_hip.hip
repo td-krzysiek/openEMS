@@ -32,7 +32,6 @@
 
 #include "hip_internal.h"
 #include "hip_halo_buffer.hiph"
-#include <limits>
 #include "gpu_build_id.h"
 #include "FDTD/operator.h"
 
@@ -718,6 +717,8 @@ bool GPU_Backend_HIP::CalcFastEnergy(const unsigned int numNodes[3], double& E_e
 	return true;
 }
 
+namespace
+{
 class HIP_DeviceTimer : public GPU_DeviceTimer
 {
 public:
@@ -772,7 +773,7 @@ private:
 
 bool GPU_Backend_HIP::DownloadRange(bool currents, size_t offset, size_t count, FDTD_FLOAT* dst)
 {
-	if (offset+count > 3*d->numCells)
+	if (offset > 3*d->numCells || count > 3*d->numCells-offset)
 		return false;
 	const float* src = (currents ? d->curr : d->volt) + offset;
 	HIP_Check(hipMemcpyAsync(dst, src, count*sizeof(float), hipMemcpyDeviceToHost, d->Stream()), "range download");

@@ -94,12 +94,20 @@ def main():
     parser.add_argument("--engine", default="basic")
     parser.add_argument("--output", required=True)
     parser.add_argument("--legacy", action="store_true")
+    parser.add_argument("--devices", help="Comma-separated domain executors")
+    parser.add_argument("--cuts", help="Global X-node domain boundaries")
     parser.add_argument("--library-path", help="Child executable LD_LIBRARY_PATH; keep model bindings isolated")
     args = parser.parse_args()
     root = Path(args.output).resolve()
     root.mkdir(parents=True, exist_ok=False)
     command = [str(Path(args.binary).resolve()), "model.xml", "--engine=" + args.engine,
                "--numThreads=2", "--exact-endcriteria", "-v"]
+    if args.devices:
+        command.append("--gpu-devices="+args.devices)
+    if args.cuts:
+        if not args.devices:
+            parser.error("--cuts requires --devices")
+        command.append("--gpu-domain-cuts="+args.cuts)
     if args.legacy:
         command.append("--legacyHDF5Dumps")
     if args.library_path:
@@ -199,6 +207,12 @@ def main():
     fixture_module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(fixture_module)
     opaque = fixture_module.fixture(2, uniform=True)
+    if args.devices:
+        # Mur has no native domain adapter. This control tests checkpointed
+        # conductor histories with supported physical PEC boundaries.
+        boundary=opaque.find('FDTD/BoundaryCond')
+        for face in boundary.attrib:
+            boundary.set(face,'PEC')
     opaque_probes = [p.get('Name') for p in opaque.findall('ContinuousStructure/Properties/ProbeBox')]
     left, right = root / 'opaque-control', root / 'opaque-gated'
     for folder in [left, right]:
