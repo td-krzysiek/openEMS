@@ -45,6 +45,7 @@ public:
 	}
 
 protected:
+	bool BuildFittedExtension();
 	//! Copy constructor
 	Operator_Ext_ConductingSheet(Operator* op, Operator_Ext_ConductingSheet* op_ext);
 	double m_f_max;

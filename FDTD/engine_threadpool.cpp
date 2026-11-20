@@ -16,8 +16,11 @@
 *	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include <algorithm>
 #include <chrono>
+#include <cmath>
 #include <iomanip>
+#include <sstream>
 #include <iostream>
 #include <stdexcept>
 #include <vector>
@@ -208,16 +211,20 @@ void Engine_ThreadPool::Trial(unsigned int iterTS, double seconds)
 			best = t;
 	SetActive((best<n) ? best : -1);
 	m_Trying = false;
+	m_Eng->MarkTrialsEnd();
 	if (g_settings.GetVerboseLevel()>0)
 	{
 		// in MC/s like the progress of the run
 		const double cells = m_Eng->Op->GetNumberCells();
-		cout << "Multithreaded engine: tried";
+		// on its own stream, setprecision would stay set on cout
+		std::ostringstream line;
+		line << "Multithreaded engine: tried" << std::fixed << std::setprecision(1);
 		for (int t=0; t<=n; ++t)
 			if (m_TrialSpeed[t]>0)
-				cout << ((t<n) ? " tile " + std::to_string(t+1) : std::string(", flat")) << " "
-				     << std::fixed << std::setprecision(1) << m_TrialSpeed[t]*cells*1e-6 << std::defaultfloat << " MC/s";
-		cout << "; running " << ((best<n) ? "tile " + std::to_string(best+1) : std::string("flat")) << endl;
+				line << ((t<n) ? " tile " + std::to_string(t+1) : std::string(", flat")) << " "
+				     << m_TrialSpeed[t]*cells*1e-6 << " MC/s";
+		line << "; running " << ((best<n) ? "tile " + std::to_string(best+1) : std::string("flat"));
+		cout << line.str() << endl;
 	}
 }
 
@@ -308,6 +315,7 @@ Engine_ThreadPool::Engine_ThreadPool(Engine* eng, unsigned int numThreads)
 	m_TrialDir = 1;
 	m_TrialSeconds = 0;
 	m_TrialTS = 0;
+	m_TrialRate = 0;
 	m_TS_blocked = m_TS_flat = 0;
 	m_max_numThreads = AvailableThreads();
 	m_last_speed = 0;
@@ -392,11 +400,14 @@ void Engine_ThreadPool::ChangeNumThreads(unsigned int numThreads)
 	const bool blocked = (m_Grids.size()==1) && m_Eng->BuildBlockedPlans(m_numThreads, m_Choice) && !m_Choice.candidates.empty();
 	SetActive(blocked ? (int)m_Choice.start : -1);
 	m_Trying = blocked && (m_Choice.trialSeconds>0);
+	if (m_Trying)
+		m_Eng->MarkTrialsStart();
 	m_Trial = -1;
 	m_TrialDir = 1;
 	m_TrialSpeed.assign(m_Choice.candidates.size()+1, 0);
 	m_TrialSeconds = 0;
 	m_TrialTS = 0;
+	m_TrialRate = 0;
 
 	// every box of the plans must be one its engine can update: checked once here, not per update
 	for (size_t g=0; g<m_Grids.size(); ++g)
@@ -445,18 +456,49 @@ void Engine_ThreadPool::ChangeNumThreads(unsigned int numThreads)
 			m_Grids[g]->m_Eng_exts.at(n)->SetNumberOfThreads(m_numThreads);
 }
 
+unsigned int Engine_ThreadPool::TrialChunk() const
+{
+	const unsigned int step = m_Blocked ? BlockedPlans().front().k : 1;
+	// the warm-up has no speed to go by yet
+	unsigned int n = 16;
+	if (m_TrialRate>0)
+	{
+		// the rest of the trial running at its own speed so far, else at the speed of the one before; and a few
+		// blocks at the start of a trial, where a single one on a large model times the switch more than the candidate
+		const double rate = ((m_TrialTS>0) && (m_TrialSeconds>0)) ? m_TrialTS/m_TrialSeconds : m_TrialRate;
+		const double rest = std::max(m_Choice.trialSeconds - m_TrialSeconds, 0.0);
+		n = (unsigned int)std::min(std::ceil(rest*rate), 1e6);
+		n = std::max(n, (m_TrialTS>0) ? step : 4*step);
+	}
+	// whole blocks: no flat step or short block at the end of each chunk
+	return (n+step-1)/step*step;
+}
+
 void Engine_ThreadPool::IterateTS(unsigned int iterTS)
 {
-	const std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
-	m_iterTS = iterTS;
-	m_startBarrier->wait(); // start the threads
-	m_stopBarrier->wait(); // wait for the threads to finish <iterTS> time steps
-	if (m_Trying)
-		Trial(iterTS, std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count());
+	// while trying, in chunks of about the rest of the trial: a trial must not last as long as
+	// the caller's interval, which the processing sets and can be a long time on a large model
+	while (iterTS>0)
+	{
+		const unsigned int n = m_Trying ? std::min(iterTS, TrialChunk()) : iterTS;
+		iterTS -= n;
 
-	// the grids from their sub-grids, the innermost first
-	for (size_t g=m_Grids.size()-1; g-->0; )
-		m_Grids[g]->InterpolateFromSubGrid();
+		const std::chrono::steady_clock::time_point t0 = std::chrono::steady_clock::now();
+		m_iterTS = n;
+		m_startBarrier->wait(); // start the threads
+		m_stopBarrier->wait(); // wait for the threads to finish <n> time steps
+		if (m_Trying)
+		{
+			const double seconds = std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count();
+			if (seconds>0)
+				m_TrialRate = n/seconds;
+			Trial(n, seconds);
+		}
+
+		// the grids from their sub-grids, the innermost first
+		for (size_t g=m_Grids.size()-1; g-->0; )
+			m_Grids[g]->InterpolateFromSubGrid();
+	}
 }
 
 void Engine_ThreadPool::NextInterval(float curr_speed)

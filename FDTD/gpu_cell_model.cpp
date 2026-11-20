@@ -231,3 +231,51 @@ double GPU_CellModel::NodeBytes() const
 	}
 	return bytes;
 }
+
+GPU_CellModel::GPU_CellModel(const GPU_CellModel& source, unsigned int begin, unsigned int end)
+{
+    if (begin >= end || end > source.numLines[0])
+        throw std::invalid_argument("invalid GPU cell-model domain");
+    numLines[0] = end - begin + 2;
+    numLines[1] = source.numLines[1];
+    numLines[2] = source.numLines[2];
+    const size_t plane = size_t(numLines[1])*numLines[2];
+    for (int f=0; f<2; ++f)
+    {
+        const Field& src = source.field[f];
+        Field& dst = field[f];
+        dst.slotFloats = src.slotFloats;
+        dst.poles = src.poles;
+        for (int q=0; q<5; ++q) dst.profile[q] = src.profile[q];
+        for (int n=0; n<3; ++n)
+        {
+            dst.gz[n] = src.gz[n];
+            dst.gxy[n].resize(size_t(numLines[0])*numLines[1]);
+        }
+        dst.index.resize(size_t(numLines[0])*plane);
+        if (!src.slot.empty()) dst.slot.assign(dst.index.size(), UINT32_MAX);
+        std::vector<uint32_t> combos(src.combos.size(), UINT32_MAX);
+        for (unsigned int x=0; x<numLines[0]; ++x)
+        {
+            const unsigned int gx = std::max<int64_t>(0, std::min<int64_t>(int64_t(source.numLines[0])-1, int64_t(begin)+x-1));
+            for (int n=0; n<3; ++n)
+                std::copy_n(src.gxy[n].begin()+size_t(gx)*numLines[1], numLines[1], dst.gxy[n].begin()+size_t(x)*numLines[1]);
+            for (size_t yz=0; yz<plane; ++yz)
+            {
+                const size_t a=size_t(gx)*plane+yz, b=size_t(x)*plane+yz;
+                const uint32_t combo=src.index[a];
+                if (combos.at(combo)==UINT32_MAX)
+                {
+                    combos[combo]=uint32_t(dst.combos.size());
+                    dst.combos.push_back(src.combos[combo]);
+                }
+                dst.index[b]=combos[combo];
+                if (!src.slot.empty() && x>0 && x+1<numLines[0] && src.slot[a]!=UINT32_MAX)
+                {
+                    // The expanded model has one history slot per stateful node.
+                    dst.slot[b]=uint32_t(dst.numSlots++);
+                }
+            }
+        }
+    }
+}

@@ -101,8 +101,9 @@ in `result.json` too (`engine_info` of each point).
 
 The CPU engine (`--engine=cpu`, experimental) is tuned on one 8-core desktop
 CPU: how many timesteps a block holds and how wide a tile is come from the
-cache size, all threads work on one tile. At the start of a run it tries two
-tile sizes and the flat sweep and keeps the fastest, which covers a cache size
+cache size, each thread works on tiles of its own, sized for its share of the
+cache. At the start of a run it tries the tiles of up to two timesteps more
+and fewer and the flat sweep and keeps the fastest, which covers a cache size
 that is off; machines with many cores, an L3 split over several chiplets or two
 sockets may still want other choices. To help,
 run on such a machine, with the physical core counts you want to compare:
@@ -113,10 +114,8 @@ python3 benchmark/bench.py run --engine cpu,multithreaded --size M,L --threads 8
 ```
 
 and send the `result.json`: it holds the machine, the build, the speeds,
-what the engine chose and the probes, no field data. `bench.py` turns the
-engine's trials of tile sizes off (a start-up cost, like the setup); a
-variant `trials:OPENEMS_CPU_TRIAL=1` with `--duration 10` shows what they
-choose on that machine. The `multithreaded`
+what the engine chose and the probes, no field data. The speeds are those
+of the tile the engine's trials keep (see below). The `multithreaded`
 rows are the default engine on that machine for reference; the variables do
 not touch it, so its two variants agree up to noise.
 
@@ -124,7 +123,7 @@ Its variables, all experimental (they may change or go):
 
 | Variable | |
 |---|---|
-| `OPENEMS_CPU_TBLOCK` | `0`: no temporal blocking; `k` or `k:W`: k timesteps per block (2 at least), tiles of W lines, several separated by commas, ordered: the trials search them from the first (default: the tile from the cache size, and tiles 4x and 2x, half and a quarter as wide) |
+| `OPENEMS_CPU_TBLOCK` | `0`: no temporal blocking; `k` or `k:W`: k timesteps per block (2 at least), tiles of W x W lines (along the two slow axes, 2k+1 at least), several separated by commas, ordered: the trials search them from the first (default: the tile from the cache size, and those of up to two timesteps more and fewer) |
 | `OPENEMS_CPU_TRIAL` | the seconds the engine runs each tile it tries and the flat sweep at the start before it keeps the fastest; `0` none (default: 0.5 with the automatic tiles, none with `OPENEMS_CPU_TBLOCK`) |
 | `OPENEMS_CPU_CACHE` | the cache size in MiB the tiles are sized for (default: the last level cache the system reports) |
 | `OPENEMS_CPU_FAST_AXIS` | `x`, `y` or `z`: the axis contiguous in memory (default: the one with the longest runs of equal cells) |
@@ -155,6 +154,17 @@ release to compare against. The speed is the one openEMS measured itself,
 over the timesteps it did. The setup before comes on top and is reported
 separately.
 
+The CPU and GPU engines try their tiles, and the flat sweep, during the first
+seconds of a run and keep the fastest. Then the `--duration` starts only at
+the end of these trials, and the speed is the one after them, which openEMS
+reports at `-v` (`Speed after the trials`): what a long run gets.
+`mcells_s_total` in `result.json` keeps the speed of the whole run, the
+trials included, and the table's **total s** the wall time of the whole
+process: the setup, the trials and the `--duration`. Long trials show there;
+trials that do not end within ten times the `--duration` (60 s at least) fail
+the run. `OPENEMS_CPU_TRIAL=0` or `OPENEMS_GPU_TRIAL=0` time the engine's
+first choice without trials.
+
 The cases are driven by a sinusoidal source, so the energy never decays and
 no run ends on its own; one that does is reported as failed. A sinus also
 enables the steady-state detection, which is part of every case. Since the
@@ -172,3 +182,63 @@ A pull request that claims a speed-up includes the `compare` table of master
 against the branch, run interleaved on one machine, together with the machine
 line from its header. A speed-up that only shows on a case outside this suite
 is shown with that case in the pull request, not by adding it here.
+
+## Attribute setup time
+
+The solver already prints aggregate setup time. Enable an additional coarse
+phase profile with `openEMS model.xml --profile-setup`, or set
+`OPENEMS_PROFILE_SETUP=1`. This also works through Python
+`FDTD.Run(path, profile_setup=True)` and Matlab
+`RunOpenEMS(path, file, '--profile-setup')`; no model/XML change is needed.
+The command-line flag enables profiling even when the environment is `0`.
+
+The benchmark retains the optional record in each run's `setup_profile` field:
+
+```bash
+python3 benchmark/bench.py run --engine multithreaded,gpu --cases pml,inhomogeneous \
+    --size S --threads 4 --repeat 7 \
+    --variant off:OPENEMS_PROFILE_SETUP=0 --variant on:OPENEMS_PROFILE_SETUP=1
+```
+
+One `Setup profile: {...}` JSON log line is written when `SetupFDTD()` exits.
+Schema `openems.setup-profile.v1` contains `status` (`complete` or `incomplete`),
+`scope` (`setup` or `operator-only` for `--no-simulation`), total `seconds`, and
+an ordered `phases` array. Each phase has `name`, `detail`, `parent` (index of
+its enclosing phase, or -1) and `seconds`. Repeated names are separate calls,
+including cylindrical multigrid/retries. Extension names appear in `detail`.
+`complete` denotes the existing successful setup return path; this diagnostic
+does not introduce new numerical validation or alter existing error handling.
+
+Timings use a monotonic host clock and are **inclusive**: do not sum a parent
+with its children. Stages cover geometry update/import, operator storage,
+materials, timestep, coefficients, PEC, lumped elements, each operator extension,
+engine construction, cell-model analysis/build, GPU packing/backend initialization,
+and processing. Uninstrumented work remains in the enclosing total; the phases
+are not a partition of every setup instruction. XML parsing before `SetupFDTD()`
+and FDTD stepping are outside the profile. The existing benchmark `setup_s`
+(process wall time minus FDTD time) therefore has a different scope.
+
+There are no per-cell/per-step timer calls and no new device synchronization.
+GPU backend initialization is a host call interval, including any blocking the
+backend already performs, **not** a GPU-event measurement or proof that all
+asynchronous work finished. The disabled path performs no clock reads or log
+writes. Compare interleaved repeats and their spread before attributing a
+small timing difference to profiling; shared machine load and caching matter.
+
+Parser regression tests (standard library only):
+
+```bash
+python3 -m unittest discover -s benchmark -p 'test_setup_profile.py' -v
+```
+
+### Experimental multi-device integration
+
+This stacked branch backports the same profiler to the PR32 multi-device runtime,
+whose GPU preparation predates upstream's expanded GPU cell model. The
+`gpu.backend_init` host scope wraps that runtime's existing Init call; there is
+no new GPU cell-model conversion or UPML change. Additional
+`operator.preprocess_extension`, `gpu.domains_init` and indexed `gpu.domain_init`
+scopes attribute custom preprocessing and serial per-domain construction. Domain
+indices follow the separately recorded ordered device list. These are setup-only
+host scopes, independent of sampled execution-time events. Rebuild core and
+plugins together; do not replace a running simulation's libraries.

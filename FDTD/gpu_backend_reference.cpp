@@ -1,3 +1,4 @@
+#include "gpu_domain_layout.h"
 /*
 *	Copyright (C) 2026 Sean Mollet (sean@malmoset.com)
 *
@@ -35,7 +36,7 @@ GPU_Backend_Reference::GPU_Backend_Reference()
 bool GPU_Backend_Reference::Init(const Operator* op, const GPU_CellModel& model)
 {
 	for (int n=0; n<3; ++n)
-		numLines[n] = op->GetNumberOfLines(n, true);
+		numLines[n] = model.numLines[n];
 	if ((model.numLines[0]!=numLines[0]) || (model.numLines[1]!=numLines[1]) || (model.numLines[2]!=numLines[2]))
 		return false;
 	m_volt.Init("gpu_volt", numLines);
@@ -64,21 +65,21 @@ bool GPU_Backend_Reference::Init(const Operator* op, const GPU_CellModel& model)
 	return true;
 }
 
-// the kernels of the device backends (kernels/cell_update.h) on the x planes [x0, x1), one plane per item
-void GPU_Backend_Reference::Update(bool voltages, unsigned int x0, unsigned int x1)
+// the kernels of the device backends (kernels/cell_update.h) on the nodes of the box, an x plane per item
+void GPU_Backend_Reference::Update(bool voltages, const Engine_Box& box)
 {
 	const unsigned int nx = numLines[0], ny = numLines[1], nz = numLines[2];
-	x1 = std::min(x1, nx);
-	if (x0>=x1)
+	CM_Box b;
+	if (!GPU_UpdateBox(box, nx, ny, nz, b))
 		return;
 	float* V = m_volt.data();
 	float* I = m_curr.data();
 	const uint32_t* index = m_Model->field[voltages ? 0 : 1].index.data();
 	const CM_Field& F = m_Field[voltages ? 0 : 1];
-	ParallelFor(x1-x0, AvailableThreads(), [&](unsigned int, size_t begin, size_t end) {
-		for (unsigned int x=x0+(unsigned int)begin; x<x0+end; ++x)
-			for (unsigned int y=0; y<ny; ++y)
-				for (unsigned int z=0; z<nz; ++z)
+	ParallelFor(b.x1-b.x0, AvailableThreads(), [&](unsigned int, size_t begin, size_t end) {
+		for (unsigned int x=b.x0+(unsigned int)begin; x<b.x0+end; ++x)
+			for (unsigned int y=b.y0; y<b.y1; ++y)
+				for (unsigned int z=b.z0; z<b.z1; ++z)
 					if (voltages)
 						cm_update_voltages<uint32_t>(V, I, index, F, nx, ny, nz, x, y, z);
 					else
@@ -86,8 +87,8 @@ void GPU_Backend_Reference::Update(bool voltages, unsigned int x0, unsigned int 
 	});
 }
 
-void GPU_Backend_Reference::UpdateVoltages(const Engine_Box& box) {Update(true, box.start[0], box.stop[0]);}
-void GPU_Backend_Reference::UpdateCurrents(const Engine_Box& box) {Update(false, box.start[0], box.stop[0]);}
+void GPU_Backend_Reference::UpdateVoltages(const Engine_Box& box) {Update(true, box);}
+void GPU_Backend_Reference::UpdateCurrents(const Engine_Box& box) {Update(false, box);}
 
 static void CopyField(const ArrayLib::ArrayNIJK<FDTD_FLOAT>& src, ArrayLib::ArrayNIJK<FDTD_FLOAT>& dst)
 {
@@ -118,8 +119,17 @@ void GPU_Backend_Reference::DeviceDownload(void* host, const void* dev, size_t b
 bool GPU_Backend_Reference::CalcFastEnergy(const unsigned int numNodes[3], double& E_energy, double& H_energy)
 {
 	E_energy = H_energy = 0;
+	unsigned int first=0, stop=numNodes[0];
+	const auto* domain=DomainLayout();
+	for (int n=0;n<3;++n)
+		if (numNodes[n]>(domain ? domain->global[n] : numLines[n])) return false;
+	if (domain)
+	{
+		first=1;
+		stop=1+(std::min(numNodes[0],domain->end)>domain->begin ? std::min(numNodes[0],domain->end)-domain->begin : 0);
+	}
 	unsigned int pos[3];
-	for (pos[0]=0; pos[0]<numNodes[0]; ++pos[0])
+	for (pos[0]=first; pos[0]<stop; ++pos[0])
 		for (pos[1]=0; pos[1]<numNodes[1]; ++pos[1])
 			for (pos[2]=0; pos[2]<numNodes[2]; ++pos[2])
 			{
@@ -133,30 +143,76 @@ bool GPU_Backend_Reference::CalcFastEnergy(const unsigned int numNodes[3], doubl
 
 namespace
 {
-//! the points [begin, end) of \a op on the host threads, or in order
+//! the points [begin, end) of \a op that \a f passes, on the host threads, or in order
 template <typename Op>
-void Run(const void* op, uint64_t begin, uint64_t end, bool serial)
+void Run(const void* op, uint64_t begin, uint64_t end, bool serial, const CM_PointFilter& f)
 {
 	const Op& o = *(const Op*)op;
 	if (serial || (end-begin<1024))
 	{
 		for (uint64_t n=begin; n<end; ++n)
-			o(n);
+			if (f(n))
+				o(n);
 		return;
 	}
 	ParallelFor(end-begin, AvailableThreads(), [&](unsigned int, size_t b, size_t e) {
 		for (size_t n=b; n<e; ++n)
-			o(begin+n);
+			if (f(begin+n))
+				o(begin+n);
 	});
 }
 }
 
-void GPU_Backend_Reference::RunPoints(GPU_PointOp kind, const void* op, uint64_t begin, uint64_t end, bool serial)
+void GPU_Backend_Reference::RunPoints(GPU_PointOp kind, const void* op, uint64_t begin, uint64_t end, bool serial, const CM_PointFilter& filter)
 {
 	switch (kind)
 	{
-#define RUN(K, T, name) case K: Run<T>(op, begin, end, serial); break;
+#define RUN(K, T, name) case K: Run<T>(op, begin, end, serial, filter); break;
 	CM_POINT_OPS(RUN)
 #undef RUN
 	}
+}
+
+bool GPU_Backend_Reference::DownloadRange(bool currents, size_t offset, size_t count, float* dst)
+{
+	auto& field = currents ? m_curr : m_volt;
+	if (offset > field.size() || count > field.size() - offset)
+	{
+		throw std::out_of_range("reference download range");
+	}
+	std::copy(field.data() + offset, field.data() + offset + count, dst);
+	return true;
+}
+
+bool GPU_Backend_Reference::UploadRange(
+    bool currents, size_t offset, size_t count, const float* src)
+{
+	auto& field = currents ? m_curr : m_volt;
+	if (offset > field.size() || count > field.size() - offset)
+	{
+		throw std::out_of_range("reference upload range");
+	}
+	std::copy(src, src + count, field.data() + offset);
+	return true;
+}
+
+bool GPU_Backend_Reference::CopyRange(
+    bool currents, size_t source, size_t destination, size_t count)
+{
+	auto& field = currents ? m_curr : m_volt;
+	const size_t size = field.size();
+	if (source > size || count > size - source || destination > size || count > size - destination)
+	{
+		return false;
+	}
+	if (!count || source == destination)
+	{
+		return true;
+	}
+	if (source < destination + count && destination < source + count)
+	{
+		return false;
+	}
+	std::copy(field.data() + source, field.data() + source + count, field.data() + destination);
+	return true;
 }

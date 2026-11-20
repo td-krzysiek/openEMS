@@ -16,7 +16,9 @@
 */
 
 #include <algorithm>
+#include "tools/setup_profile.h"
 #include <chrono>
+#include <cmath>
 #include <cstdlib>
 #include <stdexcept>
 
@@ -28,6 +30,7 @@
 #include "engine_subgrid.h"
 #include "extensions/engine_extension.h"
 #include "extensions/engine_ext_absorbing_bc.h"
+#include "extensions/engine_ext_cylinder.h"
 #include "extensions/operator_extension.h"
 
 using std::cout;
@@ -76,6 +79,15 @@ Engine_GPU::~Engine_GPU()
 
 void Engine_GPU::Init()
 {
+	SetupProfile::Phase initPhase("gpu.engine_init");
+	// These A/B controls addressed the retired coefficient-array/branch kernels.
+	// Reject them rather than silently presenting identical runs as comparisons.
+	if (const char* value = getenv("OPENEMS_GPU_MAIN_COEFF"))
+		if (*value && std::string(value)!="auto")
+			throw std::invalid_argument("OPENEMS_GPU_MAIN_COEFF: the cell-model runtime only supports auto");
+	if (const char* value = getenv("OPENEMS_GPU_LOSSY_FUSION"))
+		if (*value)
+			throw std::invalid_argument("unset OPENEMS_GPU_LOSSY_FUSION: the cell model replaces the legacy branch kernels");
 	// a sub-grid shares the device work stream of its parent grid
 	if (m_ParentBackend)
 		m_Backend = m_ParentBackend->NewSubGridBackend();
@@ -95,8 +107,14 @@ void Engine_GPU::Init()
 	// The memory peak as in Engine_CPU::Init(): the operator's coefficients go once the model
 	// is built, the model is expanded and uploaded (and freed) before the host mirror comes
 	CellModel model(Op);
-	model.Analyse(true);
-	model.Build(2, 0, 1);
+	{
+		SetupProfile::Phase phase("gpu.cell_model_analyse");
+		model.Analyse(true);
+	}
+	{
+		SetupProfile::Phase phase("gpu.cell_model_build");
+		model.Build(2, 0, 1);
+	}
 	if (Op->GetDebugFlags() & Operator::debugOperator)
 		model.Dump("cellmodel_dump");
 	if (m_ModelBuilt)
@@ -105,13 +123,17 @@ void Engine_GPU::Init()
 		m_ModelBuilt = nullptr;
 	}
 	{
+		SetupProfile::Phase phase("gpu.cell_model_expand_upload");
 		const GPU_CellModel expanded(model, numLines);
 		m_NodeBytes = expanded.NodeBytes();
 		if (!m_Backend->Init(Op, expanded))
 			throw std::runtime_error("Engine_GPU::Init: GPU backend initialization failed");
 	}
 	// allocates the host mirror and creates the extensions
-	Engine::Init();
+	{
+		SetupProfile::Phase phase("gpu.engine_base_init");
+		Engine::Init();
+	}
 	model.DropFused(m_Eng_exts);
 	model.FreeFused();
 
@@ -127,7 +149,7 @@ void Engine_GPU::Init()
 	std::string missing;
 	for (Engine_Extension* eng_ext : m_Eng_exts)
 	{
-		GPU_Extension* gpu_ext = GPU_CreateExtension(eng_ext, m_Backend, numLines);
+		GPU_Extension* gpu_ext = m_Backend->HasDomainPhases() ? m_Backend->CreateExtension(eng_ext, this) : GPU_CreateExtension(eng_ext, m_Backend, numLines);
 		if (gpu_ext)
 			m_GPU_exts.push_back(gpu_ext);
 		else
@@ -135,39 +157,68 @@ void Engine_GPU::Init()
 	}
 	if (!missing.empty())
 		throw std::runtime_error("Engine_GPU: no device implementation (gpu_ext.h) of the " + missing);
+	if (g_settings.GetVerboseLevel()>0)
+		cout << "Engine_GPU: all extensions run on the device (" << m_GPU_exts.size()
+		     << " point extensions, fused cell-model updates)" << endl;
 	m_BlockingPrepared = false;
 }
 
 void Engine_GPU::PrepareBlocking()
 {
+	if (m_Backend->HasDomainPhases())
+	{
+		m_BlockCandidates.clear(); m_Block=-1; m_Trial=-1;
+		m_Fused=false; m_FlatSplit=true;
+		if (g_settings.GetVerboseLevel()>0)
+			cout << "Engine_GPU: cell model per domain; temporal blocking across domains disabled" << endl;
+		return;
+	}
+
 	m_BlockCandidates.clear();
 	m_Block = -1;
 	m_Trial = -1;
 	m_FlatSplit = false;
 	// as Engine_CPU: tiles given (no trials then, unless asked for), or the cache size to choose them from
-	std::vector< std::pair<unsigned int, unsigned int> > tiles;   // (k, W)
-	const bool explicitTile = Engine_TilesFromEnv("OPENEMS_GPU_TBLOCK", tiles);
-	m_TrialSeconds = Engine_NumberFromEnv("OPENEMS_GPU_TRIAL", tiles.empty() ? 0.3 : 0, true);
+	std::vector< std::pair<unsigned int, unsigned int> > given;   // (k, W)
+	const bool explicitTile = Engine_TilesFromEnv("OPENEMS_GPU_TBLOCK", given);
+	m_TrialSeconds = Engine_NumberFromEnv("OPENEMS_GPU_TRIAL", given.empty() ? 0.3 : 0, true);
+	// tiles of whole planes, cut along x (wM the lines of y), and tiles cut along x and y as well, for planes too large for
+	// the cache: those do not grow with the cross-section. Not along y with a cylinder (its hooks need the whole alpha
+	// axis, y; cutting z, the fast axis, instead was slower than whole planes, measured at 100 and 200 million cells)
+	// or a local absorber normal to y
+	const int S = 0, M = 1;
+	bool cutM = true;
+	for (size_t n=0; n<m_Eng_exts.size(); ++n)
+		if (dynamic_cast<const Engine_Ext_Cylinder*>(m_Eng_exts[n]))
+			cutM = false;
+	struct Tile {unsigned int k, wS, wM;};
+	std::vector<Tile> tiles;
 	std::string why;
-	if (explicitTile && tiles.empty())
+	if (explicitTile && given.empty())
 		why = "OPENEMS_GPU_TBLOCK=0";
 	else if (m_SubGrid || m_ParentBackend)
 		why = "a cylindrical multi-grid";
-	// a local absorber needs its sheet and the next line along its normal in one box: the boxes split x
+	// a local absorber needs its sheet and the next line along its normal in one box
 	// (Engine_CPU blocks along its normal instead, Engine_CPU::ChooseLayout())
 	for (size_t n=0; n<m_Eng_exts.size() && why.empty(); ++n)
-	{
-		const Engine_Ext_Absorbing_BC* abc = dynamic_cast<const Engine_Ext_Absorbing_BC*>(m_Eng_exts[n]);
-		if (abc && (abc->GetNormalAxis()==0))
-			why = "a local absorber normal to x";
-	}
+		if (const Engine_Ext_Absorbing_BC* abc = dynamic_cast<const Engine_Ext_Absorbing_BC*>(m_Eng_exts[n]))
+		{
+			if (abc->GetNormalAxis()==S)
+				why = "a local absorber normal to x";
+			else if (abc->GetNormalAxis()==M)
+				cutM = false;
+		}
+	if (why.empty())
+		for (const std::pair<unsigned int, unsigned int>& t : given)
+			tiles.push_back(Tile{t.first, t.second, cutM ? t.second : numLines[M]});
 
 	std::string skipFused;   // why the fused step is not worth trying
 	if (why.empty() && !explicitTile)
 	{
-		// the tile: what the main updates read of its planes (GPU_CellModel::NodeBytes()) in the last-level cache. Of its
-		// size, if the backend tells it (or OPENEMS_GPU_CACHE): tiles of 1/2, 3/4 and all of it; else of 8 to
-		// 256 MiB. The trials keep the fastest
+		// the tile: what the main updates read of its lines (GPU_CellModel::NodeBytes()) in the last-level cache. Of
+		// its size, if the backend tells it (or OPENEMS_GPU_CACHE): whole planes in 1/2, 3/4 and all of it, square
+		// tiles in 1/8, 1/4 and 1/2 (they drift along two axes, measured: smaller ones faster); else of 8 to 256 MiB.
+		// The trials keep the fastest
 		std::string source;
 		double cache = (double)m_Backend->CacheBytes(source);
 		if (const double mib = Engine_NumberFromEnv("OPENEMS_GPU_CACHE", 0, false))
@@ -175,12 +226,18 @@ void Engine_GPU::PrepareBlocking()
 			cache = mib*1048576.0;
 			source = "OPENEMS_GPU_CACHE";
 		}
-		std::vector<double> budgets;
+		std::vector<double> planeBudgets, squareBudgets;
 		if (cache>0)
-			budgets = {0.5*cache, 0.75*cache, cache};
+		{
+			planeBudgets = {0.5*cache, 0.75*cache, cache};
+			squareBudgets = {0.125*cache, 0.25*cache, 0.5*cache};
+		}
 		else
 			for (double mib=8; mib<=256; mib*=2)
-				budgets.push_back(mib*1048576.0);
+			{
+				planeBudgets.push_back(mib*1048576.0);
+				squareBudgets.push_back(mib*1048576.0/4);
+			}
 		if (g_settings.GetVerboseLevel()>0)
 		{
 			if (cache>0)
@@ -188,19 +245,38 @@ void Engine_GPU::PrepareBlocking()
 			else
 				cout << "Engine_GPU: last-level cache unknown, tiles for 8 to 256 MiB" << endl;
 		}
-		const double plane = (double)numLines[1]*numLines[2]*m_NodeBytes;
-		for (double bytes : budgets)
+		const double line = (double)numLines[2]*m_NodeBytes;   // along z, which every tile spans
+		auto add = [&](std::vector<Tile>& list, unsigned int wS, unsigned int wM) {
+			const unsigned int k = std::min(8u, (std::min(wS, wM)>0) ? (std::min(wS, wM)-1)/2 : 0);
+			const unsigned int count = Engine_BlockedPlan::TileCount(numLines[S], wS)*Engine_BlockedPlan::TileCount(numLines[M], wM);
+			if ((k>=2) && (count>=2) && (list.empty() || (list.back().wS!=wS)))
+				list.push_back(Tile{k, wS, wM});
+		};
+		std::vector<Tile> planes, squares;
+		for (double bytes : planeBudgets)
+			add(planes, (unsigned int)(bytes/(line*numLines[M])), numLines[M]);
+		// squares only where whole planes hold fewer than 8 timesteps: else those are as fast or faster (measured)
+		if (cutM && (planes.empty() || (planes.back().k<8)))
+			for (double bytes : squareBudgets)
+			{
+				const unsigned int w = (unsigned int)std::sqrt(bytes/line);
+				if (w<numLines[M])
+					add(squares, w, w);
+			}
+		// the first is the start without trials: the middle square if any, else the smallest plane
+		if (!squares.empty())
 		{
-			const unsigned int W = (unsigned int)(bytes/plane);
-			const unsigned int k = std::min(8u, (W>0) ? (W-1)/2 : 0);
-			if ((k>=2) && (2*W<=numLines[0]) && (tiles.empty() || (tiles.back().second!=W)))
-				tiles.push_back(std::make_pair(k, W));
+			const size_t mid = squares.size()/2;
+			tiles.push_back(squares[mid]);
+			squares.erase(squares.begin()+mid);
 		}
+		tiles.insert(tiles.end(), squares.begin(), squares.end());
+		tiles.insert(tiles.end(), planes.begin(), planes.end());
 		if (tiles.empty())
-			why = "the model fits the cache, or a plane is too large for it";
+			why = "the model fits the cache, or the smallest tile is too large for it";
 		// a tile of the full depth streams the fields once per 8 timesteps, the fused step once per timestep:
 		// with the cache known to hold one, the fused step cannot win, so neither its memory nor its trial
-		else if ((cache>0) && (tiles.back().first>=8))
+		else if ((cache>0) && std::any_of(tiles.begin(), tiles.end(), [](const Tile& t) {return t.k>=8;}))
 			skipFused = "the cache holds tiles of 8 timesteps";
 	}
 	PrepareFused(skipFused);
@@ -218,18 +294,22 @@ void Engine_GPU::PrepareBlocking()
 		}
 		return;
 	}
-	for (const std::pair<unsigned int, unsigned int>& t : tiles)
+	for (const Tile& t : tiles)
 	{
 		std::vector<Engine_BlockedPlan> plans;
-		for (unsigned int k=t.first; k>=2; --k)
-			plans.push_back(Engine_BlockedPlan::Parallelograms(numLines, 1, 0, 1, t.second, k));
+		for (unsigned int k=t.k; k>=2; --k)
+			plans.push_back(Engine_BlockedPlan::Parallelograms(numLines, S, M, t.wS, t.wM, k));
 		m_BlockCandidates.push_back(plans);
 	}
 	if (g_settings.GetVerboseLevel()>0)
 	{
-		cout << "Engine_GPU: temporal blocking, tiles to try (timesteps:lines)";
+		cout << "Engine_GPU: temporal blocking along " << (char)('x'+S) << " and " << (char)('x'+M) << ", tiles to try (timesteps:lines)";
 		for (size_t c=0; c<tiles.size(); ++c)
-			cout << " " << c+1 << ") " << tiles[c].first << ":" << tiles[c].second << " (" << m_BlockCandidates[c].front().tiles << " tiles)";
+		{
+			const Engine_BlockedPlan& plan = m_BlockCandidates[c].front();
+			cout << " " << c+1 << ") " << tiles[c].k << ":" << tiles[c].wS << "x" << std::min(tiles[c].wM, numLines[M]) << " ("
+			     << plan.tiles[0] << "x" << plan.tiles[1] << " tiles)";
+		}
 		cout << (m_TrialSeconds>0 ? (m_FlatTrial ? ", the fused step and the two updates" : ", and the flat sweep") : "") << endl;
 	}
 	m_Block = 0;
@@ -245,6 +325,7 @@ void Engine_GPU::PrepareBlocking()
 
 void Engine_GPU::StartTrials()
 {
+	MarkTrialsStart();
 	m_Trial = 0;
 	m_TrialSteps = 0;
 	m_TrialSpeed.assign(m_BlockCandidates.size() + 1 + (m_FlatTrial ? 1 : 0), 0);
@@ -389,6 +470,11 @@ void Engine_GPU::TrialProgress(unsigned int steps)
 		return;
 	}
 	m_TrialSteps += steps;
+	// the launches are asynchronous: the host would queue far more than the trial's time of work (a few
+	// hundred timesteps fit in the queue of HIP, seconds of a large model), so it waits for the device after
+	// every block or flat step of a trial (a few 10 us; the candidates of a model small enough for that to
+	// matter are flat steps alike)
+	m_Backend->Synchronize();
 	if (m_TrialTime + WallSeconds()-m_TrialMark < m_TrialSeconds)
 		return;
 	TrialClock(false);
@@ -413,6 +499,7 @@ void Engine_GPU::TrialProgress(unsigned int steps)
 	m_Block = (best<tiles) ? best : -1;
 	m_Trial = -1;
 	m_FlatSplit = false;
+	MarkTrialsEnd();
 	if (m_Fused && ((m_Block>=0) || (best==tiles+1)))
 	{
 		// the memory of the fused step back (the flat steps of the blocked runs are rare)
@@ -504,7 +591,8 @@ FDTD_FLOAT Engine_GPU::ReadStale(bool currents, unsigned int n, unsigned int x, 
 	if (!field.full_last_batch && (field.lines.size()<MAX_STALE_LINES))
 	{
 		std::vector<FDTD_FLOAT> line(numLines[2]);
-		m_Backend->DeviceDownload(line.data(), m_Backend->DeviceField(currents) + key*numLines[2], numLines[2]*sizeof(FDTD_FLOAT));
+		if (!m_Backend->DownloadRange(currents, key*numLines[2], numLines[2], line.data()))
+			m_Backend->DeviceDownload(line.data(), m_Backend->DeviceField(currents) + key*numLines[2], numLines[2]*sizeof(FDTD_FLOAT));
 		const FDTD_FLOAT value = line.at(z);
 		field.lines[key].swap(line);
 		return value;
@@ -655,6 +743,7 @@ bool Engine_GPU::IterateTS(unsigned int iterTS)
 void Engine_GPU::VoltageHalfStep()
 {
 	DeviceHalfStep(false, Domain(), numTS, [this]() {m_Backend->UpdateVoltages(Domain());});
+	m_Backend->FinishVoltagePhase();
 
 	if (m_SubGrid)
 	{
@@ -666,6 +755,7 @@ void Engine_GPU::VoltageHalfStep()
 void Engine_GPU::CurrentHalfStep()
 {
 	DeviceHalfStep(true, Domain(), numTS, [this]() {m_Backend->UpdateCurrents(Domain());});
+	m_Backend->FinishCurrentPhase();
 
 	if (m_SubGrid)
 	{

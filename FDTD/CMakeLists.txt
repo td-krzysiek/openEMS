@@ -55,6 +55,7 @@ set(SOURCES
   ${CMAKE_CURRENT_SOURCE_DIR}/gpu_ext.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_cpu.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_cpu_kernels.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/ec_table.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/operator.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/operator_coeffs.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/operator_cylinder.cpp
@@ -68,6 +69,9 @@ set(SOURCES
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_field_gather.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_gpu.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/gpu_backend.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/gpu_backend_domains.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/gpu_domain_backend.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/gpu_coeff_sets.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/gpu_plugins.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/gpu_backend_reference.cpp
   PARENT_SCOPE

@@ -52,11 +52,17 @@ public:
 	virtual std::string GetName() const;
 	virtual size_t CacheBytes(std::string& source) const;
 
+	void Activate() override;
+	GPU_DeviceTimer* NewDeviceTimer() override;
+	GPU_HaloBuffer* NewHaloBuffer(size_t samples) override;
+	bool DownloadRange(bool, size_t, size_t, FDTD_FLOAT*) override;
+	bool UploadRange(bool, size_t, size_t, const FDTD_FLOAT*) override;
+	bool CopyRange(bool, size_t, size_t, size_t) override;
 	virtual bool Init(const Operator* op, const GPU_CellModel& model);
 	virtual void* DeviceAlloc(size_t bytes, const void* host=NULL);
 	virtual void DeviceDownload(void* host, const void* dev, size_t bytes);
 	virtual float* DeviceField(bool currents);
-	virtual void RunPoints(GPU_PointOp kind, const void* op, uint64_t begin, uint64_t end, bool serial);
+	virtual void RunPoints(GPU_PointOp kind, const void* op, uint64_t begin, uint64_t end, bool serial, const CM_PointFilter& filter);
 
 	virtual void UpdateVoltages(const Engine_Box& box);
 	virtual void UpdateCurrents(const Engine_Box& box);
@@ -86,7 +92,7 @@ protected:
 	GPU_Backend_HIP(Impl* impl);
 
 	//! The grid dimensions and the device fields (all zero), the first part of Init()
-	bool InitFields(const Operator* op);
+	bool InitFields(const unsigned int lines[3]);
 
 	Impl* d;
 };

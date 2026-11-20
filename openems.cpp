@@ -1,3 +1,4 @@
+#include "FDTD/extensions/operator_ext_opaquesurface.h"
 /*
 *	Copyright (C) 2010 Thorsten Liebig (Thorsten.Liebig@gmx.de)
 *
@@ -15,10 +16,13 @@
 *	along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
+#include "tools/setup_profile.h"
 #include "openems.h"
+#include <algorithm>
 #include <iomanip>
 #include <iostream>
 #include <fstream>
+#include "CSPropExcitation.h"
 #include "tools/signal.h"
 #include "tools/useful.h"
 #include "tools/denormal.h"
@@ -33,6 +37,7 @@
 #include "FDTD/extensions/operator_ext_debyematerial.h"
 #include "FDTD/extensions/operator_ext_lumpedRLC.h"
 #include "FDTD/extensions/operator_ext_conductingsheet.h"
+#include "FDTD/extensions/operator_ext_lossymetal.h"
 #include "FDTD/extensions/operator_ext_steadystate.h"
 #include "FDTD/extensions/operator_ext_absorbing_bc.h"
 #include "FDTD/extensions/engine_ext_steadystate.h"
@@ -88,8 +93,17 @@ openEMS::openEMS()
 	DebugOp = false;
 	m_debugCSX = false;
 	m_debugBox = m_debugPEC = m_no_simulation = false;
+	m_profileSetup = false;
 	m_DumpStats = false;
 	m_exactEndCriteria = false;
+	m_dftSnapshots = false;
+	m_runtimeGateTimeout = 600;
+	m_runtimeControl = false;
+	m_runtimeExcitationEnd = 0;
+	m_runtimeGateIndex = 0;
+	m_startupGateStep = 0;
+	m_startupGateTimeout = 300;
+	m_MemoryCheck = true;
 
 	m_engine = EngineType_SSE; //default engine type
 	m_engine_numThreads = 0;
@@ -288,6 +302,16 @@ void openEMS::collectCommandLineArguments()
 			"  cpu: \tCPU engine on cell runs, experimental\n"
 		)
 		(
+			"gpu-domain-cuts",
+			po::value<std::string>(),
+			"Optional global X-node boundaries, e.g. 0,100,300; requires --gpu-devices"
+		)
+		(
+			"gpu-devices",
+			po::value<std::string>(),
+			"Experimental X-domain execution on comma-separated GPU indices, e.g. 0,1; requires ENABLE_DOMAIN_RUNTIME"
+		)
+		(
 			"gpu-device",
 			po::value<int>()->default_value(-1)->notifier(
 				[&](int val)
@@ -310,7 +334,12 @@ void openEMS::collectCommandLineArguments()
 				}
 			),
 			"Force use n threads for multithreaded engine "
-			"(needs: --engine=multithreaded)"
+			"(needs: a CPU engine)"
+		)
+		(
+			"profile-setup",
+			po::bool_switch(&m_profileSetup),
+			"Report coarse setup phase host-wall timings as one JSON log record"
 		)
 		(
 			"no-simulation",
@@ -323,6 +352,17 @@ void openEMS::collectCommandLineArguments()
 				}
 			),
 			"only run preprocessing; do not simulate"
+		)
+		(
+			"no-memory-check",
+			po::bool_switch()->notifier(
+				[&](bool val)
+				{
+					if (val)
+						m_MemoryCheck = false;
+				}
+			),
+			"set up the simulation also if the free memory cannot hold what the engine needs at least for the mesh"
 		)
 		(
 			"dump-statistics",
@@ -338,6 +378,42 @@ void openEMS::collectCommandLineArguments()
 			),
 			"dump simulation statistics to '" OPENEMS_RUN_STAT_FILE
 			"' and '" OPENEMS_STAT_FILE "'"
+		)
+		(
+			"dft-snapshots",
+			po::bool_switch(&m_dftSnapshots),
+			"accept DFT_SNAPSHOT requests and atomically export accumulated E/H sums without stopping"
+		)
+		(
+			"runtime-control",
+			po::bool_switch(&m_runtimeControl),
+			"accept manual RUNTIME_PAUSE/CONTINUE/STOP at processing boundaries"
+		)(
+			"decay-gates",
+			po::value<std::string>(&m_runtimeGateSchedule),
+			"pause and export DFT at post-pulse energy thresholds, e.g. -10,-20,-30,-40,-50"
+		)(
+			"decay-gate-id",
+			po::value<std::string>(&m_runtimeGateID),
+			"unique controller/run token for decay gates (1-48 ASCII letters/digits/-/_)"
+		)(
+			"decay-gate-timeout",
+			po::value<unsigned int>(&m_runtimeGateTimeout),
+			"seconds to wait before resuming a decay gate without a controller (default 600)"
+		)(
+			"startup-gate",
+			po::value<unsigned int>(&m_startupGateStep),
+			"pause once at a processing boundary at/after this timestep for startup qualification"
+		)
+		(
+			"startup-gate-id",
+			po::value<std::string>(&m_startupGateID),
+			"unique startup gate ID (1-64 ASCII letters/digits/-/_)"
+		)
+		(
+			"startup-gate-timeout",
+			po::value<unsigned int>(&m_startupGateTimeout),
+			"startup qualification timeout in seconds (1-3600; default 300)"
 		)
 		(
 			"exact-endcriteria",
@@ -431,6 +507,40 @@ void openEMS::WelcomeScreen()
 	cout << " | (C) 2010-2026 Thorsten Liebig <thorsten.liebig@gmx.de>  GPL license"   << endl;
 	cout << " ---------------------------------------------------------------------- " << endl;
 	cout << openEMS::GetExtLibsInfo("\t") << endl;
+}
+
+bool openEMS::CheckMemory() const
+{
+	// what the engine cannot do without, per node: the E and H fields (24 bytes); the basic engine keeps
+	// its coefficients dense (48 bytes) for the run, the SSE engine builds into them next to the index of
+	// the material table (4 bytes) before it compresses them
+	double perNode = 24;
+	if (m_engine==EngineType_Basic)
+		perNode = 72;
+	else if (m_engine==EngineType_SSE)
+		perNode = 52;
+	const double nodes = FDTD_Op->GetNumberCells();
+	const double need = perNode*nodes;
+	const size_t avail = AvailableMemory();
+	if (avail==0)
+		return true;   // the system does not say
+	const double GiB = 1024.0*1024.0*1024.0;
+	// formatted on their own stream: setprecision on cout or cerr would stay set for everything printed after
+	std::ostringstream msg;
+	msg << std::fixed << std::setprecision(1);
+	if (g_settings.GetVerboseLevel()>0)
+	{
+		msg << "Memory: " << avail/GiB << " GiB available, the engine needs at least " << need/GiB << " GiB";
+		cout << msg.str() << endl;
+		msg.str("");
+	}
+	if (need<=avail)
+		return true;
+	msg << "openEMS::SetupFDTD: Error, the mesh of " << nodes/1e6 << " MCells needs at least " << need/GiB
+	    << " GiB of memory with this engine, " << avail/GiB << " GiB are available. Check the mesh,"
+	    << " or set up anyway with --no-memory-check.";
+	cerr << msg.str() << endl;
+	return false;
 }
 
 bool openEMS::SetupBoundaryConditions()
@@ -810,9 +920,9 @@ bool openEMS::SetupMaterialStorages()
 			  (db->GetDumpType()==20) || (db->GetDumpType()==21) || (db->GetDumpType()==22)) && // SAR dump types
 			  Enable_Dumps )
 			FDTD_Op->SetMaterialStoreFlags(1,true); //tell operator to store kappa material data
-		if ( ((db->GetDumpType()==4) || (db->GetDumpType()==14)) || Enable_Dumps) // electric flux density storage
+		if ( ((db->GetDumpType()==4) || (db->GetDumpType()==14)) && Enable_Dumps) // electric flux density storage
 			FDTD_Op->SetMaterialStoreFlags(0,true); //tell operator to store epsR material data
-		if ( ((db->GetDumpType()==5) || (db->GetDumpType()==15)) || Enable_Dumps) // magnetic flux density storage
+		if ( ((db->GetDumpType()==5) || (db->GetDumpType()==15)) && Enable_Dumps) // magnetic flux density storage
 			FDTD_Op->SetMaterialStoreFlags(2,true); //tell operator to store mueR material data
 	}
 	return true;
@@ -1279,6 +1389,9 @@ ContinuousStructure* openEMS::GetCSX() const
 
 int openEMS::SetupFDTD()
 {
+	SetupProfile profile(m_profileSetup || SetupProfile::FromEnvironment(), cout);
+	ValidateStartupGate();
+	ValidateRuntimeGates();
 	// of a previous setup that was not run
 	FreeSimulation();
 
@@ -1298,7 +1411,11 @@ int openEMS::SetupFDTD()
 		cerr << "openEMS::SetupFDTD: Error: CSXCAD is not set!" << endl;
 		return 3;
 	}
-	std::string ec = m_CSX->Update();
+	std::string ec;
+	{
+		SetupProfile::Phase phase("geometry.update");
+		ec = m_CSX->Update();
+	}
 	if (!ec.empty())
 		cerr << ec << endl;
 	if (g_settings.GetVerboseLevel()>2)
@@ -1341,10 +1458,16 @@ int openEMS::SetupFDTD()
 	if (!CylinderCoords)
 		FDTD_Op->AddExtension(new Operator_Ext_TFSF(FDTD_Op));
 
-	if (FDTD_Op->SetGeometryCSX(m_CSX)==false)
 	{
-		return(2);
+		SetupProfile::Phase phase("operator.geometry");
+		if (FDTD_Op->SetGeometryCSX(m_CSX)==false)
+		{
+			return(2);
+		}
 	}
+	// before the build, which can take long on a mesh too large by mistake
+	if (m_MemoryCheck && !CheckMemory())
+		return 2;
 
 	SetupBoundaryConditions();
 
@@ -1392,11 +1515,15 @@ int openEMS::SetupFDTD()
 		FDTD_Op->AddExtension(new Operator_Ext_DebyeMaterial(FDTD_Op));
 	if (m_CSX->GetQtyPropertyType(CSProperties::CONDUCTINGSHEET)>0)
 		FDTD_Op->AddExtension(new Operator_Ext_ConductingSheet(FDTD_Op, m_Exc->GetMaxFreq()));
+	if (m_CSX->GetQtyPropertyType(CSProperties::LOSSYMETAL)>0)
+		FDTD_Op->AddExtension(new Operator_Ext_LossyMetal(FDTD_Op, m_Exc->GetMaxFreq()));
 	if (m_CSX->GetQtyPropertyType(CSProperties::LUMPED_ELEMENT)>0)
 		FDTD_Op->AddExtension(new Operator_Ext_LumpedRLC(FDTD_Op));
 	if (m_CSX->GetQtyPropertyType(CSProperties::ABSORBING_BC)>0)
 		SetupAbsorbingSheets();
 
+
+	FDTD_Op->AddExtension(new Operator_Ext_OpaqueSurface(FDTD_Op));
 
 	//check all properties to request material storage during operator creation...
 	SetupMaterialStorages();
@@ -1410,7 +1537,10 @@ int openEMS::SetupFDTD()
 	if (m_debugPEC)
 		debugFlags |= Operator::debugPEC;
 
-	FDTD_Op->CalcECOperator( debugFlags );
+	{
+		SetupProfile::Phase phase("operator");
+		FDTD_Op->CalcECOperator( debugFlags );
+	}
 	/*******************************************************************************/
 
 	//reset flags for material storage, if no dump-box resets it to true, it will be cleaned up...
@@ -1463,12 +1593,14 @@ int openEMS::SetupFDTD()
 	if (m_no_simulation)
 	{
 		// simulation was disabled (to generate debug output only)
+		profile.Complete(true);
 		return 1;
 	}
 
 	//create FDTD engine
 	try
 	{
+		SetupProfile::Phase phase("engine");
 		FDTD_Eng = FDTD_Op->CreateEngine();
 	}
 	catch (const std::exception& e)
@@ -1476,6 +1608,7 @@ int openEMS::SetupFDTD()
 		// e.g. the GPU engine without a device: do not run something else instead
 		cerr << "openEMS::SetupFDTD: Error: creating the FDTD engine failed: " << e.what() << endl;
 		return 4;
+
 	}
 
 	if (Op_Ext_SSD)
@@ -1485,9 +1618,12 @@ int openEMS::SetupFDTD()
 	}
 
 	//setup all processing classes
-	if (SetupProcessing()==false)
 	{
-		return 2;
+		SetupProfile::Phase phase("processing");
+		if (SetupProcessing()==false)
+		{
+			return 2;
+		}
 	}
 
 	// Cleanup all unused material storages...
@@ -1505,6 +1641,7 @@ int openEMS::SetupFDTD()
 	timeval setupDoneTime;
 	gettimeofday(&setupDoneTime,NULL);
 	cout << "Setup time: " << CalcDiffTime(setupDoneTime,startTime) << " s" << endl;
+	profile.Complete();
 
 	return 0;
 }
@@ -1562,6 +1699,23 @@ void openEMS::RunFDTD()
 	}
 
 	cout << "Running FDTD engine... this may take a while... grab a cup of coffee?!?" << endl;
+	if (!m_runtimeGateLevels.empty() &&
+		(Eng_Ext_SSD != NULL || FDTD_Op->GetExcitationSignal()->GetExciteType() != 0))
+	{
+		throw std::runtime_error("Runtime gate: decay gates require Gaussian pulse excitation");
+	}
+	m_runtimeExcitationEnd = FDTD_Op->GetExcitationSignal()->GetLength();
+	for (CSProperties* property : m_CSX->GetPropertyByType(CSProperties::EXCITATION))
+	{
+		CSPropExcitation* excitation = property->ToExcitation();
+		if (excitation != NULL && excitation->GetEnabled())
+		{
+			double finish = FDTD_Op->GetExcitationSignal()->GetLength() +
+				std::max(0.0, excitation->GetDelay()) / FDTD_Op->GetTimestep();
+			m_runtimeExcitationEnd = std::max(m_runtimeExcitationEnd,
+				static_cast<unsigned int>(std::min(finish, static_cast<double>(NrTS))));
+		}
+	}
 
 	Signal::SetupHandlerForSIGINT(SIGNAL_EXIT_GRACEFUL);
 	RestoreSIGINT restoreSIGINT;
@@ -1610,6 +1764,8 @@ void openEMS::RunFDTD()
 	gettimeofday(&currTime,NULL);
 	timeval startTime = currTime;
 	timeval prevTime= currTime;
+	timeval snapshotTime = currTime;
+	snapshotTime.tv_sec -= 1; // accept a request present before the first iteration
 
 	if (m_DumpStats)
 		InitRunStatistics(OPENEMS_RUN_STAT_FILE);
@@ -1619,6 +1775,8 @@ void openEMS::RunFDTD()
 	int step=PA->Process();
 	if ((step<0) || (step>(int)NrTS)) step=NrTS;
 	bool aborted = false;
+	bool startupPassed = (m_startupGateStep == 0);
+	double startupWait = 0;
 	while ((FDTD_Eng->GetNumberOfTimesteps()<NrTS) && (change>endCrit) && !(aborted = CheckAbortCond()))
 	{
 		FDTD_Eng->IterateTS(step);
@@ -1637,12 +1795,60 @@ void openEMS::RunFDTD()
 
 		currTS = FDTD_Eng->GetNumberOfTimesteps();
 		if ((step<0) || (step>(int)(NrTS - currTS))) step=NrTS - currTS;
+		if (!startupPassed && (unsigned int)currTS >= m_startupGateStep)
+		{
+			timeval gateStart, gateEnd;
+			gettimeofday(&gateStart, NULL);
+			if (!WaitStartupGate(currE, maxE, CalcDiffTime(gateStart, startTime)))
+			{
+				aborted = true;
+				break;
+			}
+			gettimeofday(&gateEnd, NULL);
+			startupWait += CalcDiffTime(gateEnd, gateStart);
+			prevTime = gateEnd;
+			prevTS = currTS;
+			startupPassed = true;
+		}
+
+		bool manualPause = false;
+		if (m_runtimeControl)
+		{
+			std::ifstream request("RUNTIME_PAUSE");
+			manualPause = request.good();
+		}
+		if (manualPause || (m_runtimeGateIndex < m_runtimeGateLevels.size() && ProcField->CheckTimestep() && maxE > 0 &&
+			currE / maxE <= std::pow(10.0, m_runtimeGateLevels[m_runtimeGateIndex] / 10.0) &&
+			(unsigned int)currTS >= m_runtimeExcitationEnd &&
+			change > endCrit))
+		{
+			timeval gateStart, gateEnd;
+			gettimeofday(&gateStart, NULL);
+			bool continued = CheckRuntimeGates(currE, maxE,
+				CalcDiffTime(gateStart, startTime) - startupWait);
+			gettimeofday(&gateEnd, NULL);
+			startupWait += CalcDiffTime(gateEnd, gateStart);
+			// Exclude pause/snapshot time from the next throughput interval.
+			prevTime = gateEnd;
+			prevTS = currTS;
+			if (!continued)
+			{
+				aborted = true;
+				break;
+			}
+		}
 
 		gettimeofday(&currTime,NULL);
 
+		if (m_dftSnapshots && CalcDiffTime(currTime, snapshotTime) >= 1.0)
+		{
+			CheckDFTSnapshot(currE, maxE);
+			gettimeofday(&snapshotTime, NULL);
+		}
+
 		t_diff = CalcDiffTime(currTime,prevTime);
 
-		if (exactEndCrit && !m_exactEndCriteria && (CalcDiffTime(currTime,startTime)>EXACT_ENDCRIT_TIME))
+		if (exactEndCrit && !m_exactEndCriteria && (CalcDiffTime(currTime,startTime)-startupWait>EXACT_ENDCRIT_TIME))
 		{
 			// from here on with the progress report only
 			exactEndCrit = false;
@@ -1653,10 +1859,16 @@ void openEMS::RunFDTD()
 
 		if (t_diff>4)
 		{
-			t_run = CalcDiffTime(currTime,startTime);
+			t_run = CalcDiffTime(currTime,startTime) - startupWait;
 			speed = numCells*(currTS-prevTS)/t_diff;
-			cout << "[@" <<  FormatTime(t_run) <<  "] Timestep: " << setw(12)  << currTS ;
-			cout << " || Speed: " << setw(6) << setprecision(1) << std::fixed << speed*1e-6 << " MC/s (" <<  setw(4) << setprecision(3) << std::scientific << t_diff/(currTS-prevTS) << " s/TS)" ;
+			// formatted on its own stream: fixed and setprecision on cout would stay set
+			// for everything printed after, even for the next Run() in the same process
+			ostringstream line;
+			line << "[@" <<  FormatTime(t_run) <<  "] Timestep: " << setw(12)  << currTS ;
+			// timesteps per second, three digits at least: below 1 for very large models
+			const double ts_rate = (currTS-prevTS)/t_diff;
+			line << " || Speed: " << setw(6) << setprecision(1) << std::fixed << speed*1e-6 << " MC/s ("
+			     << setw(5) << setprecision((ts_rate<10) ? 2 : ((ts_rate<100) ? 1 : 0)) << ts_rate << " TS/s)";
 			if (Eng_Ext_SSD==NULL)
 			{
 				if (!exactEndCrit) // otherwise already kept current above, every Nyquist period
@@ -1667,10 +1879,11 @@ void openEMS::RunFDTD()
 					if (maxE)
 						change = currE/maxE;
 				}
-				cout << " || Energy: ~" << setw(6) << setprecision(2) << std::scientific << currE << " (-" << setw(5)  << setprecision(2) << std::fixed << fabs(10.0*log10(change)) << "dB)" << endl;
+				line << " || Energy: ~" << setw(6) << setprecision(2) << std::scientific << currE << " (-" << setw(5)  << setprecision(2) << std::fixed << fabs(10.0*log10(change)) << "dB)";
 			}
 			else
-				cout << " || SteadyState: " << setw(6) << setprecision(2) << std::fixed << 10.0*log10(change) << " dB" << endl;
+				line << " || SteadyState: " << setw(6) << setprecision(2) << std::fixed << 10.0*log10(change) << " dB";
+			cout << line.str() << endl;
 			prevTime=currTime;
 			prevTS=currTS;
 
@@ -1681,13 +1894,20 @@ void openEMS::RunFDTD()
 			FDTD_Eng->NextInterval(speed);
 		}
 	}
+	if (!startupPassed && !aborted)
+	{
+		throw std::runtime_error("Startup gate: simulation ended before qualification");
+	}
+	// the decay reached, two decimals like the progress line
+	ostringstream decay;
+	decay << setprecision(2) << std::fixed << fabs(10.0*log10(change));
 	if (aborted)
 	{
 		// not the timestep limit: say so, the advice below would be wrong
 		cout << "RunFDTD: simulation aborted after " << FDTD_Eng->GetNumberOfTimesteps() << " timesteps";
 		// the energy decay, once there is one: with a Gaussian pulse, after the first check
 		if ((Eng_Ext_SSD==NULL) && (FDTD_Op->GetExcitationSignal()->GetExciteType()==0) && (change<1))
-			cout << " (-" << setprecision(2) << std::fixed << fabs(10.0*log10(change)) << "dB)";
+			cout << " (-" << decay.str() << "dB)";
 		cout << endl;
 	}
 	else if (endCrit<=0) // none set, nothing to report
@@ -1696,13 +1916,22 @@ void openEMS::RunFDTD()
 		cerr << "RunFDTD: Warning: Max. number of timesteps was reached before the end-criteria of -" << fabs(10.0*log10(endCrit)) << "dB was reached... " << endl << \
 				"\tYou may want to choose a higher number of max. timesteps... " << endl;
 	else if (FDTD_Op->GetExcitationSignal()->GetExciteType()==0)
-		cout << "RunFDTD: end-criteria of -" << fabs(10.0*log10(endCrit)) << "dB reached after " << FDTD_Eng->GetNumberOfTimesteps() << " timesteps (-" << fabs(10.0*log10(change)) << "dB)" << endl;
+		cout << "RunFDTD: end-criteria of -" << fabs(10.0*log10(endCrit)) << "dB reached after " << FDTD_Eng->GetNumberOfTimesteps() << " timesteps (-" << decay.str() << "dB)" << endl;
 
 	gettimeofday(&currTime,NULL);
-	t_diff = CalcDiffTime(currTime,startTime);
+	t_diff = CalcDiffTime(currTime,startTime) - startupWait;
 
 	cout << "Time for " << FDTD_Eng->GetNumberOfTimesteps() << " iterations with " << FDTD_Op->GetNumberCells() << " cells : " << t_diff << " sec" << endl;
 	cout << "Speed: " << numCells*(double)FDTD_Eng->GetNumberOfTimesteps()/t_diff*1e-6 << " MCells/s " << endl;
+	unsigned int trialsTS;
+	double trialsSeconds;
+	if ((g_settings.GetVerboseLevel()>0) && FDTD_Eng->GetTrialsEnd(trialsTS, trialsSeconds) && (FDTD_Eng->GetNumberOfTimesteps()>trialsTS))
+	{
+		// the variant the engine kept, without its trials at the start (Engine::MarkTrialsEnd())
+		const unsigned int steps = FDTD_Eng->GetNumberOfTimesteps()-trialsTS;
+		cout << "Speed after the trials: " << numCells*(double)steps/(std::max)(trialsSeconds, 1e-9)*1e-6 << " MCells/s ("
+		     << steps << " timesteps in " << trialsSeconds << " sec)" << endl;
+	}
 
 	if (m_DumpStats)
 		DumpStatistics(OPENEMS_STAT_FILE, t_diff);

@@ -19,6 +19,8 @@
 #define GPU_BACKEND_H
 
 #include <complex>
+#include <memory>
+#include "engine_plan.h"
 #include <cstdint>
 #include <stdexcept>
 #include <string>
@@ -33,7 +35,11 @@
 
 class Operator;
 struct GPU_CellModel;
+struct GPU_DomainLayout;
+class Engine;
+class Engine_Extension;
 struct Engine_Box;
+struct CM_PointFilter;
 
 //! The hooks of a half step around the main update, in this order: pre (the extensions in reverse order), post, apply (see Engine)
 enum GPU_Hook {GPU_PRE, GPU_POST, GPU_APPLY};
@@ -51,8 +57,8 @@ public:
 
 	//! Hook \a h of the voltage (\a currents false) or current half step of timestep \a ts, as Engine_Extension::DoPreVoltageUpdates() to Apply2Current()
 	/*!
-	  On the nodes with x in [box.start[0], box.stop[0]): a tile of the temporal
-	  blocking (the boxes span y and z) or the whole domain.
+	  On the nodes in \a box: a tile of the temporal blocking or the whole
+	  domain.
 	  */
 	virtual void Hook(bool currents, GPU_Hook h, const Engine_Box& box, unsigned int ts) = 0;
 
@@ -77,6 +83,46 @@ enum GPU_PointOp
 	GPU_OP_CYLINDER,
 	GPU_OP_MULTIGRID,
 	GPU_OP_DISPERSIVE,
+	GPU_OP_OPAQUE_SURFACE,
+};
+
+OPENEMS_EXPORT void GPU_NodeCoefficients(const Operator*, const unsigned int[3], size_t, float[12]);
+
+//! Optional sampled device-clock interval. Reading must never wait for work.
+class GPU_DeviceTimer
+{
+public:
+	virtual ~GPU_DeviceTimer()
+	{
+	}
+	virtual void Begin() = 0;
+	virtual void End() = 0;
+	virtual bool ReadSeconds(double& seconds) = 0;
+};
+
+//! Reusable pinned staging and completion events for two tangential components.
+//! The backend and its field storage must outlive this object.
+class GPU_HaloBuffer
+{
+public:
+	virtual ~GPU_HaloBuffer()
+	{
+	}
+	virtual FDTD_FLOAT* Data() = 0;
+	virtual void Download(bool currents, const size_t offsets[2], size_t count) = 0;
+	virtual void Upload(bool currents, const size_t offsets[2], size_t count) = 0;
+	virtual bool Ready() = 0;
+	virtual void Wait() = 0;
+	virtual bool CanUploadBorrowed() const
+	{
+		return false;
+	}
+	// The implementation must retain owner through completion, including
+	// enqueue failure and destruction before the caller obtains a token.
+	virtual void UploadBorrowed(bool, const size_t[2], size_t, const FDTD_FLOAT *, std::shared_ptr<void>)
+	{
+		throw std::logic_error("backend cannot upload a borrowed host halo");
+	}
 };
 
 //! Abstract interface to the device used by Engine_GPU
@@ -134,13 +180,33 @@ public:
 	  */
 	virtual bool Init(const Operator* op, const GPU_CellModel& model) = 0;
 
+	//! Slice the expanded model into owned X lines and two field-only halos.
+	virtual bool InitDomain(const Operator*, const GPU_CellModel&, unsigned int begin, unsigned int end);
+	const GPU_DomainLayout* DomainLayout() const {return m_Domain.get();}
+	virtual void Activate() {}
+	virtual GPU_HaloBuffer* NewHaloBuffer(size_t) {return nullptr;}
+	virtual GPU_DeviceTimer* NewDeviceTimer() {return nullptr;}
+	virtual bool CanOverlapCurrentInterior() const {return bool(m_Domain);}
+	virtual void UpdateCurrentRegion(bool interior);
+	virtual void FinishVoltagePhase() {}
+	virtual void FinishCurrentPhase() {}
+	virtual bool HasDomainPhases() const {return false;}
+	virtual GPU_Extension* CreateExtension(Engine_Extension*, Engine*) {return nullptr;}
+	virtual bool DownloadRange(bool, size_t, size_t, FDTD_FLOAT*) {return false;}
+	virtual bool UploadRange(bool, size_t, size_t, const FDTD_FLOAT*) {return false;}
+	virtual bool CopyRange(bool, size_t, size_t, size_t) {return false;}
+	virtual void UpdateVoltages() {UpdateVoltages(OwnedBox(false));}
+	virtual void UpdateCurrents() {UpdateCurrents(OwnedBox(true));}
+	Engine_Box OwnedBox(bool currents) const;
+
+
 	//! Device memory of \a bytes, initialized with \a host or zero, freed with the backend
 	virtual void* DeviceAlloc(size_t bytes, const void* host=NULL) = 0;
 	//! Copy \a bytes of the device memory \a dev to \a host, after the work so far (waits for it)
 	virtual void DeviceDownload(void* host, const void* dev, size_t bytes) = 0;
 	//! The device voltages (false) or currents (true), ArrayNIJK layout
 	virtual float* DeviceField(bool currents) = 0;
-	//! The main voltage or current update on the cell model of the nodes with x in [box.start[0], box.stop[0]): a tile of the temporal blocking (the boxes span y and z), or the whole domain
+	//! The main voltage or current update on the cell model of the nodes in \a box: a tile of the temporal blocking, or the whole domain
 	virtual void UpdateVoltages(const Engine_Box& box) = 0;
 	virtual void UpdateCurrents(const Engine_Box& box) = 0;
 	//! Prepare the fused step: the main voltage and current update in one pass over the fields, see FusedUpdate()
@@ -158,11 +224,17 @@ public:
 	virtual void FusedUpdate() {throw std::logic_error("GPU_Backend: no fused step");}
 	//! The late currents, after the hooks between the main updates: the currents are new from here on
 	virtual void SeamUpdate() {throw std::logic_error("GPU_Backend: no fused step");}
-	//! Run the point operation \a op (of type \a kind, see kernels/ext_ops.h) for its points [begin, end), in parallel or, if \a serial, in order
-	virtual void RunPoints(GPU_PointOp kind, const void* op, uint64_t begin, uint64_t end, bool serial) = 0;
+	//! Run the point operation \a op (of type \a kind, see kernels/ext_ops.h) for its points [begin, end) that \a filter passes (all with CM_PointFilter()), in parallel or, if \a serial, in order
+	virtual void RunPoints(GPU_PointOp kind, const void* op, uint64_t begin, uint64_t end, bool serial, const CM_PointFilter& filter) = 0;
 
 	//! Copy the device voltages (\a currents false) or currents to the host mirror \a field
 	virtual void Download(bool currents, ArrayLib::ArrayNIJK<FDTD_FLOAT>& field) = 0;
+	//! Upload a complete backend-local field (global field for the domain coordinator).
+	virtual void Upload(bool currents, const ArrayLib::ArrayNIJK<FDTD_FLOAT>& field)
+	{
+		if (!UploadRange(currents, 0, field.size(), field.data()))
+			throw std::runtime_error("GPU backend cannot upload this field");
+	}
 
 	//! Host pointer to the device voltages (\a currents false) or currents in the ArrayNIJK layout, if the device shares memory with the host, else NULL. Valid after Init().
 	virtual FDTD_FLOAT* GetShared(bool currents) const {UNUSED(currents); return NULL;}
@@ -205,6 +277,8 @@ public:
 
 	//! Create a backend for a sub-grid (e.g. a cylindrical multi-grid level) whose work is ordered with the work of this backend. It's the responsibility of the caller to free it.
 	virtual GPU_Backend* NewSubGridBackend() = 0;
+protected:
+	std::shared_ptr<GPU_DomainLayout> m_Domain;
 };
 
 #endif // GPU_BACKEND_H

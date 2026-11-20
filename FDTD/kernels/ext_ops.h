@@ -29,6 +29,21 @@
 #include "cell_update.h"
 #endif
 
+//! The points of a box limited along y or z (GPU_PointList::Run()): point n if its line (yz[2n], yz[2n+1]) is in [y0, y1) x [z0, z1); all points without yz (CM_PointFilter())
+struct CM_PointFilter
+{
+	CM_GLOBAL const uint32_t* yz;
+	uint32_t y0, y1, z0, z1;
+
+	CM_FN bool operator()(uint64_t n) const
+	{
+		if (!yz)
+			return true;
+		const uint32_t y = yz[2*n], z = yz[2*n+1];
+		return (y>=y0) && (y<y1) && (z>=z0) && (z<z1);
+	}
+};
+
 //! Soft excitation of the voltages or currents (Engine_Ext_Excitation): field += amp*signal
 struct Op_Excitation
 {
@@ -90,7 +105,9 @@ struct Op_LumpedRLC
 {
 	CM_GLOBAL float* volt;
 	CM_GLOBAL const uint64_t* index;
-	CM_GLOBAL const float *ilv, *i2v, *vv2, *vj1, *vj2, *vvd, *ib0, *b1, *b2;
+	CM_GLOBAL const float *ilv, *i2v;
+	CM_GLOBAL const float *vvd, *vv1, *vv2, *vj1, *vj2;   //!< the node voltage, see Operator_Ext_LumpedRLC
+	CM_GLOBAL const float *jv0, *jv1, *jv2, *jj1, *jj2;   //!< the current J of a series element
 	CM_GLOBAL float* Il;
 	CM_GLOBAL float *Vd0, *Vd1, *Vd2;   //!< the rings at this timestep: ts, ts-1, ts-2
 	CM_GLOBAL float *J0, *J1, *J2;
@@ -103,8 +120,8 @@ struct Op_LumpedRLC
 		case 0: Il[n] += (i2v[n])*(ilv[n])*Vd1[n]; break;
 		case 1: Vd0[n] = volt[index[n]]; break;
 		case 2:
-			Vd0[n] = (vvd[n])*(Vd0[n] - Il[n] + (vv2[n])*Vd2[n] + (vj1[n])*J1[n] + (vj2[n])*J2[n]);
-			J0[n] = (ib0[n])*(Vd0[n] - Vd2[n]) - ((b1[n])*(ib0[n]))*J1[n] - ((b2[n])*(ib0[n]))*J2[n];
+			Vd0[n] = (vvd[n])*(Vd0[n] - Il[n] + (vv1[n])*Vd1[n] + (vv2[n])*Vd2[n] + (vj1[n])*J1[n] + (vj2[n])*J2[n]);
+			J0[n] = (jv0[n])*Vd0[n] + (jv1[n])*Vd1[n] + (jv2[n])*Vd2[n] + (jj1[n])*J1[n] + (jj2[n])*J2[n];
 			break;
 		default: volt[index[n]] = Vd0[n]; break;
 		}
@@ -327,6 +344,41 @@ struct Op_Dispersive
 	}
 };
 
+// The passive surface R-L histories, shared by reference/HIP/Metal backends.
+struct Op_OpaqueSurface
+{
+	CM_GLOBAL const uint64_t* index;
+	CM_GLOBAL const uint32_t *offset, *fit_offset;
+	CM_GLOBAL const float *vv, *vi, *a, *b, *memory;
+	CM_GLOBAL float *voltage, *state, *volt;
+	CM_GLOBAL const float *curr;
+	uint32_t pole_count, count;
+	CM_FN void operator()(uint64_t i) const
+	{
+		CM_GLOBAL const uint64_t* ix=index+5*i;
+		const float curl=curr[ix[1]]-curr[ix[2]]-curr[ix[3]]+curr[ix[4]];
+		uint32_t start=offset[i], stride=1;
+		const uint32_t poles=offset[i+1]-start, fit=fit_offset[i];
+		if (pole_count)
+		{
+			const uint32_t first=uint32_t(i)-uint32_t(i)%32;
+			stride=(count-first<32) ? count-first : 32;
+			start=first*pole_count+uint32_t(i)-first;
+		}
+		float mem=0;
+		for (uint32_t j=0; j<poles; ++j) mem+=memory[fit+j]*state[start+j*stride];
+		const float old=voltage[i];
+		const float next=vv[i]*old+vi[i]*(curl-mem);
+		for (uint32_t j=0; j<poles; ++j)
+		{
+			const uint32_t k=start+j*stride;
+			state[k]=a[fit+j]*state[k]+b[k]*(next+old);
+		}
+		voltage[i]=next;
+		volt[ix[0]]=next;
+	}
+};
+
 //! Every point operation as X(kind, struct, kernel): its GPU_PointOp (gpu_backend.h), its struct and the name of its kernels.
 //! The backends expand the list to their launches (GPU_Backend::RunPoints()), so a new operation goes here and into
 //! GPU_PointOp only
@@ -338,6 +390,7 @@ struct Op_Dispersive
 	X(GPU_OP_STEADY_STATE, Op_SteadyState, op_steady_state) \
 	X(GPU_OP_CYLINDER,     Op_Cylinder,    op_cylinder) \
 	X(GPU_OP_MULTIGRID,    Op_MultiGrid,   op_multigrid) \
-	X(GPU_OP_DISPERSIVE,   Op_Dispersive,  op_dispersive)
+	X(GPU_OP_DISPERSIVE,   Op_Dispersive,  op_dispersive) \
+	X(GPU_OP_OPAQUE_SURFACE, Op_OpaqueSurface, op_opaque_surface)
 
 #endif // FDTD_KERNELS_EXT_OPS_H
