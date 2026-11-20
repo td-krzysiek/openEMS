@@ -161,6 +161,9 @@ HIP_Context::HIP_Context()
 
 HIP_Context::~HIP_Context()
 {
+	// Other workers may have made a different device current on this thread.
+	// Cleanup must not throw; a lost device already makes the run unusable.
+	(void)hipSetDevice(device);
 	if (stream)
 	{
 		(void)hipStreamSynchronize(stream);
@@ -192,6 +195,7 @@ GPU_Backend_HIP::Impl::~Impl()
 {
 	if (ctx)
 	{
+		(void)hipSetDevice(ctx->device);
 		(void)hipStreamSynchronize(ctx->stream);
 		(void)hipStreamSynchronize(ctx->copy_stream);
 	}
@@ -221,6 +225,11 @@ void GPU_Backend_HIP::Impl::FreeSnapshots()
 void GPU_Backend_HIP::Impl::Flush()
 {
 	HIP_Check(hipStreamSynchronize(Stream()), "stream synchronization");
+}
+
+void GPU_Backend_HIP::Activate()
+{
+	HIP_Check(hipSetDevice(d->ctx->device), "select backend device");
 }
 
 void GPU_Backend_HIP::Impl::CheckLaunch(const char* kernel)

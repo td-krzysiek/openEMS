@@ -24,10 +24,17 @@
 #include "tools/denormal.h"
 #include "FDTD/operator_cylinder.h"
 #include "FDTD/operator_cylindermultigrid.h"
+#include "FDTD/operator_cartesiansubgrid.h"
+#include "FDTD/subgrid_allocation_limits.h"
+#include "FDTD/cartesian_subgrid_runtime.h"
+#include "FDTD/subgrid_interface_limits.h"
+#include <cmath>
 #include "FDTD/engine_sse.h"
 #include "FDTD/extensions/operator_ext_excitation.h"
 #include "FDTD/extensions/operator_ext_tfsf.h"
 #include "FDTD/extensions/operator_ext_mur_abc.h"
+#include "FDTD/extensions/operator_ext_cartesiansubgrid_mur.h"
+#include "FDTD/extensions/operator_ext_cartesiansubgrid_pml.h"
 #include "FDTD/extensions/operator_ext_upml.h"
 #include "FDTD/extensions/operator_ext_lorentzmaterial.h"
 #include "FDTD/extensions/operator_ext_debyematerial.h"
@@ -56,8 +63,13 @@
 #include "tinyxml.h"
 #include "ContinuousStructure.h"
 #include "CSPropProbeBox.h"
+#include "CSPropExcitation.h"
 #include "CSPrimBox.h"
 #include "CSPropDumpBox.h"
+#if __has_include("CSPropLossyMetal.h")
+#include "CSPropLossyMetal.h"
+#define OPENEMS_HAS_SUBGRID_SURFACE_PROPERTY 1
+#endif
 
 using namespace std;
 namespace po = boost::program_options;
@@ -90,6 +102,14 @@ openEMS::openEMS()
 	m_debugBox = m_debugPEC = m_no_simulation = false;
 	m_DumpStats = false;
 	m_exactEndCriteria = false;
+	m_dftSnapshots = false;
+	m_runtimeGateTimeout = 600;
+	m_runtimeControl = false;
+	m_runtimeExcitationEnd = 0;
+	m_runtimeGateIndex = 0;
+	m_startupGateStep = 0;
+	m_startupGateTimeout = 300;
+
 
 	m_engine = EngineType_SSE; //default engine type
 	m_engine_numThreads = 0;
@@ -129,6 +149,13 @@ void openEMS::Reset()
 
 	CylinderCoords = false;
 	m_CC_MultiGrid.clear();
+	m_CartesianSubgridBox.clear();
+	m_CartesianSubgridRatio = {2, 2, 2};
+	m_CartesianSubgridBoxes.clear();
+	m_CartesianSubgridRatios.clear();
+	m_CartesianSubgridChildLines = {};
+	m_CartesianSubgridMaxLeaves = CartesianSubgridDetail::DefaultLeafLimit;
+	m_CartesianSubgridMaterialSamples = 0;
 	m_CellConstantMaterial=false;
 	endCrit = 1e-6;
 	m_OverSampling = 4;
@@ -340,6 +367,42 @@ void openEMS::collectCommandLineArguments()
 			"' and '" OPENEMS_STAT_FILE "'"
 		)
 		(
+			"dft-snapshots",
+			po::bool_switch(&m_dftSnapshots),
+			"accept DFT_SNAPSHOT requests and atomically export accumulated E/H sums without stopping"
+		)
+		(
+			"runtime-control",
+			po::bool_switch(&m_runtimeControl),
+			"accept manual RUNTIME_PAUSE/CONTINUE/STOP at processing boundaries"
+		)(
+			"decay-gates",
+			po::value<std::string>(&m_runtimeGateSchedule),
+			"pause and export DFT at post-pulse energy thresholds, e.g. -10,-20,-30,-40,-50"
+		)(
+			"decay-gate-id",
+			po::value<std::string>(&m_runtimeGateID),
+			"unique controller/run token for decay gates (1-48 ASCII letters/digits/-/_)"
+		)(
+			"decay-gate-timeout",
+			po::value<unsigned int>(&m_runtimeGateTimeout),
+			"seconds to wait before resuming a decay gate without a controller (default 600)"
+		)(
+			"startup-gate",
+			po::value<unsigned int>(&m_startupGateStep),
+			"pause once at a processing boundary at/after this timestep for startup qualification"
+		)
+		(
+			"startup-gate-id",
+			po::value<std::string>(&m_startupGateID),
+			"unique startup gate ID (1-64 ASCII letters/digits/-/_)"
+		)
+		(
+			"startup-gate-timeout",
+			po::value<unsigned int>(&m_startupGateTimeout),
+			"startup qualification timeout in seconds (1-3600; default 300)"
+		)
+		(
 			"exact-endcriteria",
 			po::bool_switch()->notifier(
 				[&](bool val)
@@ -361,6 +424,7 @@ void openEMS::collectCommandLineArguments()
 	// see commands in tools/global.h
 	g_settings.clearOptionDesc();
 	g_settings.appendOptionDesc(optdesc);
+	g_settings.appendOptionDesc(CartesianSubgridRuntime::Options());
 	g_settings.appendOptionDesc(g_settings.optionDesc());
 }
 
@@ -444,10 +508,22 @@ bool openEMS::SetupBoundaryConditions()
 		if (m_BC_type[n]==2) //Mur-ABC
 		{
 			FDTD_Op->SetBCSize(n, 1);
+			if (dynamic_cast<Operator_CartesianSubgrid *>(FDTD_Op))
+			{
+				auto *extension = new Operator_Ext_CartesianSubgrid_Mur(FDTD_Op, n);
+				if (m_Mur_v_ph[n] > 0)
+				{
+					extension->SetPhaseVelocity(m_Mur_v_ph[n]);
+				}
+				FDTD_Op->AddExtension(extension);
+				continue;
+			}
 			Operator_Ext_Mur_ABC* op_ext_mur = new Operator_Ext_Mur_ABC(FDTD_Op);
 			op_ext_mur->SetDirection(n/2,n%2);
 			if (m_Mur_v_ph[n]>0)
+			{
 				op_ext_mur->SetPhaseVelocity(m_Mur_v_ph[n]);
+			}
 			FDTD_Op->AddExtension(op_ext_mur);
 		}
 		if (m_BC_type[n]==3)
@@ -456,7 +532,21 @@ bool openEMS::SetupBoundaryConditions()
 
 
 	//create the upml
-	Operator_Ext_UPML::Create_UPML(FDTD_Op, m_BC_type, m_PML_size, string());
+	if (dynamic_cast<Operator_CartesianSubgrid *>(FDTD_Op))
+	{
+		std::array<unsigned int, 6> cells{};
+		for (unsigned int n = 0; n < 6; ++n)
+			if (m_BC_type[n] == 3)
+			{
+				if (m_PML_size[n] < 4)
+					throw std::invalid_argument("CartesianSubgrid: PML requires at least four base cells per face");
+				cells[n] = m_PML_size[n];
+			}
+		if (std::any_of(cells.begin(), cells.end(), [](unsigned int count) { return count != 0; }))
+			FDTD_Op->AddExtension(new Operator_Ext_CartesianSubgrid_PML(FDTD_Op, cells));
+	}
+	else
+		Operator_Ext_UPML::Create_UPML(FDTD_Op, m_BC_type, m_PML_size, string());
 
 	return true;
 }
@@ -500,6 +590,11 @@ void openEMS::SetupAbsorbingSheets()
 //! The engine interface for the field storage of the engine of \a op; what depends on the mesh, the interfaces ask the operator
 static Engine_Interface_FDTD* NewEngineInterface(Operator* op)
 {
+	// Compact local fields use their virtual reconstruction, not Engine_GPU's rectangular arrays.
+	if (dynamic_cast<Operator_CartesianSubgrid *>(op))
+	{
+		return new Engine_Interface_FDTD(op);
+	}
 	// without an engine the basic interface throws
 	switch (op->GetEngine() ? op->GetEngine()->GetType() : Engine::UNKNOWN)
 	{
@@ -824,10 +919,204 @@ void openEMS::SetupCylinderMultiGrid(std::string val)
 	m_CC_MultiGrid = SplitString2Double(val,',');
 }
 
+void openEMS::SetupCartesianSubgrid(std::vector<double> box)
+{
+	if (box.size() != 6 || !std::all_of(box.begin(), box.end(), [](double v) { return std::isfinite(v); }))
+	{
+		throw std::invalid_argument("CartesianSubgrid: expected six finite box coordinates");
+	}
+	for (unsigned int n = 0; n < 3; ++n)
+	{
+		if (box[n] >= box[n + 3])
+		{
+			throw std::invalid_argument("CartesianSubgrid: box start must be below stop on every axis");
+		}
+	}
+	m_CartesianSubgridBox = box;
+	m_CartesianSubgridBoxes.clear();
+	m_CartesianSubgridRatios.clear();
+}
+
+void openEMS::SetupCartesianSubgridRatio(std::vector<unsigned int> ratio)
+{
+	if (!m_CartesianSubgridBoxes.empty())
+	{
+		throw std::invalid_argument("CartesianSubgrid: set per-region ratios with SetupCartesianSubgrids");
+	}
+	if (ratio.size() != 3)
+	{
+		throw std::invalid_argument("CartesianSubgrid: expected three axis ratios");
+	}
+	CartesianSubgrid::ValidateRatio({ratio[0], ratio[1], ratio[2]});
+	m_CartesianSubgridRatio = ratio;
+}
+
+void openEMS::SetupCartesianSubgrids(const std::vector<std::vector<double>> &boxes,
+									 const std::vector<std::vector<unsigned int>> &ratios)
+{
+	std::vector<CartesianSubgrid::Index> selected;
+	if (ratios.size() != boxes.size() || boxes.empty() || boxes.size() > 64)
+	{
+		throw std::invalid_argument("CartesianSubgrid: expected 1 through 64 boxes and matching axis ratios");
+	}
+	for (const auto &ratio : ratios)
+	{
+		if (ratio.size() != 3)
+		{
+			throw std::invalid_argument("CartesianSubgrid: expected three axis ratios per region");
+		}
+		selected.push_back({ratio[0], ratio[1], ratio[2]});
+	}
+	Operator_CartesianSubgrid::ValidateRegions(boxes, selected);
+	if (boxes.size() == 1)
+	{
+		SetupCartesianSubgrid(boxes[0]);
+		SetupCartesianSubgridRatio(ratios[0]);
+	}
+	else
+	{
+		m_CartesianSubgridBoxes = boxes;
+		m_CartesianSubgridRatios = std::move(selected);
+		m_CartesianSubgridBox.clear();
+		m_CartesianSubgridRatio = {2, 2, 2};
+	}
+}
+
+void openEMS::AddCartesianSubgrid(const std::vector<double> &box, const std::vector<unsigned int> &ratio)
+{
+	std::vector<std::vector<double>> boxes = m_CartesianSubgridBoxes;
+	std::vector<std::vector<unsigned int>> ratios;
+	for (const auto &selected : m_CartesianSubgridRatios)
+	{
+		ratios.emplace_back(selected.begin(), selected.end());
+	}
+	if (!m_CartesianSubgridBox.empty())
+	{
+		boxes.push_back(m_CartesianSubgridBox);
+		ratios.push_back(m_CartesianSubgridRatio);
+	}
+	boxes.push_back(box);
+	ratios.push_back(ratio);
+	SetupCartesianSubgrids(boxes, ratios);
+}
+
+void openEMS::SetupCartesianSubgridMaxLeaves(unsigned int count)
+{
+	CartesianSubgridDetail::ValidateLeafLimit(count);
+	m_CartesianSubgridMaxLeaves = count;
+}
+
+void openEMS::SetupCartesianSubgridMaterialSamples(unsigned int samples)
+{
+	if (samples != 0 && samples != 2 && samples != 4 && samples != 8)
+	{
+		throw std::invalid_argument("CartesianSubgrid: material samples must be 0, 2, 4 or 8 per axis");
+	}
+	m_CartesianSubgridMaterialSamples = samples;
+}
+
+void openEMS::SetupCartesianSubgridChildLines(const std::vector<std::vector<double>> &axes)
+{
+	if (axes.size() != 3)
+	{
+		throw std::invalid_argument("CartesianSubgrid: expected three child-coordinate axes");
+	}
+	for (const auto &axis : axes)
+	{
+		if (axis.size() == 1 || axis.size() > CartesianSubgridDetail::MaxBaseIntervals * 16 + 1)
+		{
+			throw std::invalid_argument("CartesianSubgrid: invalid child-coordinate axis length");
+		}
+		for (std::size_t k = 0; k < axis.size(); ++k)
+		{
+			if (!std::isfinite(axis[k]) || (k != 0 && axis[k] <= axis[k - 1]))
+			{
+				throw std::invalid_argument("CartesianSubgrid: child coordinates must be finite and strictly increasing");
+			}
+		}
+	}
+	// Validate the entire request before replacing any axis. Exact parent
+	// anchors and refinement-dependent lengths are checked against the mesh.
+	std::copy(axes.begin(), axes.end(), m_CartesianSubgridChildLines.begin());
+}
+
+namespace
+{
+template <typename Value> std::vector<Value> ParseSubgridValues(const char *text, std::size_t count)
+{
+	if (!text)
+	{
+		throw std::invalid_argument("CartesianSubgrid: missing box or ratio attribute");
+	}
+	std::istringstream input(text);
+	std::vector<Value> values(count);
+	for (std::size_t i = 0; i < count; ++i)
+	{
+		if (!(input >> values[i]))
+		{
+			throw std::invalid_argument("CartesianSubgrid: malformed coordinate or ratio token");
+		}
+		input >> std::ws;
+		if (i + 1 < count && input.get() != ',')
+		{
+			throw std::invalid_argument("CartesianSubgrid: expected comma-separated coordinates or ratios");
+		}
+	}
+	if (!input.eof())
+	{
+		throw std::invalid_argument("CartesianSubgrid: extra values or invalid suffix");
+	}
+	return values;
+}
+
+std::vector<unsigned int> ParseSubgridRatio(const char *text)
+{
+	const auto values = ParseSubgridValues<int>(text, 3);
+	std::vector<unsigned int> ratio(values.begin(), values.end());
+	CartesianSubgrid::ValidateRatio({ratio[0], ratio[1], ratio[2]});
+	return ratio;
+}
+
+template <typename Values> std::string SubgridValues(const Values &values)
+{
+	std::ostringstream output;
+	output << std::setprecision(17);
+	for (std::size_t i = 0; i < values.size(); ++i)
+	{
+		if (i != 0)
+		{
+			output << ',';
+		}
+		output << values[i];
+	}
+	return output.str();
+}
+} // namespace
+
 bool openEMS::SetupOperator()
 {
 	// what defaults to AvailableThreads() (GPU operator build, field dumps, SAR, nf2ff) honours numThreads
 	SetThreadLimit(m_engine_numThreads);
+	const bool childLines = std::any_of(m_CartesianSubgridChildLines.begin(), m_CartesianSubgridChildLines.end(),
+		[](const std::vector<double> &axis) { return !axis.empty(); });
+	if ((childLines || m_CartesianSubgridMaterialSamples ||
+		m_CartesianSubgridMaxLeaves != CartesianSubgridDetail::DefaultLeafLimit) &&
+		m_CartesianSubgridBox.empty() && m_CartesianSubgridBoxes.empty())
+	{
+		throw std::invalid_argument("CartesianSubgrid: child coordinates require refinement regions");
+	}
+
+	// This branch implements this optional property only in the native local
+	// operator. Do not silently accept its losses on an ordinary operator.
+#ifdef OPENEMS_HAS_SUBGRID_SURFACE_PROPERTY
+	if (m_CSX && m_CartesianSubgridBox.empty() && m_CartesianSubgridBoxes.empty() &&
+		!m_CSX->GetPropertyByType(CSProperties::LOSSYMETAL).empty())
+	{
+		throw std::invalid_argument(
+			"openEMS: LossyMetal requires the native Cartesian subgrid path in this build; "
+			"a regular-grid calculation needs a runtime with the conductor extension");
+	}
+#endif
 
 	// the command-line choice (openEMS::EngineType) as the engine type of the operator
 	Engine::EngineType type = Engine::UNKNOWN;
@@ -850,8 +1139,27 @@ bool openEMS::SetupOperator()
 
 	// the GPU backend first: without a usable device the operator is not worth building
 	const bool gpu = (type==Engine::GPU);
+	if ((!m_CartesianSubgridBox.empty() || !m_CartesianSubgridBoxes.empty()) &&
+		(CylinderCoords || !m_CC_MultiGrid.empty() || (type != Engine::BASIC && type != Engine::GPU)))
+	{
+		throw std::invalid_argument("CartesianSubgrid: use Cartesian coordinates and explicit engine=basic or a supported GPU backend");
+	}
+	if (m_CartesianSubgridBox.empty() && m_CartesianSubgridRatio != std::vector<unsigned int>{2, 2, 2})
+	{
+		throw std::invalid_argument("CartesianSubgrid: axis ratios require a refinement box");
+	}
+	const auto domains = CartesianSubgridRuntime::ReadOptions();
+	if (domains && (!gpu || (m_CartesianSubgridBox.empty() && m_CartesianSubgridBoxes.empty())))
+	{
+		throw std::invalid_argument("CartesianSubgrid: native domains require subgrids and engine=gpu or gpu-reference");
+	}
+	std::vector<std::unique_ptr<GPU_Backend>> domainBackends;
+	if (domains)
+	{
+		domainBackends = domains->CreateBackends(m_engine == EngineType_GPU_Reference);
+	}
 	GPU_Backend* gpu_backend = NULL;
-	if (gpu)
+	if (gpu && !domains)
 	{
 		try
 		{
@@ -885,14 +1193,56 @@ bool openEMS::SetupOperator()
 		}
 		FDTD_Op = op_cyl;
 	}
+	else if (!m_CartesianSubgridBoxes.empty())
+	{
+		cout << "Create experimental compact multi-region Cartesian XYZ subgrid operator" << endl;
+		FDTD_Op = Operator_CartesianSubgrid::NewRegions(m_CartesianSubgridBoxes, m_CartesianSubgridRatios);
+	}
+	else if (!m_CartesianSubgridBox.empty())
+	{
+		cout << "Create experimental compact Cartesian XYZ subgrid operator" << endl;
+		FDTD_Op = Operator_CartesianSubgrid::New(m_CartesianSubgridBox,
+				{m_CartesianSubgridRatio[0], m_CartesianSubgridRatio[1], m_CartesianSubgridRatio[2]});
+	}
 	else
 	{
 		cout << "Create FDTD operator (" << name << ")" << endl;
 		FDTD_Op = Operator::New(m_engine_numThreads);
 	}
 	FDTD_Op->SetEngineType(type);
-	if (gpu)
+	if (m_CartesianSubgridMaterialSamples ||
+		m_CartesianSubgridMaxLeaves != CartesianSubgridDetail::DefaultLeafLimit)
+	{
+		auto *compact = dynamic_cast<Operator_CartesianSubgrid *>(FDTD_Op);
+		if (!compact)
+		{
+			throw std::invalid_argument("CartesianSubgrid: settings require the Cartesian subgrid operator");
+		}
+		compact->SetMaxLeaves(m_CartesianSubgridMaxLeaves);
+		compact->SetMaterialSamples(m_CartesianSubgridMaterialSamples);
+	}
+	if (childLines)
+	{
+		auto *compact = dynamic_cast<Operator_CartesianSubgrid *>(FDTD_Op);
+		if (!compact)
+		{
+			throw std::invalid_argument("CartesianSubgrid: child coordinates require the Cartesian subgrid operator");
+		}
+		compact->SetChildLines(m_CartesianSubgridChildLines);
+	}
+	if (domains)
+	{
+		auto *compact = dynamic_cast<Operator_CartesianSubgrid *>(FDTD_Op);
+		if (!compact)
+		{
+			throw std::invalid_argument("CartesianSubgrid: domain options require a compact Cartesian operator");
+		}
+		compact->SetDomainExecution(domains->axis, domains->drawingCuts, std::move(domainBackends));
+	}
+	else if (gpu)
+	{
 		FDTD_Op->SetGPUBackend(gpu_backend);
+	}
 	return true;
 }
 
@@ -986,6 +1336,90 @@ bool openEMS::Parse_XML_FDTDSetup(TiXmlElement* FDTD_Opts)
 		this->SetNumberOfTimeSteps((unsigned int)(dhelp>INT_MAX ? INT_MAX : dhelp));
 
 	int ihelp = 0;
+	if (TiXmlElement *regions = FDTD_Opts->FirstChildElement("CartesianSubgrids"))
+	{
+		if (regions->NextSiblingElement("CartesianSubgrids") || FDTD_Opts->Attribute("CartesianSubgridBox") ||
+			FDTD_Opts->Attribute("CartesianSubgridRatio"))
+		{
+			throw std::invalid_argument("CartesianSubgrid: multiple or mixed refinement definitions");
+		}
+		std::vector<std::vector<double>> boxes;
+		std::vector<std::vector<unsigned int>> ratios;
+		for (TiXmlElement *region = regions->FirstChildElement(); region; region = region->NextSiblingElement())
+		{
+			if (std::string(region->Value()) != "Region" || boxes.size() >= 64)
+			{
+				throw std::invalid_argument("CartesianSubgrid: expected at most 64 Region elements");
+			}
+			for (TiXmlAttribute *attribute = region->FirstAttribute(); attribute; attribute = attribute->Next())
+			{
+				const std::string name(attribute->Name());
+				if (name != "Box" && name != "Ratio")
+				{
+					throw std::invalid_argument("CartesianSubgrid: unknown Region attribute");
+				}
+			}
+			boxes.push_back(ParseSubgridValues<double>(region->Attribute("Box"), 6));
+			ratios.push_back(region->Attribute("Ratio") ? ParseSubgridRatio(region->Attribute("Ratio"))
+														: std::vector<unsigned int>{2, 2, 2});
+		}
+		SetupCartesianSubgrids(boxes, ratios);
+	}
+	else
+	{
+		if (const char *box = FDTD_Opts->Attribute("CartesianSubgridBox"))
+		{
+			SetupCartesianSubgrid(ParseSubgridValues<double>(box, 6));
+		}
+		if (const char *ratio = FDTD_Opts->Attribute("CartesianSubgridRatio"))
+		{
+			if (m_CartesianSubgridBox.empty())
+			{
+				throw std::invalid_argument("CartesianSubgrid: ratio requires a refinement box");
+			}
+			SetupCartesianSubgridRatio(ParseSubgridRatio(ratio));
+		}
+	}
+	if (const char *limit = FDTD_Opts->Attribute("CartesianSubgridMaxLeaves"))
+	{
+		SetupCartesianSubgridMaxLeaves(ParseSubgridValues<unsigned int>(limit, 1)[0]);
+	}
+	if (const char *samples = FDTD_Opts->Attribute("CartesianSubgridMaterialSamples"))
+	{
+		const auto values = ParseSubgridValues<double>(samples, 1);
+		if (values[0] != 0 && values[0] != 2 && values[0] != 4 && values[0] != 8)
+		{
+			throw std::invalid_argument("CartesianSubgrid: material samples must be 0, 2, 4 or 8 per axis");
+		}
+		SetupCartesianSubgridMaterialSamples(static_cast<unsigned int>(values[0]));
+	}
+	if (TiXmlElement *children = FDTD_Opts->FirstChildElement("CartesianSubgridChildLines"))
+	{
+		if (children->NextSiblingElement("CartesianSubgridChildLines") || children->FirstChildElement())
+		{
+			throw std::invalid_argument("CartesianSubgrid: expected one child-coordinate element without children");
+		}
+		std::vector<std::vector<double>> axes(3);
+		for (TiXmlAttribute *attribute = children->FirstAttribute(); attribute; attribute = attribute->Next())
+		{
+			const std::string name(attribute->Name()), values(attribute->Value());
+			if (name.size() != 1 || name[0] < 'X' || name[0] > 'Z')
+			{
+				throw std::invalid_argument("CartesianSubgrid: child-coordinate attributes must be X, Y or Z");
+			}
+			const std::size_t count = 1 + std::count(values.begin(), values.end(), ',');
+			if (count > CartesianSubgridDetail::MaxBaseIntervals * 16 + 1)
+			{
+				throw std::invalid_argument("CartesianSubgrid: child-coordinate axis exceeds the allocation guard");
+			}
+			axes[name[0] - 'X'] = ParseSubgridValues<double>(values.c_str(), count);
+		}
+		if (!children->FirstAttribute())
+		{
+			throw std::invalid_argument("CartesianSubgrid: child-coordinate element needs at least one axis");
+		}
+		SetupCartesianSubgridChildLines(axes);
+	}
 	FDTD_Opts->QueryIntAttribute("CylinderCoords",&ihelp);
 	if (ihelp==1)
 	{
@@ -1130,6 +1564,44 @@ bool openEMS::Write2XML(TiXmlNode* rootNode)
 
 	TiXmlElement fdtd("FDTD");
 	fdtd.SetAttribute("NumberOfTimesteps", this->NrTS);
+	if (!m_CartesianSubgridBoxes.empty())
+	{
+		TiXmlElement regions("CartesianSubgrids");
+		for (std::size_t i = 0; i < m_CartesianSubgridBoxes.size(); ++i)
+		{
+			TiXmlElement region("Region");
+			region.SetAttribute("Box", SubgridValues(m_CartesianSubgridBoxes[i]));
+			region.SetAttribute("Ratio", SubgridValues(m_CartesianSubgridRatios[i]));
+			regions.InsertEndChild(region);
+		}
+		fdtd.InsertEndChild(regions);
+	}
+	else if (!m_CartesianSubgridBox.empty())
+	{
+		fdtd.SetAttribute("CartesianSubgridBox", SubgridValues(m_CartesianSubgridBox));
+		fdtd.SetAttribute("CartesianSubgridRatio", SubgridValues(m_CartesianSubgridRatio));
+	}
+	if (m_CartesianSubgridMaxLeaves != CartesianSubgridDetail::DefaultLeafLimit)
+	{
+		fdtd.SetAttribute("CartesianSubgridMaxLeaves", m_CartesianSubgridMaxLeaves);
+	}
+	if (m_CartesianSubgridMaterialSamples)
+	{
+		fdtd.SetAttribute("CartesianSubgridMaterialSamples", m_CartesianSubgridMaterialSamples);
+	}
+	TiXmlElement childLines("CartesianSubgridChildLines");
+	for (unsigned int n = 0; n < 3; ++n)
+	{
+		if (!m_CartesianSubgridChildLines[n].empty())
+		{
+			const char name[2] = {char('X' + n), 0};
+			childLines.SetAttribute(name, SubgridValues(m_CartesianSubgridChildLines[n]));
+		}
+	}
+	if (childLines.FirstAttribute())
+	{
+		fdtd.InsertEndChild(childLines);
+	}
 
 	if (this->CylinderCoords)
 	{
@@ -1279,6 +1751,8 @@ ContinuousStructure* openEMS::GetCSX() const
 
 int openEMS::SetupFDTD()
 {
+	ValidateStartupGate();
+	ValidateRuntimeGates();
 	// of a previous setup that was not run
 	FreeSimulation();
 
@@ -1563,6 +2037,19 @@ void openEMS::RunFDTD()
 
 	cout << "Running FDTD engine... this may take a while... grab a cup of coffee?!?" << endl;
 
+	m_runtimeExcitationEnd = FDTD_Op->GetExcitationSignal()->GetLength();
+	for (CSProperties* property : m_CSX->GetPropertyByType(CSProperties::EXCITATION))
+	{
+		CSPropExcitation* excitation = property->ToExcitation();
+		if (excitation != NULL && excitation->GetEnabled())
+		{
+			double finish = FDTD_Op->GetExcitationSignal()->GetLength() +
+				std::max(0.0, excitation->GetDelay()) / FDTD_Op->GetTimestep();
+			m_runtimeExcitationEnd = std::max(m_runtimeExcitationEnd,
+				static_cast<unsigned int>(std::min(finish, static_cast<double>(NrTS))));
+		}
+	}
+
 	Signal::SetupHandlerForSIGINT(SIGNAL_EXIT_GRACEFUL);
 	RestoreSIGINT restoreSIGINT;
 	// every engine flushes denormals to zero (fast, and the same results for all engines), and
@@ -1576,6 +2063,14 @@ void openEMS::RunFDTD()
 
 	//init processings
 	PA->InitAll();
+	if (auto *local = dynamic_cast<Operator_CartesianSubgrid *>(FDTD_Op))
+	{
+		if (!local->NativeObservationInfo().sealed)
+		{
+			local->SealObservations();
+		}
+	}
+
 
 	//add all timesteps to end-crit field processing with max excite amplitude
 	unsigned int maxExcite = FDTD_Op->GetExcitationSignal()->GetMaxExcitationTimestep();
@@ -1610,6 +2105,8 @@ void openEMS::RunFDTD()
 	gettimeofday(&currTime,NULL);
 	timeval startTime = currTime;
 	timeval prevTime= currTime;
+	timeval snapshotTime = currTime;
+	snapshotTime.tv_sec -= 1;
 
 	if (m_DumpStats)
 		InitRunStatistics(OPENEMS_RUN_STAT_FILE);
@@ -1619,6 +2116,8 @@ void openEMS::RunFDTD()
 	int step=PA->Process();
 	if ((step<0) || (step>(int)NrTS)) step=NrTS;
 	bool aborted = false;
+	bool startupPassed = (m_startupGateStep == 0);
+	double startupWait = 0;
 	while ((FDTD_Eng->GetNumberOfTimesteps()<NrTS) && (change>endCrit) && !(aborted = CheckAbortCond()))
 	{
 		FDTD_Eng->IterateTS(step);
@@ -1636,13 +2135,65 @@ void openEMS::RunFDTD()
 		}
 
 		currTS = FDTD_Eng->GetNumberOfTimesteps();
-		if ((step<0) || (step>(int)(NrTS - currTS))) step=NrTS - currTS;
+		if ((step<0) || (step>(int)(NrTS - currTS)))
+		{
+			step=NrTS - currTS;
+		}
+		if (!startupPassed && (unsigned int)currTS >= m_startupGateStep)
+		{
+			timeval gateStart, gateEnd;
+			gettimeofday(&gateStart, NULL);
+			if (!WaitStartupGate(currE, maxE, CalcDiffTime(gateStart, startTime)))
+			{
+				aborted = true;
+				break;
+			}
+			gettimeofday(&gateEnd, NULL);
+			startupWait += CalcDiffTime(gateEnd, gateStart);
+			prevTime = gateEnd;
+			prevTS = currTS;
+			startupPassed = true;
+		}
+
+		bool manualPause = false;
+		if (m_runtimeControl)
+		{
+			std::ifstream request("RUNTIME_PAUSE");
+			manualPause = request.good();
+		}
+		if (manualPause || (m_runtimeGateIndex < m_runtimeGateLevels.size() && ProcField->CheckTimestep() && maxE > 0 &&
+			currE / maxE <= std::pow(10.0, m_runtimeGateLevels[m_runtimeGateIndex] / 10.0) &&
+			(unsigned int)currTS >= m_runtimeExcitationEnd &&
+			change > endCrit))
+		{
+			timeval gateStart, gateEnd;
+			gettimeofday(&gateStart, NULL);
+			bool continued = CheckRuntimeGates(currE, maxE,
+				CalcDiffTime(gateStart, startTime) - startupWait);
+			gettimeofday(&gateEnd, NULL);
+			startupWait += CalcDiffTime(gateEnd, gateStart);
+			// Exclude pause/snapshot time from the next throughput interval.
+			prevTime = gateEnd;
+			prevTS = currTS;
+			if (!continued)
+			{
+				aborted = true;
+				break;
+			}
+		}
 
 		gettimeofday(&currTime,NULL);
 
+		if (m_dftSnapshots && CalcDiffTime(currTime, snapshotTime) >= 1.0)
+		{
+			CheckDFTSnapshot(currE, maxE);
+			gettimeofday(&snapshotTime, NULL);
+		}
+
+
 		t_diff = CalcDiffTime(currTime,prevTime);
 
-		if (exactEndCrit && !m_exactEndCriteria && (CalcDiffTime(currTime,startTime)>EXACT_ENDCRIT_TIME))
+		if (exactEndCrit && !m_exactEndCriteria && (CalcDiffTime(currTime,startTime)-startupWait>EXACT_ENDCRIT_TIME))
 		{
 			// from here on with the progress report only
 			exactEndCrit = false;
@@ -1653,7 +2204,7 @@ void openEMS::RunFDTD()
 
 		if (t_diff>4)
 		{
-			t_run = CalcDiffTime(currTime,startTime);
+			t_run = CalcDiffTime(currTime,startTime) - startupWait;
 			speed = numCells*(currTS-prevTS)/t_diff;
 			cout << "[@" <<  FormatTime(t_run) <<  "] Timestep: " << setw(12)  << currTS ;
 			cout << " || Speed: " << setw(6) << setprecision(1) << std::fixed << speed*1e-6 << " MC/s (" <<  setw(4) << setprecision(3) << std::scientific << t_diff/(currTS-prevTS) << " s/TS)" ;
@@ -1699,7 +2250,7 @@ void openEMS::RunFDTD()
 		cout << "RunFDTD: end-criteria of -" << fabs(10.0*log10(endCrit)) << "dB reached after " << FDTD_Eng->GetNumberOfTimesteps() << " timesteps (-" << fabs(10.0*log10(change)) << "dB)" << endl;
 
 	gettimeofday(&currTime,NULL);
-	t_diff = CalcDiffTime(currTime,startTime);
+	t_diff = CalcDiffTime(currTime,startTime) - startupWait;
 
 	cout << "Time for " << FDTD_Eng->GetNumberOfTimesteps() << " iterations with " << FDTD_Op->GetNumberCells() << " cells : " << t_diff << " sec" << endl;
 	cout << "Speed: " << numCells*(double)FDTD_Eng->GetNumberOfTimesteps()/t_diff*1e-6 << " MCells/s " << endl;

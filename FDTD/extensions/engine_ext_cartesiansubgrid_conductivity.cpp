@@ -1,0 +1,448 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+#include "engine_ext_cartesiansubgrid_conductivity.h"
+#include "engine_ext_cartesiansubgrid_pml.h"
+#include "FDTD/operator_cartesiansubgrid.h"
+#include "FDTD/gpu_backend.h"
+#include "FDTD/gpu_cartesiansubgrid_conductivity.h"
+#include "FDTD/subgrid_loss_rows.h"
+#include "FDTD/subgrid_setup_timing.h"
+#include <limits>
+#include <algorithm>
+#include <cmath>
+#include <stdexcept>
+
+Engine_Ext_CartesianSubgrid_Conductivity::Engine_Ext_CartesianSubgrid_Conductivity(
+	Operator_Ext_CartesianSubgrid_Conductivity *op)
+	: Engine_Ext_CartesianSubgrid_Advance(op), m_Conductivity(op), m_Grid(op->m_Compact->Grid()),
+	  m_SurfaceState(op->m_SurfaceTrace.size(), 0)
+{
+	m_Conductivity->ValidatePreparedExtensions();
+}
+
+void Engine_Ext_CartesianSubgrid_Conductivity::Add(std::array<double, 2> &sum, double value)
+{
+	const double total = sum[0] + value;
+	sum[1] += std::abs(sum[0]) >= std::abs(value) ? (sum[0] - total) + value : (value - total) + sum[0];
+	sum[0] = total;
+}
+
+void Engine_Ext_CartesianSubgrid_Conductivity::Check(double timestep) const
+{
+	m_Grid.CheckStep(timestep);
+	if (timestep != m_Conductivity->m_Timestep)
+	{
+		throw std::invalid_argument("CartesianSubgrid conductivity requires its factored timestep");
+	}
+}
+
+void Engine_Ext_CartesianSubgrid_Conductivity::UpdateElectric(double timestep, double drive)
+{
+	Check(timestep);
+	auto &g = m_Grid;
+	const auto &c = *m_Conductivity;
+	if (!c.m_HasLoss)
+	{
+		g.UpdateElectric(timestep, drive);
+		m_Advanced = true;
+		return;
+	}
+	if (g.m_PendingMagneticTimestep != 0 || !std::isfinite(drive))
+	{
+		throw std::invalid_argument("CartesianSubgrid conductivity electric phase/drive is invalid");
+	}
+	m_Advanced = true;
+	// Kept empty for device-only execution; reference sweeps reuse the
+	// same capacities after their first call. No material history moves.
+	auto &electric = g.m_Electric.MutableDense();
+	m_OldElectric.resize(g.EdgeCount());
+	m_SourceCurl.resize(g.EdgeCount());
+	g.m_Increment.resize(g.EdgeCount());
+	std::copy(electric.begin(), electric.end(), m_OldElectric.begin());
+	g.CurlTranspose(g.m_Magnetic.MutableDense(), g.m_Increment);
+	std::copy(g.m_Increment.begin(), g.m_Increment.end(), m_SourceCurl.begin());
+	for (std::size_t i = 0; i < g.EdgeCount(); ++i)
+	{
+		g.m_Increment[i] -= c.m_EffectiveDiagonal[i] * electric[i];
+	}
+	for (const auto &term : c.m_EffectiveOffDiagonal)
+	{
+		g.m_Increment[term.first.first] -= term.second * electric[term.first.second];
+		g.m_Increment[term.first.second] -= term.second * electric[term.first.first];
+	}
+	for (std::size_t pole = 0; pole < m_SurfaceState.size(); ++pole)
+	{
+		const double history = m_SurfaceState[pole] / c.m_SurfaceDenominator[pole];
+		for (const auto &term : c.m_SurfaceTrace[pole])
+		{
+			g.m_Increment[term.first] -= term.second * history;
+		}
+	}
+	c.Solve(g.m_Increment, m_Scratch);
+	if (g.m_PortVoltage.empty())
+	{
+		for (std::size_t i = 0; i < g.EdgeCount(); ++i)
+		{
+			electric[i] += timestep * g.m_Increment[i];
+		}
+	}
+	else
+	{
+		g.ApplyResistors(timestep, drive, c.m_Responses, c.m_PortLower);
+	}
+	// Dissipation is evaluated on the implicit E midpoint BEFORE soft kicks.
+	for (std::size_t row = 0; row < c.m_Trace.size(); ++row)
+	{
+		const auto trace = c.m_Trace[row];
+		double field = 0;
+		for (const auto &term : trace)
+		{
+			field += term.second * .5 * (m_OldElectric[term.first] + electric[term.first]);
+		}
+		Add(m_ElectricLoss, timestep * field * field);
+	}
+	// Advance sqrt(L)*I from the implicit field midpoint before soft kicks.
+	for (std::size_t pole = 0; pole < m_SurfaceState.size(); ++pole)
+	{
+		double voltage = 0;
+		for (const auto &term : c.m_SurfaceTrace[pole])
+		{
+			voltage += term.second * .5 * (m_OldElectric[term.first] + electric[term.first]);
+		}
+		const double previous = m_SurfaceState[pole];
+		const double a = .5 * timestep * c.m_SurfaceRate[pole];
+		m_SurfaceState[pole] = ((1 - a) * previous + timestep * voltage) / c.m_SurfaceDenominator[pole];
+		const double midpoint = .5 * (previous + m_SurfaceState[pole]);
+		Add(m_SurfaceLoss, timestep * c.m_SurfaceRate[pole] * midpoint * midpoint);
+	}
+	for (const auto &source : g.m_Sources)
+	{
+		const double change = drive * source.second;
+		double derivative = electric[source.first];
+		for (const auto &term : g.m_MassOffDiagonal)
+		{
+			if (term.first.first == source.first)
+			{
+				derivative += term.second * electric[term.first.second];
+			}
+			if (term.first.second == source.first)
+			{
+				derivative += term.second * electric[term.first.first];
+			}
+		}
+		g.m_SourceWork += change * (derivative + .5 * change - .5 * timestep * m_SourceCurl[source.first]);
+		electric[source.first] += change;
+	}
+	g.m_PendingMagneticTimestep = timestep;
+}
+
+void Engine_Ext_CartesianSubgrid_Conductivity::UpdateMagnetic(double timestep)
+{
+	Check(timestep);
+	auto &g = m_Grid;
+	const auto &c = *m_Conductivity;
+	if (!c.m_HasLoss)
+	{
+		g.UpdateMagnetic(timestep);
+		return;
+	}
+	if (g.m_PendingMagneticTimestep != timestep)
+	{
+		throw std::invalid_argument("CartesianSubgrid conductivity magnetic phase is invalid");
+	}
+	auto &magnetic = g.m_Magnetic.MutableDense();
+	g.m_Curl.resize(g.FaceCount());
+	g.Curl(g.m_Electric.MutableDense(), g.m_Curl);
+	for (std::size_t i = 0; i < g.FaceCount(); ++i)
+	{
+		const double previous = magnetic[i], rate = c.m_MagneticRate[i], a = .5 * timestep * rate;
+		if (rate == 0)
+		{
+			magnetic[i] -= timestep * g.m_Curl[i];
+		}
+		else
+		{
+			magnetic[i] = ((1 - a) * previous - timestep * g.m_Curl[i]) / (1 + a);
+			const double mid = .5 * (previous + magnetic[i]);
+			Add(m_MagneticLoss, timestep * rate * mid * mid);
+		}
+	}
+	g.m_PendingMagneticTimestep = 0;
+}
+
+CartesianSubgridConductivityPrepared Engine_Ext_CartesianSubgrid_Conductivity::PrepareDomainData(
+	const Engine_Ext_CartesianSubgrid_PML *pml, bool expandedCurls) const
+{
+	return PrepareDomainDataImpl(pml, expandedCurls, true);
+}
+
+CartesianSubgridConductivityPrepared Engine_Ext_CartesianSubgrid_Conductivity::PrepareDomainDataImpl(
+	const Engine_Ext_CartesianSubgrid_PML *pml, bool expandedCurls, bool includeFields) const
+{
+	if (expandedCurls && !includeFields)
+	{
+		throw std::invalid_argument("CartesianSubgrid: expanded domain oracle requires explicit initial fields");
+	}
+	if (m_Advanced || m_UsingDevice || m_Grid.m_PendingMagneticTimestep != 0)
+	{
+		throw std::invalid_argument("CartesianSubgrid: distributed conductivity requires cold constitutive histories");
+	}
+	if (pml && &pml->Grid() != &m_Grid)
+	{
+		throw std::invalid_argument("CartesianSubgrid: conductivity and domain PML have different grids");
+	}
+	for (std::size_t k = 0; k < m_Conductivity->m_Compact->GetNumberOfExtentions(); ++k)
+	{
+		const auto *extension = m_Conductivity->m_Compact->GetExtension(k);
+		if (extension != m_Conductivity && (!pml || extension != &pml->PreparedOperator()))
+		{
+			throw std::invalid_argument("CartesianSubgrid: other domain extension histories are not prepared");
+		}
+	}
+	m_Conductivity->ValidatePreparedExtensions();
+	if (!m_Conductivity->HasLoss())
+	{
+		return {includeFields ? (expandedCurls ? m_Grid.DeviceData() : m_Grid.DeviceStateData()) : m_Grid.DeviceSetupMetadata(), {}};
+	}
+	return PrepareDeviceData(expandedCurls, includeFields);
+}
+
+CartesianSubgridConductivityPrepared Engine_Ext_CartesianSubgrid_Conductivity::PrepareDeviceData(bool expanded, bool includeFields) const
+{
+	CartesianSubgridSetupTiming timing("conductivity_device");
+	const auto &c = *m_Conductivity;
+	const auto index = [](std::size_t value)
+	{
+		if (value > std::numeric_limits<std::uint32_t>::max())
+		{
+			throw std::invalid_argument("CartesianSubgrid: conductivity device index overflow");
+		}
+		return static_cast<std::uint32_t>(value);
+	};
+	const auto scalar = [](double value)
+	{
+		const float result = static_cast<float>(value);
+		if (!std::isfinite(value) || !std::isfinite(result) ||
+			(value != 0 && std::abs(result) < std::numeric_limits<float>::min()))
+		{
+			throw std::invalid_argument("CartesianSubgrid: unrepresentable conductivity device factor/coefficient");
+		}
+		return result;
+	};
+	auto data = includeFields ? (expanded ? m_Grid.DeviceData() : m_Grid.DeviceStateData()) : m_Grid.DeviceSetupMetadata();
+	if (data.rootConductance.empty())
+	{
+		data.portTimestep = 0;
+	}
+	data.blockStart = {0};
+	data.blockEdge.clear();
+	data.bandwidth.clear();
+	data.lowerStart = {0};
+	data.lower.clear();
+	data.factorTails = {};
+	const auto appendFactor = [&](const CartesianSubgrid::MassBlock &block)
+	{
+		for (std::size_t edge : block.edges)
+		{
+			data.blockEdge.push_back(index(edge));
+		}
+		data.blockStart.push_back(index(data.blockEdge.size()));
+		data.bandwidth.push_back(index(block.halfBandwidth));
+		const auto factor = CartesianSubgridFloat::Factor(block.lower, block.edges.size(),
+			block.halfBandwidth, data.factorTails);
+		data.lower.insert(data.lower.end(), factor.begin(), factor.end());
+		data.lowerStart.push_back(index(data.lower.size()));
+	};
+	for (const auto &block : c.m_Factors)
+	{
+		appendFactor(block);
+	}
+	for (std::size_t edge = 0; edge < c.m_IndependentInverse.size(); ++edge)
+	{
+		if (c.m_IndependentInverse[edge] != 1)
+		{
+			CartesianSubgrid::MassBlock block;
+			block.edges = {edge};
+			block.halfBandwidth = 0;
+			block.lower = {std::sqrt(1 / c.m_IndependentInverse[edge])};
+			appendFactor(block);
+		}
+	}
+	data.responseStart = {0};
+	data.responseEdge.clear();
+	data.responseWeight.clear();
+	for (const auto &response : c.m_Responses)
+	{
+		for (const auto &term : response.weights)
+		{
+			data.responseEdge.push_back(index(term.first));
+			data.responseWeight.push_back(scalar(term.second));
+		}
+		data.responseStart.push_back(index(data.responseEdge.size()));
+	}
+	data.portLower.clear();
+	for (double value : c.m_PortLower)
+	{
+		data.portLower.push_back(scalar(value));
+	}
+	data.trackSourceWork = true;
+	data.sourceOffStart = {0};
+	data.sourceOffEdge.clear();
+	data.sourceOffWeight.clear();
+	for (const auto &source : m_Grid.m_Sources)
+	{
+		for (const auto &term : m_Grid.m_MassOffDiagonal)
+		{
+			if (term.first.first == source.first)
+			{
+				data.sourceOffEdge.push_back(index(term.first.second));
+				data.sourceOffWeight.push_back(scalar(term.second));
+			}
+			if (term.first.second == source.first)
+			{
+				data.sourceOffEdge.push_back(index(term.first.first));
+				data.sourceOffWeight.push_back(scalar(term.second));
+			}
+		}
+		data.sourceOffStart.push_back(index(data.sourceOffEdge.size()));
+	}
+	CartesianSubgridConductivityData loss;
+	timing.Phase("fields_factors_and_ports");
+	loss.timestep = c.m_Timestep;
+	loss.magneticRate = c.m_MagneticRate;
+	const auto append = [&](CartesianSubgridConductivityData::Rows &rows, std::size_t edge, double value)
+	{
+		rows.edge.push_back(index(edge));
+		rows.weight.push_back(scalar(value));
+		rows.low.push_back(scalar(value - double(rows.weight.back())));
+	};
+	const auto addAt = [&](auto &builder, std::size_t row, std::size_t column, double value)
+	{
+		const float high = scalar(value);
+		builder.Add(row, index(column), high, scalar(value - double(high)));
+	};
+	{
+		CartesianSubgridLossRows builder(loss.conductance, m_Grid.EdgeCount());
+		for (std::size_t edge = 0; edge < m_Grid.EdgeCount(); ++edge)
+		{
+			if (c.m_EffectiveDiagonal[edge] != 0)
+			{
+				builder.Count(edge);
+			}
+		}
+		for (const auto &term : c.m_EffectiveOffDiagonal)
+		{
+			builder.Count(term.first.first);
+			builder.Count(term.first.second);
+		}
+		builder.Allocate();
+		for (std::size_t edge = 0; edge < m_Grid.EdgeCount(); ++edge)
+		{
+			if (c.m_EffectiveDiagonal[edge] != 0)
+			{
+				addAt(builder, edge, edge, c.m_EffectiveDiagonal[edge]);
+			}
+		}
+		for (const auto &term : c.m_EffectiveOffDiagonal)
+		{
+			addAt(builder, term.first.first, term.first.second, term.second);
+			addAt(builder, term.first.second, term.first.first, term.second);
+		}
+		builder.Complete(true);
+	}
+	timing.Phase("conductance_rows");
+	const auto reserve = [&](CartesianSubgridConductivityData::Rows &rows,
+		const CartesianSubgridTraceRows &source)
+	{
+		const auto terms = index(source.TermCount());
+		rows.start.reserve(static_cast<std::size_t>(index(source.size())) + 1);
+		rows.edge.reserve(terms);
+		rows.weight.reserve(terms);
+		rows.low.reserve(terms);
+	};
+	reserve(loss.trace, c.m_Trace);
+	for (std::size_t row = 0; row < c.m_Trace.size(); ++row)
+	{
+		const auto trace = c.m_Trace[row];
+		for (const auto &term : trace)
+		{
+			append(loss.trace, term.first, term.second);
+		}
+		loss.trace.start.push_back(index(loss.trace.edge.size()));
+	}
+	timing.Phase("volume_trace_rows");
+	if (!c.m_SurfaceTrace.empty())
+	{
+		reserve(loss.surfaceTrace, c.m_SurfaceTrace);
+		CartesianSubgridLossRows history(loss.surfaceHistory, m_Grid.EdgeCount());
+		for (std::size_t pole = 0; pole < c.m_SurfaceTrace.size(); ++pole)
+		{
+			for (const auto &term : c.m_SurfaceTrace[pole])
+			{
+				history.Count(term.first);
+			}
+		}
+		history.Allocate();
+		for (std::size_t pole = 0; pole < c.m_SurfaceTrace.size(); ++pole)
+		{
+			for (const auto &term : c.m_SurfaceTrace[pole])
+			{
+				append(loss.surfaceTrace, term.first, term.second);
+				addAt(history, term.first, pole, term.second / c.m_SurfaceDenominator[pole]);
+			}
+			loss.surfaceTrace.start.push_back(index(loss.surfaceTrace.edge.size()));
+		}
+		history.Complete();
+		loss.surfaceRate = c.m_SurfaceRate;
+	}
+	timing.Phase("surface_trace_and_history_rows");
+	timing.Complete();
+	return {std::move(data), std::move(loss)};
+}
+
+std::unique_ptr<GPU_CartesianSubgrid> Engine_Ext_CartesianSubgrid_Conductivity::CreateDevice(GPU_Backend &backend)
+{
+	std::unique_ptr<GPU_CartesianSubgrid> device;
+	if (!m_Conductivity->HasLoss())
+	{
+		device = backend.CreateCartesianSubgrid(m_Grid);
+	}
+	else
+	{
+		auto prepared = PrepareDeviceData(false);
+		device = GPU_CreateCartesianSubgridAdvanced(backend, m_Grid, std::move(prepared.fields),
+			GPU_CreateCartesianSubgridConductivity(std::move(*prepared.loss)), m_Conductivity->m_Timestep);
+	}
+	m_UsingDevice = true;
+	return device;
+}
+
+void Engine_Ext_CartesianSubgrid_Conductivity::ReadDeviceDiagnostics(GPU_CartesianSubgrid &device)
+{
+	if (m_Conductivity->HasLoss())
+	{
+		const auto loss = device.ReadAdvanceLedger();
+		m_ElectricLoss = {loss[0], 0};
+		m_MagneticLoss = {loss[1], 0};
+		if (!m_Conductivity->m_SurfaceTrace.empty())
+		{
+			const auto surface = device.ReadAdvanceSurfaceLedger();
+			m_SurfaceLoss = {surface[0], 0};
+			m_DeviceSurfaceEnergy = surface[1];
+		}
+	}
+	m_UsingDevice = true;
+}
+
+double Engine_Ext_CartesianSubgrid_Conductivity::AdditionalStoredEnergy() const
+{
+	if (m_UsingDevice)
+	{
+		return m_DeviceSurfaceEnergy;
+	}
+	double value = 0;
+	for (double state : m_SurfaceState)
+	{
+		value += .5 * state * state;
+	}
+	return value;
+}

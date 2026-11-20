@@ -8,6 +8,9 @@ set(SOURCES
   ${CMAKE_CURRENT_SOURCE_DIR}/processcurrent.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/processfieldprobe.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/processfields.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/dft_snapshot.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/startup_gate.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/runtime_gate.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/processfields_fd.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/processfields_sar.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/processfields_td.cpp

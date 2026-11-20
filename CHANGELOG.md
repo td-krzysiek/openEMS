@@ -16,6 +16,229 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Added
 
+- Experimental Cartesian-subgrid device loss tables use counted sparse assembly
+  instead of full-edge temporary vector lists. Existing coefficients and order
+  are retained; the optional setup profiler also reports device-table stages.
+  Scoped CPU/reference controls pass. Physical-device and application capacity
+  qualification remain separate.
+
+- Experimental Cartesian-subgrid loss preparation uses bounded sparse pages
+  instead of separate allocations for every volume/surface trace. Trace values
+  and ordering are retained. Rebuild matching C++ callers; application capacity
+  and physical-device qualification remain separate.
+
+- Experimental Cartesian subgrids can also represent constant diagonal electric
+  and magnetic conductivities through C++ samplers and native CSXCAD material
+  components. Zero loss on individual axes is supported. Rebuild matching C++
+  callers. Scoped CPU/reference and single-Metal controls pass; broader
+  directional convergence, CUDA/multi-device and antenna qualification remain
+  separate.
+
+- Experimental Cartesian subgrids can represent constant positive diagonal
+  permittivity and permeability through C++ samplers and native CSXCAD
+  materials. Absorbing collars remain isotropic.
+  Rebuild matching C++ callers. Scoped CPU/reference checks do not establish
+  broader physical-device or antenna qualification.
+
+- Experimental Cartesian subgrids can report preparation phase wall times with
+  `OPENEMS_SUBGRID_SETUP_PROFILE=1`. Logging is off by default and does not run
+  in field updates. Scoped CPU/CUDA controls retain fields and port histories;
+  recent Metal and representative antenna qualification remain separate.
+
+- Experimental Cartesian subgrids store exact edge addresses more compactly.
+  Scoped CPU/CUDA controls retain geometry and fields; interleaved host tests
+  reduce measured preparation memory without a measured speedup. Rebuild
+  matching C++ callers. Recent Metal and antenna resource qualification remain
+  separate.
+
+- Experimental native Cartesian subgrids reuse startup/runtime pauses and
+  accumulated DFT snapshots. A paused witness follows complete-epoch worker
+  acknowledgement; resuming preserves fields and histories. Scoped CPU/CUDA
+  controls pass. Recent Metal and representative antenna qualification remain
+  separate; snapshots are not restart checkpoints.
+
+- Experimental C++ Cartesian-subgrid callers can explicitly fence one complete
+  observation epoch across all local domain workers, without downloading fields
+  or sums. Mixed/failed worker acknowledgements reject continuation. This is a
+  blocking owner-thread boundary; application pause control remains separate.
+  Rebuild matching callers and backend plugins.
+
+- Experimental native Cartesian-subgrid frequency-domain dumps can accumulate
+  selected owned states on the device and reconstruct the existing raw-region
+  output at readback. Dedicated DFT supports no longer require host field reads
+  each sampling batch. Budgeted fallback and explicit time-domain reads remain;
+  recent Metal, RF/NF2FF and representative antenna qualification are pending.
+
+- Experimental Cartesian-subgrid initial E/H fields retain exact implicit zeros
+  until CPU writes or explicit complete device imports need dense host values.
+  Supplied nonzero fields and precision guards remain unchanged. Rebuild callers.
+
+- Experimental Cartesian subgrids share exactly repeated leaf material values,
+  with a bounded palette and dense fallback for fully varying media. Rebuild
+  matching callers; material values and field equations are unchanged.
+
+- Experimental native Cartesian-subgrid U/I probes and energy use selected
+  complete-epoch device observations. Explicit whole-grid and generic field
+  requests retain a fresh full fallback. Rebuild matching callers; raw setup
+  grid references are not live mirrors after observation sealing.
+
+- Experimental C++ Cartesian-subgrid workers can optionally reduce positive
+  Galerkin field energy at complete epochs, including coupled electric mass
+  and unique domain ownership. Scoped CPU/CUDA controls pass; native processing
+  and Metal qualification remain separate. Rebuild matching callers/plugins.
+
+- Experimental C++ Cartesian-subgrid diagnostics can reconstruct physical E/H
+  and existing U/I functionals from startup-selected states. Scoped CPU/CUDA
+  controls pass; native processing still downloads full fields, and Metal
+  qualification remains open. Rebuild matching callers/plugins.
+
+- Experimental C++ Cartesian-subgrid workers can gather startup-selected
+  normalized E/H states at complete epochs. Complete-field host mirrors now
+  allocate on explicit read. Scoped CPU/CUDA controls pass; native processing
+  still reads complete fields and Metal qualification remains open. Rebuild
+  callers/plugins against matching headers.
+
+- Experimental Cartesian subgrids accept explicit scalar volume sampling for
+  extruded material polygons/axial cylinders, plus a checked opt-in leaf-count
+  budget. Defaults retain strict boxes and one million leaves. Scoped combined
+  CPU/CUDA controls pass; Metal, RF and full-antenna qualification remain open.
+  Rebuild solver, scripting callers and plugins together.
+
+- Experimental Cartesian subgrid preparation stores identical opposite-face
+  metric coefficients once, retaining all six independent magnetic field and
+  history states. Scoped CPU/CUDA controls pass; measured preparation RAM falls
+  a further2.47–5.22%. Metal and full-array resource qualification remain open.
+  Rebuild matching callers and plugins.
+
+- Experimental native Cartesian-subgrid domain setup uploads one numeric
+  package at a time and releases it after upload completion. Explicit C++ plans
+  remain reusable by default. Scoped CPU/CUDA controls pass; Metal and full-array
+  scaling remain pending. Rebuild matching callers and plugins.
+
+- Experimental Cartesian-subgrid rectangular ports reuse verified local support
+  during preparation, avoiding repeated general-path searches. Scoped CPU/CUDA
+  controls retain conductances and fields; general quadrature stays available.
+  Metal and representative RF/scaling qualification remain pending.
+
+- Experimental native Cartesian-subgrid resistive ports accept resolved sheet
+  and volume boxes with geometry-normalized conductance and optional end caps.
+  Scoped CPU/CUDA controls pass; Metal, RF convergence and antenna qualification
+  remain pending. Rebuild C++ callers against matching headers.
+
+- Experimental streamed Cartesian-subgrid domain setup derives incoming curl
+  rows locally instead of allocating a global incoming CSR. Scoped CPU/CUDA
+  controls preserve exact rows/fields; measured peak memory is slightly lower
+  with slower CPU preparation. Size guards and Metal qualification are unchanged.
+
+- Experimental Cartesian subgrids accept optional exact nonuniform child
+  coordinates through C++, XML, Python and a supplied Matlab helper. Base
+  anchors must match exactly; existing region/size restrictions remain.
+  Scoped CPU/CUDA controls pass; Metal and Matlab execution remain pending.
+
+- Experimental C++ Cartesian-subgrid diagnostics can read a normalized curl
+  row into reusable caller storage without creating full device operators.
+
+- Experimental native Cartesian-subgrid runs can select fixed local domains
+  through CLI/Python options, with explicit device/reference workers and
+  complete-batch host processing. Use `none` for a one-worker cut list.
+  Scoped reference/Metal controls pass; physical native CUDA, collective
+  external pause and production scaling remain pending. Rebuild callers
+  against matching headers; see `CARTESIAN_SUBGRID_RUNTIME.md`.
+
+- Experimental C++ Cartesian-subgrid workers can compose cold target-owned
+  convolution-PML histories with a checked disjoint bulk/surface-loss pair.
+  Field ghosts carry no histories; signed boundary work is read at complete
+  epochs. Scoped CPU/Metal controls pass; broader CUDA replay and native
+  distributed scripting/DFT remain pending. Rebuild callers/plugins together.
+
+- Experimental C++ Cartesian-subgrid domains can prepare cold bulk and surface
+  conductivity histories with owned field states and complete-step loss/energy
+  diagnostics. Native distributed scripting, absorber/DFT histories and antenna
+  qualification remain unavailable. Rebuild C++ callers/plugins together; see
+  `CARTESIAN_SUBGRID_DOMAINS.md` for the current qualification scope.
+
+- Experimental Cartesian-subgrid smooth-volume conductors accept simple
+  untransformed extruded polygons and axial cylinders/hollow shells. Physical
+  height and continuous CAD are retained; malformed contours and unresolved
+  contacts reject. Scoped CPU/Metal/CUDA controls do not qualify conformal
+  surfaces, curved-line RF or distributed conductor histories.
+
+- Experimental Cartesian-subgrid GPU preparation uses spatial curl blocks with
+  exact coefficient pairs and sparse interface exceptions when device metadata
+  is smaller. Default CPU updates retain the old pattern loop. Rebuild callers
+  and backend plugins together; representative PCB/scaling qualification remains
+  open. See `CARTESIAN_SUBGRID_BLOCKS.md`.
+
+- Experimental Cartesian subgrids can map physical smooth-volume conductor
+  boxes and same-metal unions to passive surface states. Native line-box
+  resistors follow the ordinary series-resistance convention across complete
+  local-edge paths. Optional CSXCAD metadata is checked explicitly; no PEC
+  fallback is used. See `CARTESIAN_SUBGRID_CONDUCTOR.md` for qualification limits.
+
+- Experimental C++ Cartesian-subgrid surface conductance/RL states share the
+  bulk-loss advance on CPU and existing GPU backends. Stored energy, Ohmic
+  loss and disjoint PML have scoped controls; broader conductor CAD and
+  distributed surface histories remain unsupported. Matching rebuilt
+  callers/plugins are required; see `CARTESIAN_SUBGRID_SURFACE.md`.
+
+- Experimental Cartesian subgrids accept constant isotropic electric/magnetic
+  conductivity in native material boxes through paired CPU/device updates.
+  Separated loss/PML is checked against prepared correction/collar supports.
+  Overlapping loss/PML, Mur with loss, broader surface/ADE conductor workflows and distributed
+  loss remain unsupported; see `CARTESIAN_SUBGRID_CONDUCTIVITY.md` for the qualified scope.
+- Experimental compact Cartesian physics extensions can supply a paired
+  operator/engine advance through the existing CPU/device boundary. Missing
+  device support rejects rather than silently advancing on CPU.
+
+- Experimental compact Cartesian domains can select the owning device before
+  work and observation batches, with bounded RTX4090/RTX3080 pair controls.
+  This does not enable native distributed PML, losses or processing; matching
+  rebuilt backend plugins and C++ callers are required.
+- Experimental C++ Cartesian-subgrid domain planning, workers and host-staged
+  boundary exchange through the existing reference/GPU backends. The initial
+  lane supports lossless/PEC fields, soft sources and scoped coupled resistor
+  ports with per-owner source/loss accounting. It has no native scripting
+  selector, distributed absorbers or processing. Rebuild
+  C++ callers and backend plugins against matching headers; plugin mode is
+  not qualified by the built-in backend controls.
+- Experimental local Cartesian subgridding: configure one box with
+  `CartesianSubgridBox` or several separate boxes with `SetCartesianSubgrids`.
+  Selected cells split independently in X/Y/Z using `CartesianSubgridRatio` (powers
+  of two from 1 to 16, default 2/2/2), with compact storage and a shared timestep.
+  Each region has its own ratios; nesting, overlap and touching are rejected.
+  Nonuniform base lines are supported with physical-coordinate sampling;
+  region bounds must coincide with base lines, without geometric snapping.
+  Lossless isotropic material boxes may follow local cell boundaries, with
+  CSXCAD material priorities. A box cutting through a cell is rejected.
+  Internal PEC supports aligned volume/sheet boxes and axis-aligned cylinders
+  or hollow barrels with mesh-aligned ends. Unrepresentable PEC patterns at a
+  coarse/fine interface are rejected instead of closing unresolved openings.
+  Native planar/linearly extruded PEC polygons preserve their supplied contours,
+  with guarded axial ends and CPU/reference/Metal Cu18 contact controls. Thin
+  aligned faces no longer fail solely from cancelling a drawing-coordinate
+  origin; actual subcell boundaries are still rejected.
+  The serial reference supports positive resistors on one independent local
+  edge and local voltage/current integration, with short two-port Yee controls.
+  Outer PEC/PMC combinations support closed and symmetry-plane CPU controls;
+  PMC planes lie on the physical outer base faces. First-order Mur supports
+  parallel faces with a checked unrefined, homogeneous two-cell collar;
+  adjacent Mur corners remain unsupported. Classical convolution PML supports
+  all six faces through the existing `PML_n` boundary setting, with a checked
+  homogeneous unrefined collar and one inner guard cell. Mixed Mur/PML,
+  distributed/LC ports remain unsupported. `engine=basic` supplies this
+  scoped CPU physics. Shared GPU/reference-backend operations now support
+  compact lossless fields and soft sources with closed PEC/PMC boundaries;
+  physical Metal has small-model controls. One-edge device RF resistor ports
+  now have midpoint/source-work and native two-port controls. Split FP32 curl/
+  timestep arithmetic corrects a reproduced strong-DC precision error. Broader
+  source accuracy and physical HIP/CUDA remain open. Paired device PML now
+  has reference/Metal field and public vacuum PEC dipole controls. Host DFT/
+  NF2FF remains unchanged; no PCB antenna or scalable-device claim is made.
+  A public vacuum PEC dipole also has scoped CPU
+  port, power, near-field and NF2FF controls against regular grids, including
+  mesh/time/PML sensitivity. Closed NF2FF surfaces and interpolation neighbours
+  stay in homogeneous unrefined air outside refinement and PML. General
+  antenna/radiation workflows, including dielectric PCB models, remain unqualified.
 - **A GPU engine**, `--engine=gpu` (`engine='gpu'` from Python), for AMD and
   NVIDIA GPUs (HIP/CUDA) and on macOS (Metal), with Cartesian and cylindrical
   meshes and the usual extensions. `--gpu-device=N` picks one of the GPUs
@@ -34,6 +257,62 @@ to what a user notices, in a few lines; the details belong in the commit.
 
 ### Changed
 
+- Experimental Cartesian-subgrid geometry uses implicit root/child addresses
+  instead of storing every leaf's six coordinates. The existing `Leaves()`
+  diagnostic materializes a retained immutable snapshot on demand;
+  `LeafAddresses()` avoids that allocation. Rebuild C++ callers and backend
+  plugins together. Representative antenna and Metal qualification remain open.
+
+- Experimental Cartesian-subgrid domains now prepare compressed local operator
+  packages directly, avoiding expanded per-worker copies and backend repacking.
+  Malformed packages reject before device allocation; numerical kernels and
+  cell guards are unchanged.
+
+- Experimental Cartesian-subgrid domain preparation no longer retains two
+  temporary global expanded curl operators. Local uploads and update kernels
+  are unchanged. Scoped setup measurements reduce peak memory at a setup-time
+  cost; this does not qualify production-sized models.
+
+- Experimental single-device Cartesian-subgrid preparation streams compressed
+  curl rows instead of retaining both expanded operators. Scoped CPU/Metal
+  controls retain fields, ports and losses; a bounded layout benchmark reduces
+  peak setup memory with a small setup-time cost. Domain preparation and
+  representative antenna qualification remain separate.
+
+
+- Experimental Cartesian subgridding accepts longer narrow interface factors
+  (up to 16,384 edges), with guarded bandwidth and stability-bound computation.
+  Base axes may have up to 16,384 intervals; total cell caps remain unchanged.
+
+- Experimental Cartesian subgrid independent-edge addressing uses structured
+  base/local slots instead of a tree. State numbering and numerical results
+  remain unchanged in scoped controls; measured small-core setup and memory
+  improve. Rebuild C++ callers with matching headers after the object-layout change.
+
+- Experimental compact subgrid GPU execution shares exact translated curl
+  patterns, reducing device metadata without changing coefficient arithmetic
+  or field histories. Scoped Metal memory/time controls retain unchanged
+  field/port/PML/radiation results; host upload and scale limits remain.
+
+- The experimental compact device path explicitly represents negligible
+  subnormal Cholesky fill as zero only under a strict recorded perturbation
+  bound, preserving all normal entries and positive diagonals. CPU factors
+  remain double; unsupported/unsafe conversion still fails at setup. Negligible
+  subnormal initial-state tails use a separate strict logged perturbation bound;
+  normal state entries and double CPU evolution are unchanged.
+
+- The experimental Cartesian subgrid reference shares identical translated
+  curl patterns and releases assembly scratch before field allocation, reducing
+  memory on the scoped controls. CPU updates can be slower; this is not a
+  production acceleration claim.
+
+- The Cartesian subgrid CPU reference stores exact interface Cholesky factors
+  in a lower band and uses block-sized solve workspace, reducing interface
+  storage and work. Its numerical scheme, timestep bound and allocation guards
+  are unchanged; general large-interface and device support remain experimental.
+- Its timestep setup uses a single signed solve for positive bipartite
+  interface graphs, retaining the exact inverse-norm formula and the general
+  all-column fallback. This does not change the interface allocation limits.
 - The Python bindings need Python 3.6 or newer (was 3.4).
 - Field dumps slow the simulation down less: they are evaluated on several
   threads, and time-domain HDF5 dumps are written in the background.
@@ -56,6 +335,42 @@ to what a user notices, in a few lines; the details belong in the commit.
   now, and openEMS prints how long it took.
 
 ### Fixed
+
+- This experimental branch rejects optional LossyMetal on its ordinary-grid
+  path, which lacks the conductor extension, rather than accepting unmodelled
+  losses. Native Cartesian subgrids and ordinary PEC retain their behavior.
+
+- Experimental native Cartesian-subgrid line resistors distribute series
+  resistance by physical segment length on graded grids. Equal-length grids
+  and explicit C++ circuits retain their behavior. Scoped CPU/CUDA controls
+  pass; Metal and representative RF qualification remain pending.
+
+- Experimental compact-subgrid native energy and physical-path U/I reads now
+  reject a failed advance, instead of allowing stale energy observations.
+
+- Experimental compact-subgrid PML now selects its owning GPU before allocation,
+  update hooks and diagnostics, so interleaving different devices does not use
+  another device's stream. See the scoped domain qualification.
+
+- Experimental Cartesian-subgrid smooth metal no longer rejects a fully
+  internal opaque face merely because its neighbour is locally subdivided.
+  Every intersecting tile must be opaque; partially exposed coarse/fine faces
+  and unresolved electric traces still reject. See the conductor qualification.
+
+- Experimental Cartesian-subgrid smooth-volume contours accept one repeated
+  final closing vertex without changing the supplied CAD. Further repeated,
+  backtracking and self-intersecting edges still reject.
+
+- Experimental Cartesian-subgrid reconstruction and path integration now use
+  consistent boundary-roundoff support, retaining genuine interior interpolation.
+
+- Experimental Cartesian-subgrid soft-E sources retain sample zero after a
+  stored nonperiodic waveform, matching ordinary Step/custom-source behavior.
+  Native periodic/steady-state scripting remains unsupported.
+- Experimental Cartesian subgrid device fields: retain coefficient and timestep
+  residuals with compensated FP32 arithmetic, avoiding accumulated interface
+  field errors in the reproduced DC and long RF controls. Existing CPU/ordinary
+  GPU kernels are unchanged; the correction adds memory and arithmetic cost.
 
 - More than 2^31 timesteps made the setup fail; the number is now limited to
   that.

@@ -401,6 +401,7 @@ ENDIF()
 IF(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|IntelLLVM" AND NOT MSVC)
   file(GLOB ENGINE_EXT_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/FDTD/extensions/engine_ext_*.cpp)
   set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/FDTD/gpu_backend_reference.cpp
+                              ${CMAKE_CURRENT_SOURCE_DIR}/FDTD/gpu_cartesiansubgrid.cpp
                               ${CMAKE_CURRENT_SOURCE_DIR}/FDTD/engine_cpu_kernels.cpp
                               ${ENGINE_EXT_SOURCES}
                               PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")

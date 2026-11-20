@@ -26,6 +26,13 @@ if(APPLE AND ENABLE_METAL)
   # is the same source for an offline compile: `cmake --build . --target metal_check` (CI).
   set(METAL_CM_PARTS
     ${CMAKE_CURRENT_SOURCE_DIR}/kernels/cell_update.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/kernels/subgrid_arithmetic.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/kernels/subgrid_geometry.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/kernels/subgrid_update.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/kernels/subgrid_pml.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/kernels/subgrid_conductivity.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/kernels/subgrid_energy.h
+    ${CMAKE_CURRENT_SOURCE_DIR}/kernels/subgrid_dft.h
     ${CMAKE_CURRENT_SOURCE_DIR}/kernels/ext_ops.h
     ${CMAKE_CURRENT_SOURCE_DIR}/metal/metal_kernels.metal)
   set(METAL_CM_SOURCE "#include <metal_stdlib>\nusing namespace metal;\n#pragma STDC FP_CONTRACT OFF\n")
@@ -56,6 +63,13 @@ set(SOURCES
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_cpu.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_cpu_kernels.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/operator.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/subgrid_native_field_gather.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/cartesian_subgrid.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/cartesian_subgrid_domains.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/cartesian_subgrid_runtime.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/cartesian_subgrid_coordinator.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/gpu_cartesiansubgrid_domains.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/operator_cartesiansubgrid.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/operator_coeffs.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/operator_cylinder.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_sse.cpp
@@ -68,6 +82,11 @@ set(SOURCES
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_field_gather.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_gpu.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/gpu_backend.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/gpu_cartesiansubgrid.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/gpu_cartesiansubgrid_pml.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/gpu_cartesiansubgrid_conductivity.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/gpu_cartesiansubgrid_energy.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/gpu_cartesiansubgrid_dft.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/gpu_plugins.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/gpu_backend_reference.cpp
   PARENT_SCOPE

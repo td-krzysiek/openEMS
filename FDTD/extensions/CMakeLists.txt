@@ -17,6 +17,14 @@ set(SOURCES
   ${CMAKE_CURRENT_SOURCE_DIR}/operator_extension.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_ext_mur_abc.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/operator_ext_mur_abc.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/operator_ext_cartesiansubgrid_mur.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/engine_ext_cartesiansubgrid_mur.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/surface_impedance.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/cartesiansubgrid_conductor.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/operator_ext_cartesiansubgrid_conductivity.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/engine_ext_cartesiansubgrid_conductivity.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/operator_ext_cartesiansubgrid_pml.cpp
+  ${CMAKE_CURRENT_SOURCE_DIR}/engine_ext_cartesiansubgrid_pml.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/operator_ext_cylinder.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/engine_ext_cylinder.cpp
   ${CMAKE_CURRENT_SOURCE_DIR}/operator_ext_excitation.cpp

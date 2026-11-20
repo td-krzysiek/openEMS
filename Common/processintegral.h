@@ -58,6 +58,11 @@ public:
 	virtual int Process();
 
 protected:
+	//! Additional physical integration metadata, before the column-name header.
+	virtual std::string IntegrationGeometry() const
+	{
+		return "";
+	}
 	ProcessIntegral(Engine_Interface_Base* eng_if);
 
 	void Dump_FD_Data(double factor, std::string filename);

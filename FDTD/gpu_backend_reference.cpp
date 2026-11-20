@@ -114,6 +114,18 @@ void GPU_Backend_Reference::DeviceDownload(void* host, const void* dev, size_t b
 	std::memcpy(host, dev, bytes);
 }
 
+void GPU_Backend_Reference::DeviceUpload(void* dev, const void* host, size_t bytes)
+{
+	if (bytes)
+	{
+		if (!dev || !host)
+		{
+			throw std::invalid_argument("GPU_Backend_Reference: null upload buffer");
+		}
+		std::memcpy(dev, host, bytes);
+	}
+}
+
 // as Engine_Interface_FDTD::CalcFastEnergy() on the host mirror, in the same order: the host mirror is stale during a batch
 bool GPU_Backend_Reference::CalcFastEnergy(const unsigned int numNodes[3], double& E_energy, double& H_energy)
 {

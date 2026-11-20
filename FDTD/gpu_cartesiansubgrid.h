@@ -1,0 +1,214 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+#ifndef GPU_CARTESIANSUBGRID_H
+#define GPU_CARTESIANSUBGRID_H
+
+#include <cstddef>
+#include <complex>
+#include <array>
+#include "subgrid_device_precision.h"
+#include "subgrid_device_curl.h"
+#include <cstdint>
+#include <memory>
+#include <stdexcept>
+#include <vector>
+
+class CartesianSubgrid;
+class GPU_Backend;
+struct Op_SubgridCurl;
+
+//! Borrowed normalized compact buffers; not rectangular voltage/current arrays.
+struct GPU_CartesianSubgridFields
+{
+	float *electric = nullptr, *magnetic = nullptr;
+	std::size_t electricCount = 0, magneticCount = 0;
+	double fixedTimestep = 0;
+};
+
+//! Completed single-device or local-domain package, without expanded CSR.
+struct CartesianSubgridDeviceOperators
+{
+	CartesianSubgridDeviceCurl curl, transpose;
+	std::vector<std::uint32_t> geometry;
+	std::vector<float> metrics;
+	std::size_t spatialRows = 0, legacyBytes = 0;
+};
+
+//! Backend-neutral upload contract for the first scoped device implementation.
+/*! Expanded curls are a bounded intermediate representation. They do not
+ *  allocate a global fine parent lattice, but are not structured block kernels.
+ *  FP32 fields/coefficients require independent numerical qualification.
+ */
+struct CartesianSubgridDeviceData
+{
+	//! State-only preparation uses its owning grid or a prepared local package.
+	//! Expanded arrays must be empty; ExpandedOracle retains the legacy path.
+	bool streamCurls = false;
+	//! Optional single-device spatial curl. Expanded arrays remain the independent oracle.
+	std::vector<std::uint32_t> curlGeometry;
+	std::vector<float> curlMetrics;
+	std::vector<float> electric, magnetic, curlWeight, transposeWeight, curlLow, transposeLow, lower;
+	std::vector<std::uint32_t> curlStart{0}, curlColumn, transposeStart, transposeColumn;
+	std::vector<std::uint32_t> blockStart{0}, blockEdge, bandwidth, lowerStart{0};
+	std::vector<std::uint32_t> sourceEdge;
+	std::vector<float> sourceWeight;
+	std::vector<std::uint32_t> portStart{0}, portEdge, responseStart{0}, responseEdge;
+	std::vector<float> portWeight, responseWeight, rootConductance, portCurrent, portLower;
+	std::vector<std::uint32_t> sourceOffStart{0}, sourceOffEdge;
+	std::vector<float> sourceOffWeight, ledger{0, 0, 0, 0};
+	CartesianSubgridFloat::TailInfo factorTails, stateTails;
+	double portTimestep = 0;
+	//! A source-only worker must retain source work when another worker owns ports.
+	bool trackSourceWork = false;
+	double stableTimestep = 0;
+};
+
+//! Paired-physics recurrence hooks around the compact algebraic solve.
+//! The extension supplies the prepared factor/port data, never post-damps a step.
+class GPU_CartesianSubgridRecurrence
+{
+  public:
+	virtual ~GPU_CartesianSubgridRecurrence() = default;
+	virtual void Bind(GPU_Backend &backend, const GPU_CartesianSubgridFields &fields, float *rhs) = 0;
+	//! After original transpose-curl/source capture, before the prepared mass solve.
+	virtual void PrepareElectric(double timestep) = 0;
+	//! After the implicit/port solve, before the ordered soft-source kicks.
+	virtual void FinishElectric(double timestep) = 0;
+	virtual void UpdateMagnetic(const Op_SubgridCurl &curl, double timestep) = 0;
+	virtual void CheckObservation() const = 0;
+	virtual std::array<double, 2> ReadLedger() = 0;
+	//! Surface Ohmic loss and instantaneous stored constitutive energy.
+	virtual std::array<double, 2> ReadSurfaceLedger()
+	{
+		return {0, 0};
+	}
+	virtual std::size_t StorageBytes() const = 0;
+};
+
+//! An owned-local normalized electric mass coupling, stored once (first < second).
+struct CartesianSubgridEnergyCoupling
+{
+	std::uint32_t first, second;
+	double weight;
+};
+
+//! Device execution owned by the compact engine, created by its existing backend.
+/*! A backend must reject unsupported physics, never silently advance on CPU.
+ *  Steps are queued in order. ReadFields waits and refreshes the CPU observation
+ *  mirror once per processing batch, not between electric/magnetic sweeps.
+ *  The creating GPU_Backend must outlive this object.
+ */
+class GPU_CartesianSubgrid
+{
+  public:
+	virtual ~GPU_CartesianSubgrid() = default;
+	virtual void Step(double timestep, double sourceAmplitude) = 0;
+	virtual void ReadFields(CartesianSubgrid &grid) = 0;
+	virtual std::size_t StorageBytes() const = 0;
+	//! Optional startup-only field-energy preparation from the same unchanged grid.
+	virtual void ConfigureEnergy(const CartesianSubgrid &)
+	{
+		throw std::logic_error("CartesianSubgrid: device energy unavailable");
+	}
+	//! Worker-only owned-local metadata; default adapters explicitly reject.
+	virtual void ConfigureEnergyCouplings(const std::vector<CartesianSubgridEnergyCoupling> &)
+	{
+		throw std::logic_error("CartesianSubgrid: local device energy unavailable");
+	}
+	//! Physical positive E/H energy only, excluding modified-step and material-history terms.
+	virtual std::array<double, 2> ReadEnergy()
+	{
+		throw std::logic_error("CartesianSubgrid: device energy observation unavailable");
+	}
+	virtual std::uint64_t EnergyDownloadBytes() const { return 0; }
+
+	//! Startup-only ordered normalized-state selection; duplicates are preserved.
+	//! Unsupported adapters reject rather than download all fields as a fallback.
+	virtual void ConfigureObservations(const std::vector<std::uint32_t> &, const std::vector<std::uint32_t> &)
+	{
+		throw std::logic_error("CartesianSubgrid: selective observations unavailable");
+	}
+	//! Complete-step blocking read of only the configured E/H state entries.
+	virtual void ReadObservations(std::vector<float> &, std::vector<float> &)
+	{
+		throw std::logic_error("CartesianSubgrid: selective observations unavailable");
+	}
+
+	//! Startup-only owned normalized-state DFT. Budget caps all groups on this execution.
+	//! Selection order/duplicates are preserved. No implicit host-field fallback.
+	virtual std::size_t AddObservationDFT(bool, const std::vector<std::uint32_t> &, std::size_t, std::size_t)
+	{
+		throw std::logic_error("CartesianSubgrid: device DFT unavailable");
+	}
+	//! Enqueue one weighted sample at a complete epoch; no readback or device fence.
+	//! Each group may sample an epoch once; E/H dumps use separate groups/weights.
+	virtual void AccumulateObservationDFT(std::size_t, const std::vector<std::complex<float>> &)
+	{
+		throw std::logic_error("CartesianSubgrid: device DFT accumulation unavailable");
+	}
+	//! Blocking immutable sum snapshot at the current complete epoch, without resetting.
+	virtual void ReadObservationDFT(std::size_t, std::size_t, std::vector<std::complex<double>> &)
+	{
+		throw std::logic_error("CartesianSubgrid: device DFT read unavailable");
+	}
+	virtual std::uint64_t ObservationDFTDownloadBytes() const { return 0; }
+	//! Owner-thread collective fence at an exact completed E/H epoch. Blocks until
+	//! queued work is complete; returns acknowledged logical workers, not GPU count.
+	//! No reads, field migration or implicit synchronization during ordinary steps.
+	virtual std::size_t FenceObservationEpoch(std::size_t)
+	{
+		throw std::logic_error("CartesianSubgrid: complete-epoch fence unavailable");
+	}
+
+	//! Owned host observation buffers only, excluding device and global-grid storage.
+	virtual std::size_t HostObservationStorageBytes() const { return 0; }
+	virtual std::size_t StructuredRows() const
+	{
+		return 0;
+	}
+	//! Paired device extensions require ordered half steps and a fixed recurrence step.
+	virtual void UpdateElectric(double, double)
+	{
+		throw std::logic_error("CartesianSubgrid: no device electric half-step");
+	}
+	virtual void UpdateMagnetic(double)
+	{
+		throw std::logic_error("CartesianSubgrid: no device magnetic half-step");
+	}
+	virtual void RequireFixedTimestep(double)
+	{
+		throw std::logic_error("CartesianSubgrid: no fixed device timestep");
+	}
+	virtual GPU_CartesianSubgridFields Fields() const
+	{
+		return {};
+	}
+	//! Domain-only transport completion, after the matching ghost upload.
+	virtual void AcknowledgeGhosts(bool, std::size_t)
+	{
+		throw std::logic_error("CartesianSubgrid: ghost acknowledgement is unavailable");
+	}
+	//! Complete-step loss/source-work observation; blocking like ReadFields.
+	virtual std::array<double, 2> ReadLedger()
+	{
+		throw std::logic_error("CartesianSubgrid: device ledger observation is unavailable");
+	}
+	//! Extension-specific complete-step diagnostics; absent on the lossless core.
+	virtual std::array<double, 2> ReadAdvanceLedger()
+	{
+		throw std::logic_error("CartesianSubgrid: recurrence diagnostics unavailable");
+	}
+	virtual std::array<double, 2> ReadAdvanceSurfaceLedger()
+	{
+		throw std::logic_error("CartesianSubgrid: surface diagnostics unavailable");
+	}
+	//! Signed absorber work at one complete epoch, not radiated power.
+	virtual double ReadBoundaryWorkOut()
+	{
+		throw std::logic_error("CartesianSubgrid: boundary diagnostics unavailable");
+	}
+};
+
+std::unique_ptr<GPU_CartesianSubgrid> GPU_CreateCartesianSubgridAdvanced(
+	GPU_Backend &backend, const CartesianSubgrid &grid, CartesianSubgridDeviceData data,
+	std::unique_ptr<GPU_CartesianSubgridRecurrence> recurrence, double timestep);
+#endif

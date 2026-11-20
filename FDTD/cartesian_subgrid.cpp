@@ -1,0 +1,2749 @@
+/* SPDX-License-Identifier: GPL-3.0-or-later */
+#include "subgrid_device_geometry.h"
+#include "cartesian_subgrid.h"
+#include "subgrid_inverse_bound.h"
+#include "subgrid_device_precision.h"
+#include "subgrid_interface_limits.h"
+#include "subgrid_allocation_limits.h"
+#include "subgrid_setup_timing.h"
+
+#include <algorithm>
+#include <cmath>
+#include <limits>
+#include <numeric>
+#include <stdexcept>
+#include <string>
+#include <tuple>
+
+namespace
+{
+void Require(bool condition, const char *message)
+{
+	if (!condition)
+	{
+		throw std::invalid_argument(message);
+	}
+}
+// Same roundoff envelope as FindLeaf. This disambiguates basis support at
+// an already selected cell boundary; it does not move grid lines or geometry.
+bool SameBoundaryCoordinate(double position, double boundary, double width)
+{
+	const double tolerance = std::min(width * 1e-8,
+		32 * std::numeric_limits<double>::epsilon() *
+			std::max({std::abs(position), std::abs(boundary), width}));
+	return std::abs(position - boundary) <= tolerance;
+}
+CartesianSubgrid::Axes UniformLines(CartesianSubgrid::Index cells, CartesianSubgrid::Point spacing)
+{
+	CartesianSubgrid::Axes lines;
+	for (unsigned int n = 0; n < 3; ++n)
+	{
+		Require(cells[n] >= 4 && cells[n] <= CartesianSubgridDetail::MaxBaseIntervals &&
+				spacing[n] > 0 && std::isfinite(spacing[n]),
+				"CartesianSubgrid: invalid base dimensions or spacing");
+		for (unsigned int i = 0; i <= cells[n]; ++i)
+		{
+			lines[n].push_back(i * spacing[n]);
+		}
+	}
+	return lines;
+}
+
+void CheckSubdivision(double lo, double hi, unsigned int ratio)
+{
+	const double width = hi - lo;
+	// Sampling uses edge/face centres too. Reject unrepresentable local
+	// positions rather than silently collapsing distinct cells or centres.
+	double previous = lo;
+	for (unsigned int i = 1; i <= 2 * ratio; ++i)
+	{
+		const double next = i == 2 * ratio ? hi : lo + width * (double(i) / (2 * ratio));
+		Require(std::isfinite(next) && next > previous,
+				"CartesianSubgrid: subdivision or sample centre is not representable at this coordinate scale");
+		previous = next;
+	}
+}
+} // namespace
+
+bool CartesianSubgrid::Edge::operator<(const Edge &other) const
+{
+	return std::tie(axis, lo, size) < std::tie(other.axis, other.lo, other.size);
+}
+
+CartesianSubgrid::CartesianSubgrid(Index cells, Point spacing, Box refined, double epsilon, double permeability,
+								   bool uniformFine, Index ratio)
+	: CartesianSubgrid(cells, spacing, epsilon, permeability, {{refined, ratio}}, uniformFine)
+{
+}
+
+CartesianSubgrid::CartesianSubgrid(Index cells, Point spacing, double epsilon, double permeability,
+								   const std::vector<Region> &regions, bool uniformFine)
+	: CartesianSubgrid(UniformLines(cells, spacing), epsilon, permeability, regions, uniformFine)
+{
+}
+
+CartesianSubgrid::CartesianSubgrid(const Axes &lines, double epsilon, double permeability,
+								   const std::vector<Region> &regions, bool uniformFine,
+								   const MediumSampler &medium, const PECSelector &pec,
+								   const BoundaryConditions &boundaries, const OpaqueSelector &opaque, CurlLayout layout,
+								   const Axes &childLines, std::size_t maxLeafCells)
+	: m_Ratio{1, 1, 1}, m_Boundaries(boundaries), m_Epsilon(epsilon), m_Mu(permeability),
+	  m_UniformFine(uniformFine), m_CurlLayout(layout)
+{
+	CartesianSubgridDetail::ValidateLeafLimit(maxLeafCells);
+	Require(layout == CurlLayout::Patterns || layout == CurlLayout::SpatialBlocks,
+		"CartesianSubgrid: unsupported curl storage policy");
+	for (BoundaryType boundary : m_Boundaries)
+	{
+		Require(boundary == BoundaryType::PEC || boundary == BoundaryType::PMC,
+				"CartesianSubgrid: unsupported outer boundary condition");
+	}
+	Require(epsilon > 0 && std::isfinite(epsilon) && permeability > 0 && std::isfinite(permeability),
+			"CartesianSubgrid: positive finite homogeneous epsilon and mu required");
+	Require(!regions.empty() && regions.size() <= 64, "CartesianSubgrid: expected 1 through 64 regions");
+	std::size_t count = 1;
+	for (unsigned int n = 0; n < 3; ++n)
+	{
+		Require(lines[n].size() >= 5 && lines[n].size() <= CartesianSubgridDetail::MaxBaseIntervals + 1,
+				"CartesianSubgrid: expected 4 through 16384 base intervals per axis");
+		m_Cells[n] = unsigned(lines[n].size() - 1);
+		for (double value : lines[n])
+		{
+			Require(std::isfinite(value), "CartesianSubgrid: finite base coordinates required");
+		}
+		for (unsigned int i = 0; i < m_Cells[n]; ++i)
+		{
+			const double width = lines[n][i + 1] - lines[n][i];
+			Require(width > 0 && std::isfinite(width),
+					"CartesianSubgrid: strictly increasing finite base intervals required");
+			CheckSubdivision(lines[n][i], lines[n][i + 1], 1);
+		}
+		count = CartesianSubgridDetail::LeafProduct(count, m_Cells[n], maxLeafCells);
+	}
+	std::size_t leaves = count;
+	for (std::size_t i = 0; i < regions.size(); ++i)
+	{
+		const Region &region = regions[i];
+		ValidateRatio(region.ratio);
+		std::size_t selected = 1;
+		for (unsigned int n = 0; n < 3; ++n)
+		{
+			Require(region.box.start[n] >= 1 && region.box.start[n] < region.box.stop[n] &&
+						region.box.stop[n] < m_Cells[n],
+					"CartesianSubgrid: refinement box must have a base-cell margin on all six sides");
+			m_Ratio[n] = std::max(m_Ratio[n], region.ratio[n]);
+			for (unsigned int k = region.box.start[n]; k < region.box.stop[n]; ++k)
+			{
+				CheckSubdivision(lines[n][k], lines[n][k + 1], region.ratio[n]);
+			}
+			selected *= region.box.stop[n] - region.box.start[n];
+		}
+		for (std::size_t j = 0; j < i; ++j)
+		{
+			bool separated = false;
+			for (unsigned int n = 0; n < 3; ++n)
+			{
+				separated = separated || region.box.stop[n] < regions[j].box.start[n] ||
+							regions[j].box.stop[n] < region.box.start[n];
+			}
+			Require(separated, "CartesianSubgrid: regions require a full base-cell gap; touching, overlap and nesting "
+							   "are unsupported");
+		}
+		const std::size_t children = std::size_t(region.ratio[0]) * region.ratio[1] * region.ratio[2];
+		// Checked before multiplication/allocation; summed across every region.
+		leaves = CartesianSubgridDetail::RefinedLeafCount(leaves, selected, children, maxLeafCells);
+	}
+	const std::size_t fineChildren = std::size_t(m_Ratio[0]) * m_Ratio[1] * m_Ratio[2];
+	if (uniformFine)
+	{
+		CartesianSubgridDetail::LeafProduct(count, fineChildren, maxLeafCells);
+	}
+	if (uniformFine)
+	{
+		for (unsigned int n = 0; n < 3; ++n)
+		{
+			for (unsigned int k = 0; k < m_Cells[n]; ++k)
+			{
+				CheckSubdivision(lines[n][k], lines[n][k + 1], m_Ratio[n]);
+			}
+		}
+	}
+	m_Regions = regions;
+	m_Lines = lines;
+	for (unsigned int n = 0; n < 3; ++n)
+	{
+		if (childLines[n].empty())
+		{
+			continue;
+		}
+		Require(childLines[n].size() == std::size_t(m_Cells[n]) * m_Ratio[n] + 1,
+			"CartesianSubgrid: child coordinates must cover the finest axis lattice");
+		for (std::size_t k = 0; k < childLines[n].size(); ++k)
+		{
+			Require(std::isfinite(childLines[n][k]), "CartesianSubgrid: finite child coordinates required");
+			if (k % m_Ratio[n] == 0)
+			{
+				Require(childLines[n][k] == lines[n][k / m_Ratio[n]],
+					"CartesianSubgrid: child coordinates must retain exact base anchors");
+			}
+			if (k != 0)
+			{
+				Require(childLines[n][k] > childLines[n][k - 1],
+					"CartesianSubgrid: strictly increasing child coordinates required");
+				CheckSubdivision(childLines[n][k - 1], childLines[n][k], 1);
+			}
+		}
+		m_ChildLines[n] = childLines[n];
+	}
+	Build(medium, pec, opaque, uniformFine ? count * fineChildren : leaves);
+}
+
+void CartesianSubgrid::ValidateRatio(const Index &ratio)
+{
+	for (unsigned int value : ratio)
+	{
+		Require(value >= 1 && value <= 16 && (value & (value - 1)) == 0,
+				"CartesianSubgrid: axis ratios must be powers of two from 1 to 16");
+	}
+}
+
+std::size_t CartesianSubgrid::RootIndex(const Index &cell) const
+{
+	return (std::size_t(cell[0]) * m_Cells[1] + cell[1]) * m_Cells[2] + cell[2];
+}
+
+CartesianSubgrid::Edge CartesianSubgrid::LocalEdge(const Leaf &cell, unsigned int axis, unsigned int first,
+												   unsigned int second) const
+{
+	Edge edge{int(axis), cell.lo, cell.size[axis]};
+	edge.lo[(axis + 1) % 3] += first * cell.size[(axis + 1) % 3];
+	edge.lo[(axis + 2) % 3] += second * cell.size[(axis + 2) % 3];
+	return edge;
+}
+
+bool CartesianSubgrid::Boundary(const Edge &edge) const
+{
+	for (unsigned int n = 0; n < 3; ++n)
+	{
+		if (n != unsigned(edge.axis) &&
+			((edge.lo[n] == 0 && m_Boundaries[2 * n] == BoundaryType::PEC) ||
+			 (edge.lo[n] == int(m_Ratio[n] * m_Cells[n]) && m_Boundaries[2 * n + 1] == BoundaryType::PEC)))
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+bool CartesianSubgrid::Hanging(const Edge &edge) const
+{
+	return InterfaceBox(edge) != nullptr;
+}
+
+const CartesianSubgrid::Box *CartesianSubgrid::InterfaceBox(const Edge &edge) const
+{
+	if (m_UniformFine)
+	{
+		return nullptr;
+	}
+	bool coarse = edge.size == int(m_Ratio[edge.axis]);
+	for (unsigned int n = 0; n < 3; ++n)
+	{
+		coarse = coarse && edge.lo[n] % int(m_Ratio[n]) == 0;
+	}
+	if (coarse)
+	{
+		return nullptr;
+	}
+	for (const Region &region : m_Regions)
+	{
+		bool inside = true, boundary = false;
+		for (unsigned int n = 0; n < 3; ++n)
+		{
+			const int lo = int(m_Ratio[n] * region.box.start[n]);
+			const int hi = int(m_Ratio[n] * region.box.stop[n]);
+			inside = inside && edge.lo[n] >= lo && edge.lo[n] + (n == unsigned(edge.axis) ? edge.size : 0) <= hi;
+			boundary = boundary || (n != unsigned(edge.axis) && (edge.lo[n] == lo || edge.lo[n] == hi));
+		}
+		if (inside && boundary)
+		{
+			return &region.box;
+		}
+	}
+	return nullptr;
+}
+
+CartesianSubgrid::Trace CartesianSubgrid::Restrict(const Edge &edge, bool ignoreLocalPEC) const
+{
+	Trace trace;
+	if (Boundary(edge) || (!ignoreLocalPEC && m_PECEdges.count(edge)))
+	{
+		return trace;
+	}
+	const Box *box = InterfaceBox(edge);
+	if (!box)
+	{
+		trace.weights.emplace_back(m_EdgeIndex->At(edge), 1.);
+		return trace;
+	}
+	// The coarse hexahedron's tangential edge shape is constant along the
+	// edge direction and bilinear in the other two coordinates. On a face
+	// this reduces to linear interpolation; at an edge/corner it reduces to
+	// the single shared coarse edge. All six faces use this same rule.
+	const unsigned int a = (edge.axis + 1) % 3;
+	const unsigned int b = (edge.axis + 2) % 3;
+	Index root;
+	for (unsigned int n = 0; n < 3; ++n)
+	{
+		root[n] = std::min(unsigned(edge.lo[n] / int(m_Ratio[n])), m_Cells[n] - 1);
+	}
+	for (unsigned int n : {a, b})
+	{
+		if (edge.lo[n] == int(m_Ratio[n] * box->start[n]))
+		{
+			root[n] = box->start[n] - 1;
+			break;
+		}
+		if (edge.lo[n] == int(m_Ratio[n] * box->stop[n]))
+		{
+			root[n] = box->stop[n];
+			break;
+		}
+	}
+	const auto fraction = [&](unsigned int n)
+	{
+		if (m_ChildLines[n].empty())
+		{
+			return double(edge.lo[n]) / m_Ratio[n] - root[n];
+		}
+		return (Coordinate(n, edge.lo[n]) - m_Lines[n][root[n]]) /
+			(m_Lines[n][root[n] + 1] - m_Lines[n][root[n]]);
+	};
+	const double u = fraction(a), v = fraction(b);
+	Require(u >= 0 && u <= 1 && v >= 0 && v <= 1, "CartesianSubgrid: invalid hanging-edge coordinates");
+	Leaf coarse{{int(m_Ratio[0] * root[0]), int(m_Ratio[1] * root[1]), int(m_Ratio[2] * root[2])},
+				{int(m_Ratio[0]), int(m_Ratio[1]), int(m_Ratio[2])}};
+	for (unsigned int i = 0; i < 2; ++i)
+	{
+		for (unsigned int j = 0; j < 2; ++j)
+		{
+			const double weight = (i ? u : 1 - u) * (j ? v : 1 - v);
+			if (weight != 0)
+			{
+				const Edge master = LocalEdge(coarse, edge.axis, i, j);
+				if (!Boundary(master) && !m_PECEdges.count(master))
+				{
+					trace.weights.emplace_back(m_EdgeIndex->At(master), weight);
+				}
+			}
+		}
+	}
+	return trace;
+}
+
+void CartesianSubgrid::Build(const MediumSampler &medium, const PECSelector &pec,
+	const OpaqueSelector &opaque, std::size_t expectedLeaves)
+{
+	CartesianSubgridSetupTiming timing("grid");
+	std::vector<CartesianSubgridEdgeIndex::Region> addressRegions;
+	if (m_UniformFine)
+	{
+		addressRegions.push_back({{0, 0, 0}, m_Cells, m_Ratio});
+	}
+	else
+	{
+		for (const auto &region : m_Regions)
+		{
+			addressRegions.push_back({region.box.start, region.box.stop, region.ratio});
+		}
+	}
+	m_EdgeIndex.emplace(m_Cells, m_Ratio, addressRegions);
+	m_Leaves = CartesianSubgridLeafIndex<Leaf>(m_Cells, m_Ratio, expectedLeaves);
+	for (unsigned int x = 0; x < m_Cells[0]; ++x)
+	{
+		for (unsigned int y = 0; y < m_Cells[1]; ++y)
+		{
+			for (unsigned int z = 0; z < m_Cells[2]; ++z)
+			{
+				const Index root{x, y, z};
+				Index ratio{1, 1, 1};
+				if (m_UniformFine)
+				{
+					ratio = m_Ratio;
+				}
+				else
+				{
+					for (const Region &region : m_Regions)
+					{
+						bool inside = true;
+						for (unsigned int n = 0; n < 3; ++n)
+						{
+							inside = inside && root[n] >= region.box.start[n] && root[n] < region.box.stop[n];
+						}
+						if (inside)
+						{
+							ratio = region.ratio;
+							break;
+						}
+					}
+				}
+				m_Leaves.AppendRoot(root, ratio);
+			}
+		}
+	}
+	m_Leaves.Finish();
+	timing.Phase("leaf_addresses");
+	m_Media.Reserve(m_Leaves.size());
+	if (opaque)
+	{
+		m_OpaqueCells.reserve(m_Leaves.size());
+	}
+	for (std::size_t index = 0; index < m_Leaves.size(); ++index)
+	{
+		const auto start = LeafStart(index), length = LeafLengths(index);
+		Point stop;
+		for (unsigned int n = 0; n < 3; ++n)
+		{
+			stop[n] = start[n] + length[n];
+		}
+		const Medium value = medium ? medium(start, stop) : Medium{m_Epsilon, m_Mu};
+		Require(value.epsilon > 0 && std::isfinite(value.epsilon) && value.permeability > 0 &&
+					std::isfinite(value.permeability),
+				"CartesianSubgrid: positive finite leaf epsilon and permeability required");
+		const auto validateDiagonal = [](const std::array<double, 3> &diagonal, double scalar)
+		{
+			if (diagonal == std::array<double, 3>{})
+			{
+				return;
+			}
+			Require(diagonal[0] == scalar,
+				"CartesianSubgrid: diagonal first component must match its scalar compatibility value");
+			for (double coefficient : diagonal)
+			{
+				Require(coefficient > 0 && std::isfinite(coefficient),
+					"CartesianSubgrid: diagonal material components must be finite and positive");
+			}
+		};
+		validateDiagonal(value.epsilonDiagonal, value.epsilon);
+		validateDiagonal(value.permeabilityDiagonal, value.permeability);
+		m_Media.Append(value);
+		if (opaque)
+		{
+			m_OpaqueCells.push_back(opaque(start, stop));
+		}
+	}
+	m_Media.Finish();
+	timing.Phase("leaf_materials_and_opaque");
+	if (opaque)
+	{
+		// Boundary traces remain free. Only edges whose incident leaves are
+		// all excluded are eliminated; standard hanging-trace checks below
+		// reject unsupported coarse/fine conductor-boundary configurations.
+		std::set<Edge> interior;
+		for (std::size_t cell = 0; cell < m_Leaves.size(); ++cell)
+		{
+			if (LeafIsOpaque(cell))
+			{
+				for (unsigned int axis = 0; axis < 3; ++axis)
+				{
+					for (unsigned int i = 0; i < 2; ++i)
+					{
+						for (unsigned int j = 0; j < 2; ++j)
+						{
+							interior.insert(LocalEdge(m_Leaves[cell], axis, i, j));
+						}
+					}
+				}
+			}
+		}
+		for (std::size_t cell = 0; cell < m_Leaves.size(); ++cell)
+		{
+			if (!LeafIsOpaque(cell))
+			{
+				for (unsigned int axis = 0; axis < 3; ++axis)
+				{
+					for (unsigned int i = 0; i < 2; ++i)
+					{
+						for (unsigned int j = 0; j < 2; ++j)
+						{
+							interior.erase(LocalEdge(m_Leaves[cell], axis, i, j));
+						}
+					}
+				}
+			}
+		}
+		m_PECEdges.insert(interior.begin(), interior.end());
+	}
+	timing.Phase("opaque_edge_elimination");
+	if (pec)
+	{
+		for (const Leaf &cell : m_Leaves)
+		{
+			for (unsigned int n = 0; n < 3; ++n)
+			{
+				for (unsigned int i = 0; i < 2; ++i)
+				{
+					for (unsigned int j = 0; j < 2; ++j)
+					{
+						const Edge edge = LocalEdge(cell, n, i, j);
+						if (pec(n, EdgePoint(edge, 0), EdgePoint(edge, 1)))
+						{
+							m_PECEdges.insert(edge);
+						}
+					}
+				}
+			}
+		}
+	}
+	timing.Phase("pec_classification");
+	for (const Leaf &cell : m_Leaves)
+	{
+		for (unsigned int n = 0; n < 3; ++n)
+		{
+			for (unsigned int i = 0; i < 2; ++i)
+			{
+				for (unsigned int j = 0; j < 2; ++j)
+				{
+					const Edge edge = LocalEdge(cell, n, i, j);
+					if (!Boundary(edge) && !m_PECEdges.count(edge) && !Hanging(edge) &&
+						m_EdgeIndex->Insert(edge, m_Edges.size()))
+					{
+						m_Edges.push_back(edge);
+					}
+				}
+			}
+		}
+	}
+	Require(!m_Edges.empty(), "CartesianSubgrid: PEC leaves no unconstrained electric edges");
+	if (pec || opaque)
+	{
+		// Elimination is exact only when the coarse trace can represent the
+		// same PEC pattern. Do not short an unresolved opening or force an
+		// entire coarse edge to zero for a partly covered fine trace.
+		for (const Leaf &cell : m_Leaves)
+		{
+			for (unsigned int n = 0; n < 3; ++n)
+			{
+				for (unsigned int i = 0; i < 2; ++i)
+				{
+					for (unsigned int j = 0; j < 2; ++j)
+					{
+						const Edge edge = LocalEdge(cell, n, i, j);
+						if (Hanging(edge))
+						{
+							Require(bool(m_PECEdges.count(edge)) == Restrict(edge, true).weights.empty(),
+									"CartesianSubgrid: PEC pattern is not representable by the coarse "
+									"interface trace; move or refine the interface");
+						}
+					}
+				}
+			}
+		}
+	}
+	timing.Phase("master_edges_and_constraints");
+	// PMC leaves tangential E free. The one-sided boundary mass and the
+	// shared curl transpose enforce zero tangential H as a natural boundary
+	// condition at the outer physical face. No ghost-field time update is added.
+	std::vector<double> mass(m_Edges.size(), 0);
+	std::map<std::pair<std::size_t, std::size_t>, double> off;
+	for (std::size_t cellIndex = 0; cellIndex < m_Leaves.size(); ++cellIndex)
+	{
+		const Leaf &cell = m_Leaves[cellIndex];
+		if (LeafIsOpaque(cellIndex))
+		{
+			continue;
+		}
+		const Medium &material = m_Media[cellIndex];
+		Point length;
+		for (unsigned int n = 0; n < 3; ++n)
+		{
+			length[n] = Length(cell, n);
+		}
+		const double volume = length[0] * length[1] * length[2];
+		// Assemble P^T M_e P, not independent field interpolation. Keep the
+		// off-diagonal interface mass; row-sum lumping here changes dispersion.
+		for (unsigned int n = 0; n < 3; ++n)
+		{
+			for (unsigned int i = 0; i < 2; ++i)
+			{
+				for (unsigned int j = 0; j < 2; ++j)
+				{
+					const Trace trace = Restrict(LocalEdge(cell, n, i, j));
+					for (const auto &a : trace.weights)
+					{
+						mass[a.first] += material.Epsilon(n) * volume / 4 * a.second * a.second;
+						for (const auto &b : trace.weights)
+						{
+							if (a.first < b.first)
+							{
+								off[{a.first, b.first}] +=
+									material.Epsilon(n) * volume / 4 * a.second * b.second;
+							}
+						}
+					}
+				}
+			}
+		}
+	}
+	for (double value : mass)
+	{
+		Require(value > 0 && std::isfinite(value), "CartesianSubgrid: non-positive electric mass");
+		m_SqrtMass.push_back(std::sqrt(value));
+	}
+	std::vector<double>().swap(mass);
+	timing.Phase("electric_mass_assembly");
+	const double inverseMassBound = FactorMass(off);
+	timing.Phase("interface_factor");
+	off.clear();
+	std::vector<double> columns(m_Edges.size(), 0);
+	double maxRow = 0;
+	if (m_CurlLayout == CurlLayout::SpatialBlocks)
+	{
+		ConfigureRegularCurl();
+	}
+	m_SqrtReluctance.reserve(3 * m_Leaves.size());
+	const CartesianSubgridMetricView buildMetrics{m_SqrtMass.data(), m_SqrtReluctance.data(),
+		m_SqrtMass.size(), 6 * m_Leaves.size(), true};
+	CartesianSubgridCurl::Builder curl(m_CurlOperator, 6 * m_Leaves.size(), m_Edges.size(), buildMetrics);
+	std::vector<std::pair<std::size_t, double>> normalizedRow;
+	normalizedRow.reserve(8);
+	for (std::size_t cellIndex = 0; cellIndex < m_Leaves.size(); ++cellIndex)
+	{
+		const Leaf &cell = m_Leaves[cellIndex];
+		const Medium &material = m_Media[cellIndex];
+		Point length;
+		for (unsigned int n = 0; n < 3; ++n)
+		{
+			length[n] = Length(cell, n);
+		}
+		const double volume = length[0] * length[1] * length[2];
+		for (unsigned int n = 0; n < 3; ++n)
+		{
+			const unsigned int a = (n + 1) % 3;
+			const unsigned int b = (n + 2) % 3;
+			const double area = length[a] * length[b];
+			for (unsigned int side = 0; side < 2; ++side)
+			{
+				std::map<std::size_t, double> row;
+				bool zeroTrace = true, touchesPEC = false;
+				auto edge = [&](unsigned int direction, unsigned int crossAxis, unsigned int high, double sign)
+				{
+					Edge local{int(direction), cell.lo, cell.size[direction]};
+					local.lo[n] += side * cell.size[n];
+					local.lo[crossAxis] += high * cell.size[crossAxis];
+					const Trace trace = Restrict(local);
+					zeroTrace = zeroTrace && trace.weights.empty();
+					touchesPEC = touchesPEC || m_PECEdges.count(local);
+					for (const auto &term : trace.weights)
+					{
+						row[term.first] += sign * length[direction] * term.second;
+					}
+				};
+				edge(b, a, 1, 1);
+				edge(b, a, 0, -1);
+				edge(a, b, 1, -1);
+				edge(a, b, 0, 1);
+				const double reluctance = std::sqrt(volume / (2 * material.Permeability(n) * area * area));
+				if (LeafIsOpaque(cellIndex))
+				{
+					row.clear();
+				}
+				normalizedRow.clear();
+				double sum = 0;
+				for (const auto &term : row)
+				{
+					if (term.second != 0)
+					{
+						const double coefficient = term.second * (reluctance / m_SqrtMass[term.first]);
+						normalizedRow.push_back({term.first, coefficient});
+						sum += std::abs(coefficient);
+						columns[term.first] += std::abs(coefficient);
+					}
+				}
+				maxRow = std::max(maxRow, sum);
+				if (side == 0)
+				{
+					m_SqrtReluctance.push_back(reluctance);
+				}
+				curl.Append(normalizedRow.begin(), normalizedRow.end());
+				m_PECFaces.push_back(LeafIsOpaque(cellIndex) || (zeroTrace && touchesPEC));
+				// One half-volume per face. Coincident faces are deliberately
+				// separate quadrature histories, not a global fine H lattice.
+			}
+		}
+	}
+	curl.Finish();
+	const double bound = std::sqrt(maxRow * *std::max_element(columns.begin(), columns.end()) * inverseMassBound);
+	Require(bound > 0 && std::isfinite(bound), "CartesianSubgrid: invalid coupled spectral bound");
+	std::vector<double>().swap(columns);
+	m_StableStep = 1.98 / bound;
+	m_Electric.AssignZero(m_Edges.size());
+	m_Magnetic.AssignZero(6 * m_Leaves.size());
+	timing.Phase("curl_and_step_bound");
+	timing.Complete();
+	// CPU-only sweep work is allocated on first reference use. Device
+	// preparation and complete-batch field mirrors do not need it.
+}
+
+void CartesianSubgrid::ConfigureRegularCurl()
+{
+	using Regular = CartesianSubgridRegularCurl;
+	std::vector<Regular::Block> blocks;
+	std::vector<std::array<int, 3>> origins, steps;
+	auto append = [&](const Index &cells, const std::array<int, 3> &origin, const std::array<int, 3> &step)
+	{
+		Regular::Block block;
+		block.cells = cells;
+		for (unsigned int n = 0; n < 3; ++n)
+		{
+			block.length[n].reserve(cells[n]);
+			for (unsigned int i = 0; i < cells[n]; ++i)
+			{
+				const auto lo = origin[n] + int(i) * step[n];
+				if (m_ChildLines[n].empty())
+				{
+					const unsigned int root = unsigned(lo) / m_Ratio[n];
+					block.length[n].push_back((m_Lines[n][root + 1] - m_Lines[n][root]) * step[n] / m_Ratio[n]);
+				}
+				else
+				{
+					block.length[n].push_back(Coordinate(n, lo + step[n]) - Coordinate(n, lo));
+				}
+			}
+			block.edge[n].assign(Regular::CellCount(Regular::EdgeShape(cells, n)), Regular::absent);
+		}
+		blocks.push_back(std::move(block));
+		origins.push_back(origin);
+		steps.push_back(step);
+	};
+	Index base = m_Cells;
+	if (m_UniformFine)
+	{
+		for (unsigned int n = 0; n < 3; ++n)
+		{
+			base[n] *= m_Ratio[n];
+		}
+		append(base, {0, 0, 0}, {1, 1, 1});
+	}
+	else
+	{
+		append(base, {0, 0, 0}, {int(m_Ratio[0]), int(m_Ratio[1]), int(m_Ratio[2])});
+		for (const auto &region : m_Regions)
+		{
+			if (region.ratio == Index{1, 1, 1})
+			{
+				continue;
+			}
+			Index cells;
+			std::array<int, 3> origin, step;
+			for (unsigned int n = 0; n < 3; ++n)
+			{
+				cells[n] = (region.box.stop[n] - region.box.start[n]) * region.ratio[n];
+				origin[n] = int(region.box.start[n] * m_Ratio[n]);
+				step[n] = int(m_Ratio[n] / region.ratio[n]);
+			}
+			append(cells, origin, step);
+		}
+	}
+	// Independent IDs retain their canonical order. These spatial slot tables
+	// have no fields in covered base cells, only addresses used by real leaves.
+	for (std::size_t block = 0; block < blocks.size(); ++block)
+	{
+		for (std::size_t id = 0; id < m_Edges.size(); ++id)
+		{
+			const auto &edge = m_Edges[id];
+			if (edge.size != steps[block][edge.axis])
+			{
+				continue;
+			}
+			const auto shape = Regular::EdgeShape(blocks[block].cells, unsigned(edge.axis));
+			Index point;
+			bool inside = true;
+			for (unsigned int n = 0; n < 3; ++n)
+			{
+				const int delta = edge.lo[n] - origins[block][n];
+				inside = inside && delta >= 0 && delta % steps[block][n] == 0;
+				point[n] = delta >= 0 ? unsigned(delta / steps[block][n]) : 0;
+				inside = inside && point[n] < shape[n];
+			}
+			if (inside)
+			{
+				auto &slot = blocks[block].edge[edge.axis][Regular::Offset(shape, point)];
+				Require(slot == Regular::absent, "CartesianSubgrid: duplicate structured independent edge");
+				slot = static_cast<std::uint32_t>(id);
+			}
+		}
+	}
+	std::vector<Regular::Address> addresses;
+	addresses.reserve(m_Leaves.size());
+	for (const auto &leaf : m_Leaves)
+	{
+		std::size_t owner = 0;
+		for (std::size_t block = 1; block < blocks.size(); ++block)
+		{
+			bool inside = true;
+			for (unsigned int n = 0; n < 3; ++n)
+			{
+				inside = inside && leaf.lo[n] >= origins[block][n] &&
+					leaf.lo[n] < origins[block][n] + int(blocks[block].cells[n]) * steps[block][n];
+			}
+			if (inside)
+			{
+				owner = block;
+				break;
+			}
+		}
+		Index point;
+		for (unsigned int n = 0; n < 3; ++n)
+		{
+			Require(leaf.size[n] == steps[owner][n] &&
+				(leaf.lo[n] - origins[owner][n]) % steps[owner][n] == 0,
+				"CartesianSubgrid: structured leaf shape or alignment mismatch");
+			point[n] = unsigned((leaf.lo[n] - origins[owner][n]) / steps[owner][n]);
+		}
+		addresses.push_back({static_cast<std::uint32_t>(owner),
+			static_cast<std::uint32_t>(Regular::Offset(blocks[owner].cells, point))});
+	}
+	m_CurlOperator.ConfigureBlocks(std::move(blocks), std::move(addresses), m_Edges.size());
+}
+
+void CartesianSubgrid::MassBlock::Solve(std::vector<double> &values) const
+{
+	const std::size_t n = edges.size(), stride = halfBandwidth + 1;
+	for (std::size_t i = 0; i < n; ++i)
+	{
+		const std::size_t first = i > halfBandwidth ? i - halfBandwidth : 0;
+		for (std::size_t j = first; j < i; ++j)
+		{
+			values[i] -= lower[i * stride + i - j] * values[j];
+		}
+		values[i] /= lower[i * stride];
+	}
+	for (std::size_t i = n; i-- > 0;)
+	{
+		for (std::size_t j = i + 1; j < std::min(n, i + halfBandwidth + 1); ++j)
+		{
+			values[i] -= lower[j * stride + j - i] * values[j];
+		}
+		values[i] /= lower[i * stride];
+	}
+}
+
+double CartesianSubgrid::FactorMass(const std::map<std::pair<std::size_t, std::size_t>, double> &off)
+{
+	std::map<std::size_t, std::vector<std::size_t>> graph;
+	for (const auto &term : off)
+	{
+		const std::size_t a = term.first.first, b = term.first.second;
+		graph[a].push_back(b);
+		graph[b].push_back(a);
+		m_MassOffDiagonal.push_back({term.first, term.second / (m_SqrtMass[a] * m_SqrtMass[b])});
+	}
+	std::vector<bool> seen(m_Edges.size(), false);
+	double inverseBound = 1;
+	for (const auto &node : graph)
+	{
+		if (seen[node.first])
+		{
+			continue;
+		}
+		MassBlock block;
+		block.edges.push_back(node.first);
+		seen[node.first] = true;
+		for (std::size_t i = 0; i < block.edges.size(); ++i)
+		{
+			for (std::size_t neighbour : graph[block.edges[i]])
+			{
+				if (!seen[neighbour])
+				{
+					seen[neighbour] = true;
+					block.edges.push_back(neighbour);
+				}
+			}
+		}
+		const std::size_t n = block.edges.size();
+		Require(n <= CartesianSubgridDetail::MaxInterfaceEdges,
+				"CartesianSubgrid: interface mass block exceeds 16384 edges");
+		// The existing breadth-first order is retained. Its graph bandwidth
+		// bounds Cholesky fill for this SPD matrix; no coefficient is dropped.
+		std::map<std::size_t, std::size_t> position;
+		for (std::size_t i = 0; i < n; ++i)
+			position.emplace(block.edges[i], i);
+		for (std::size_t i = 0; i < n; ++i)
+			for (std::size_t neighbour : graph.at(block.edges[i]))
+			{
+				const std::size_t j = position.at(neighbour);
+				block.halfBandwidth = std::max(block.halfBandwidth, i > j ? i - j : j - i);
+			}
+		const std::size_t stride = block.halfBandwidth + 1;
+		block.lower.assign(CartesianSubgridDetail::InterfaceFactorEntries(n, block.halfBandwidth), 0);
+		for (std::size_t i = 0; i < n; ++i)
+		{
+			block.lower[i * stride] = 1;
+			const std::size_t first = i > block.halfBandwidth ? i - block.halfBandwidth : 0;
+			for (std::size_t j = first; j < i; ++j)
+			{
+				const auto pair = std::minmax(block.edges[i], block.edges[j]);
+				const auto found = off.find({pair.first, pair.second});
+				if (found != off.end())
+				{
+					block.lower[i * stride + i - j] =
+						found->second / (m_SqrtMass[pair.first] * m_SqrtMass[pair.second]);
+				}
+			}
+		}
+		for (std::size_t i = 0; i < n; ++i)
+		{
+			const std::size_t first = i > block.halfBandwidth ? i - block.halfBandwidth : 0;
+			for (std::size_t j = first; j <= i; ++j)
+			{
+				double value = block.lower[i * stride + i - j];
+				for (std::size_t k = first; k < j; ++k)
+				{
+					value -= block.lower[i * stride + i - k] * block.lower[j * stride + j - k];
+				}
+				if (i == j)
+				{
+					Require(value > 0 && std::isfinite(value), "CartesianSubgrid: interface mass is not SPD");
+					block.lower[i * stride] = std::sqrt(value);
+				}
+				else
+				{
+					block.lower[i * stride + i - j] = value / block.lower[j * stride];
+				}
+			}
+		}
+		// A conservative ||S^-1||_2 <= ||S^-1||_infinity bound, computed once.
+		// Positive trace weights make off-diagonals nonnegative. A bipartite
+		// graph admits an exact one-RHS sign transform; retain the all-column
+		// fallback for a future interface graph containing an odd cycle.
+		std::vector<std::vector<std::size_t>> localGraph(n);
+		for (std::size_t i = 0; i < n; ++i)
+		{
+			for (std::size_t neighbour : graph.at(block.edges[i]))
+			{
+				localGraph[i].push_back(position.at(neighbour));
+			}
+		}
+		double blockBound = 0;
+		const bool bipartite = CartesianSubgridDetail::BipartiteInverseNorm(
+			localGraph,
+			[&](std::vector<double> &rhs)
+			{
+				++m_InverseBoundSolves;
+				block.Solve(rhs);
+			},
+			blockBound);
+		CartesianSubgridDetail::RequireInterfaceBoundMethod(n, bipartite);
+		if (bipartite)
+		{
+			++m_BipartiteBoundBlocks;
+		}
+		else
+		{
+			std::vector<double> rowSum(n, 0), column(n, 0);
+			for (std::size_t j = 0; j < n; ++j)
+			{
+				std::fill(column.begin(), column.end(), 0);
+				column[j] = 1;
+				block.Solve(column);
+				++m_InverseBoundSolves;
+				for (std::size_t i = 0; i < n; ++i)
+				{
+					rowSum[i] += std::abs(column[i]);
+				}
+			}
+			blockBound = *std::max_element(rowSum.begin(), rowSum.end());
+		}
+		inverseBound = std::max(inverseBound, blockBound);
+		m_Blocks.push_back(std::move(block));
+	}
+	std::size_t largest = 0;
+	for (const auto &block : m_Blocks)
+		largest = std::max(largest, block.edges.size());
+	m_InterfaceWork.resize(largest);
+	return inverseBound * (1 + 1e-12);
+}
+
+void CartesianSubgrid::Curl(const std::vector<double> &electric, std::vector<double> &magnetic) const
+{
+	m_CurlOperator.Apply(electric, magnetic, CurlMetrics());
+}
+void CartesianSubgrid::CurlTranspose(const std::vector<double> &magnetic, std::vector<double> &electric) const
+{
+	m_CurlOperator.ApplyTranspose(magnetic, electric, CurlMetrics());
+}
+
+void CartesianSubgrid::SolveMass(std::vector<double> &values)
+{
+	for (const MassBlock &block : m_Blocks)
+	{
+		for (std::size_t i = 0; i < block.edges.size(); ++i)
+			m_InterfaceWork[i] = values[block.edges[i]];
+		block.Solve(m_InterfaceWork);
+		for (std::size_t i = 0; i < block.edges.size(); ++i)
+			values[block.edges[i]] = m_InterfaceWork[i];
+	}
+}
+
+void CartesianSubgrid::CheckStep(double timestep) const
+{
+	Require(timestep > 0 && std::isfinite(timestep) && timestep <= m_StableStep,
+			"CartesianSubgrid: timestep exceeds the coupled stability bound");
+}
+
+void CartesianSubgrid::SetSources(const std::vector<std::pair<std::size_t, double>> &sources)
+{
+	m_Sources.clear();
+	for (const auto &source : sources)
+	{
+		Require(source.first < m_Electric.size() && std::isfinite(source.second),
+				"CartesianSubgrid: invalid source edge");
+		m_Sources.emplace_back(source.first, source.second * m_SqrtMass[source.first]);
+	}
+}
+
+void CartesianSubgrid::Step(double timestep, double sourceAmplitude)
+{
+	UpdateElectric(timestep, sourceAmplitude);
+	UpdateMagnetic(timestep);
+}
+
+void CartesianSubgrid::UpdateElectric(double timestep, double sourceAmplitude)
+{
+	CheckStep(timestep);
+	Require(m_PendingMagneticTimestep == 0, "CartesianSubgrid: complete the pending magnetic sweep first");
+	Require(std::isfinite(sourceAmplitude), "CartesianSubgrid: nonfinite drive");
+	auto &electric = m_Electric.MutableDense();
+	m_Increment.resize(m_Electric.size());
+	CurlTranspose(m_Magnetic.MutableDense(), m_Increment);
+	if (!m_PortVoltage.empty() && !m_Sources.empty())
+	{
+		m_SourceCurl.resize(m_Electric.size());
+		std::copy(m_Increment.begin(), m_Increment.end(), m_SourceCurl.begin());
+	}
+	SolveMass(m_Increment);
+	if (m_PortVoltage.empty())
+	{
+		for (std::size_t i = 0; i < m_Electric.size(); ++i)
+		{
+			electric[i] += timestep * m_Increment[i];
+		}
+	}
+	else
+	{
+		ApplyResistors(timestep, sourceAmplitude);
+	}
+	for (const auto &source : m_Sources)
+	{
+		const double change = sourceAmplitude * source.second;
+		if (!m_PortVoltage.empty())
+		{
+			double derivative = electric[source.first];
+			for (const auto &term : m_MassOffDiagonal)
+			{
+				if (term.first.first == source.first)
+				{
+					derivative += term.second * electric[term.first.second];
+				}
+				if (term.first.second == source.first)
+				{
+					derivative += term.second * electric[term.first.first];
+				}
+			}
+			m_SourceWork += change * (derivative + .5 * change - .5 * timestep * m_SourceCurl[source.first]);
+		}
+		electric[source.first] += change;
+	}
+	m_PendingMagneticTimestep = timestep;
+}
+
+void CartesianSubgrid::UpdateMagnetic(double timestep)
+{
+	Require(timestep == m_PendingMagneticTimestep && timestep > 0,
+			"CartesianSubgrid: magnetic sweep must follow electric sweep at the same timestep");
+	auto &magnetic = m_Magnetic.MutableDense();
+	m_Curl.resize(m_Magnetic.size());
+	Curl(m_Electric.MutableDense(), m_Curl);
+	for (std::size_t i = 0; i < m_Magnetic.size(); ++i)
+	{
+		magnetic[i] -= timestep * m_Curl[i];
+	}
+	m_PendingMagneticTimestep = 0;
+}
+
+double CartesianSubgrid::Coordinate(unsigned int axis, double lattice) const
+{
+	if (!m_ChildLines[axis].empty())
+	{
+		const auto &coordinates = m_ChildLines[axis];
+		const auto index = std::min(std::size_t(lattice), coordinates.size() - 2);
+		const double fraction = lattice - double(index);
+		if (fraction == 0)
+		{
+			return coordinates[index];
+		}
+		if (fraction == 1)
+		{
+			return coordinates[index + 1];
+		}
+		return coordinates[index] + fraction * (coordinates[index + 1] - coordinates[index]);
+	}
+	const unsigned int root = std::min(unsigned(lattice / m_Ratio[axis]), m_Cells[axis] - 1);
+	const double fraction = (lattice - double(root) * m_Ratio[axis]) / m_Ratio[axis];
+	if (fraction == 0)
+	{
+		return m_Lines[axis][root];
+	}
+	if (fraction == 1)
+	{
+		return m_Lines[axis][root + 1];
+	}
+	return m_Lines[axis][root] + fraction * (m_Lines[axis][root + 1] - m_Lines[axis][root]);
+}
+
+double CartesianSubgrid::Length(const Leaf &leaf, unsigned int axis) const
+{
+	if (!m_ChildLines[axis].empty())
+	{
+		return Coordinate(axis, leaf.lo[axis] + leaf.size[axis]) - Coordinate(axis, leaf.lo[axis]);
+	}
+	const unsigned int root = unsigned(leaf.lo[axis]) / m_Ratio[axis];
+	return (m_Lines[axis][root + 1] - m_Lines[axis][root]) * leaf.size[axis] / m_Ratio[axis];
+}
+
+double CartesianSubgrid::LocalFraction(const Leaf &leaf, unsigned int axis, double position) const
+{
+	const double lo = Coordinate(axis, leaf.lo[axis]);
+	const double hi = Coordinate(axis, leaf.lo[axis] + leaf.size[axis]);
+	const double width = Length(leaf, axis);
+	if (SameBoundaryCoordinate(position, lo, width))
+	{
+		return 0;
+	}
+	if (SameBoundaryCoordinate(position, hi, width))
+	{
+		return 1;
+	}
+	return (position - lo) / width;
+}
+
+CartesianSubgrid::Point CartesianSubgrid::LeafStart(std::size_t leaf) const
+{
+	const auto &cell = m_Leaves.at(leaf);
+	return {Coordinate(0, cell.lo[0]), Coordinate(1, cell.lo[1]), Coordinate(2, cell.lo[2])};
+}
+
+CartesianSubgrid::Point CartesianSubgrid::LeafLengths(std::size_t leaf) const
+{
+	const auto &cell = m_Leaves.at(leaf);
+	return {Length(cell, 0), Length(cell, 1), Length(cell, 2)};
+}
+
+CartesianSubgrid::Point CartesianSubgrid::EdgePosition(std::size_t edge) const
+{
+	return EdgePoint(m_Edges.at(edge), .5);
+}
+
+CartesianSubgrid::Point CartesianSubgrid::EdgePoint(const Edge &key, double fraction) const
+{
+	Point position;
+	for (unsigned int n = 0; n < 3; ++n)
+	{
+		if (!m_ChildLines[n].empty() && n == unsigned(key.axis))
+		{
+			const double lo = Coordinate(n, key.lo[n]);
+			const double hi = Coordinate(n, key.lo[n] + key.size);
+			position[n] = fraction == 0 ? lo : (fraction == 1 ? hi : lo + fraction * (hi - lo));
+		}
+		else
+		{
+			position[n] = Coordinate(n, key.lo[n] + (n == unsigned(key.axis) ? key.size * fraction : 0));
+		}
+	}
+	return position;
+}
+
+std::vector<CartesianSubgrid::SurfaceFace> CartesianSubgrid::OpaqueBoundaryFaces() const
+{
+	std::vector<SurfaceFace> result;
+	if (m_OpaqueCells.empty())
+	{
+		return result;
+	}
+	Point displacement;
+	for (unsigned int n = 0; n < 3; ++n)
+	{
+		double width = m_Lines[n][1] - m_Lines[n][0];
+		for (std::size_t i = 1; i + 1 < m_Lines[n].size(); ++i)
+		{
+			width = std::min(width, m_Lines[n][i + 1] - m_Lines[n][i]);
+		}
+		displacement[n] = width / (4 * m_Ratio[n]);
+		if (!m_ChildLines[n].empty())
+		{
+			for (std::size_t k = 1; k < m_ChildLines[n].size(); ++k)
+			{
+				displacement[n] = std::min(displacement[n],
+					(m_ChildLines[n][k] - m_ChildLines[n][k - 1]) / 4);
+			}
+		}
+	}
+	for (std::size_t cell = 0; cell < m_Leaves.size(); ++cell)
+	{
+		if (!LeafIsOpaque(cell))
+		{
+			continue;
+		}
+		const auto lo = LeafStart(cell), length = LeafLengths(cell);
+		for (unsigned int normal = 0; normal < 3; ++normal)
+		{
+			for (unsigned int side = 0; side < 2; ++side)
+			{
+				auto point = lo;
+				for (unsigned int n = 0; n < 3; ++n)
+				{
+					point[n] += (n == normal ? side : .5) * length[n];
+				}
+				if (SameBoundaryCoordinate(point[normal], m_Lines[normal].front(), length[normal]) ||
+					SameBoundaryCoordinate(point[normal], m_Lines[normal].back(), length[normal]))
+				{
+					continue; // No exterior computational volume at an outer boundary.
+				}
+				const double face = point[normal];
+				point[normal] += (side ? 1 : -1) * displacement[normal];
+				Require(point[normal] != face, "CartesianSubgrid: conductor face neighbour is not representable");
+				const auto neighbour = FindLeaf(point);
+				const auto otherLo = LeafStart(neighbour), otherLength = LeafLengths(neighbour);
+				bool coversFace = true;
+				for (unsigned int n = 0; n < 3; ++n)
+				{
+					if (n == normal)
+					{
+						continue;
+					}
+					const double hi = lo[n] + length[n], otherHi = otherLo[n] + otherLength[n];
+					coversFace = coversFace &&
+						(otherLo[n] <= lo[n] || SameBoundaryCoordinate(otherLo[n], lo[n], length[n])) &&
+						(otherHi >= hi || SameBoundaryCoordinate(otherHi, hi, length[n]));
+				}
+				if (!coversFace)
+				{
+					// A coarse opaque face can meet several finer opaque leaves.
+					// It is internal only when EVERY intersecting neighbour is
+					// opaque; the centre alone cannot prove this. Finest-lattice
+					// tiles cover every possible leaf subdivision exactly.
+					const auto &leaf = m_Leaves[cell];
+					const unsigned int a = (normal + 1) % 3, b = (normal + 2) % 3;
+					bool internal = true;
+					for (int i = 0; i < leaf.size[a] && internal; ++i)
+					{
+						for (int j = 0; j < leaf.size[b]; ++j)
+						{
+							auto probe = point;
+							probe[a] = Coordinate(a, leaf.lo[a] + i + .5);
+							probe[b] = Coordinate(b, leaf.lo[b] + j + .5);
+							if (!LeafIsOpaque(FindLeaf(probe)))
+							{
+								internal = false;
+								break;
+							}
+						}
+					}
+					Require(internal, "CartesianSubgrid: coarse/fine conductor face subdivision is not implemented");
+					continue;
+				}
+				if (!LeafIsOpaque(neighbour))
+				{
+					result.push_back({cell, normal, side});
+				}
+			}
+		}
+	}
+	return result;
+}
+
+CartesianSubgrid::Integral CartesianSubgrid::LeafEdgeVoltage(
+	std::size_t leaf, unsigned int axis, unsigned int first, unsigned int second) const
+{
+	Require(axis < 3 && first < 2 && second < 2, "CartesianSubgrid: invalid local voltage edge");
+	const auto &cell = m_Leaves.at(leaf);
+	Integral result;
+	for (const auto &term : Restrict(LocalEdge(cell, axis, first, second)).weights)
+	{
+		result.weights.emplace_back(term.first, Length(cell, axis) * term.second / m_SqrtMass[term.first]);
+	}
+	return result;
+}
+
+bool CartesianSubgrid::LeafEdgeIsPEC(std::size_t leaf, unsigned int axis, unsigned int first,
+									 unsigned int second) const
+{
+	Require(axis < 3 && first < 2 && second < 2, "CartesianSubgrid: invalid local edge");
+	return m_PECEdges.count(LocalEdge(m_Leaves.at(leaf), axis, first, second));
+}
+
+unsigned int CartesianSubgrid::EdgeDirection(std::size_t edge) const
+{
+	return m_Edges.at(edge).axis;
+}
+
+void CartesianSubgrid::SetElectric(const Field &field)
+{
+	auto &electric = m_Electric.MutableDense();
+	for (std::size_t edge = 0; edge < m_Electric.size(); ++edge)
+	{
+		const double value = field(EdgeDirection(edge), EdgePosition(edge));
+		Require(std::isfinite(value), "CartesianSubgrid: nonfinite initial electric field");
+		electric[edge] = value * m_SqrtMass[edge];
+	}
+}
+
+void CartesianSubgrid::SetMagnetic(const Field &field)
+{
+	auto &magnetic = m_Magnetic.MutableDense();
+	for (std::size_t cell = 0; cell < m_Leaves.size(); ++cell)
+	{
+		const Leaf &leaf = m_Leaves[cell];
+		for (unsigned int n = 0; n < 3; ++n)
+		{
+			for (unsigned int side = 0; side < 2; ++side)
+			{
+				Point position;
+				for (unsigned int k = 0; k < 3; ++k)
+				{
+					if (m_ChildLines[k].empty())
+					{
+						position[k] = Coordinate(k, leaf.lo[k] + leaf.size[k] * (n == k ? side : .5));
+					}
+					else
+					{
+						const double lo = Coordinate(k, leaf.lo[k]);
+						position[k] = lo + (n == k ? side : .5) * Length(leaf, k);
+					}
+				}
+				const double area = Length(leaf, (n + 1) % 3) * Length(leaf, (n + 2) % 3);
+				const std::size_t index = 6 * cell + 2 * n + side;
+				if (m_PECFaces[index])
+				{
+					magnetic[index] = 0;
+					continue;
+				}
+				const double value = field(n, position);
+				Require(std::isfinite(value), "CartesianSubgrid: nonfinite initial magnetic field");
+				magnetic[index] = value * m_Media[cell].Permeability(n) * area * m_SqrtReluctance[(index) / 2];
+			}
+		}
+	}
+}
+
+std::size_t CartesianSubgrid::FindLeaf(const Point &position) const
+{
+	Index root;
+	for (unsigned int n = 0; n < 3; ++n)
+	{
+		Require(std::isfinite(position[n]) && position[n] >= m_Lines[n].front() && position[n] <= m_Lines[n].back(),
+				"CartesianSubgrid: sample outside domain");
+		const auto next = std::upper_bound(m_Lines[n].begin(), m_Lines[n].end(), position[n]);
+		root[n] = std::min(unsigned(next - m_Lines[n].begin() - 1), m_Cells[n] - 1);
+		const double width = m_Lines[n][root[n] + 1] - m_Lines[n][root[n]];
+		const double boundary = m_Lines[n][root[n] + 1];
+		double boundaryWidth = width / m_Ratio[n];
+		if (!m_ChildLines[n].empty())
+		{
+			const auto node = (root[n] + 1) * m_Ratio[n];
+			boundaryWidth = m_ChildLines[n][node] - m_ChildLines[n][node - 1];
+			if (node + 1 < m_ChildLines[n].size())
+			{
+				boundaryWidth = std::min(boundaryWidth, m_ChildLines[n][node + 1] - m_ChildLines[n][node]);
+			}
+		}
+		const double tolerance = std::min(boundaryWidth * 1e-8,
+										  32 * std::numeric_limits<double>::epsilon() *
+											  std::max({std::abs(position[n]), std::abs(boundary), width}));
+		// Material-normal fields can jump. At a cell face select the positive
+		// side consistently despite SI/drawing-unit coordinate roundoff.
+		// Only lookup is disambiguated; geometry and sample positions stay fixed.
+		if (root[n] + 1 < m_Cells[n] && std::abs(position[n] - boundary) <= tolerance)
+		{
+			++root[n];
+		}
+	}
+	const std::size_t index = RootIndex(root);
+	const std::size_t first = m_Leaves.First(index);
+	const Index ratio = m_Leaves.Ratio(index);
+	Index child;
+	for (unsigned int n = 0; n < 3; ++n)
+	{
+		const double start = m_Lines[n][root[n]];
+		const double width = m_Lines[n][root[n] + 1] - start;
+		if (!m_ChildLines[n].empty())
+		{
+			const auto step = m_Ratio[n] / ratio[n];
+			unsigned int selected = 0;
+			for (unsigned int k = 1; k < ratio[n]; ++k)
+			{
+				const double boundary = Coordinate(n, root[n] * m_Ratio[n] + k * step);
+				const double previous = Coordinate(n, root[n] * m_Ratio[n] + (k - 1) * step);
+				const double next = Coordinate(n, root[n] * m_Ratio[n] + (k + 1) * step);
+				if (position[n] >= boundary || SameBoundaryCoordinate(position[n], boundary,
+					std::min(boundary - previous, next - boundary)))
+				{
+					selected = k;
+				}
+				else
+				{
+					break;
+				}
+			}
+			child[n] = selected;
+			continue;
+		}
+		double local = ratio[n] * (position[n] - start) / width;
+		const double nearest = std::clamp(std::round(local), 0., double(ratio[n]));
+		const double boundary = start + nearest * width / ratio[n];
+		const double tolerance = std::min(width / ratio[n] * 1e-8,
+										  32 * std::numeric_limits<double>::epsilon() *
+											  std::max({std::abs(position[n]), std::abs(boundary), width}));
+		if (std::abs(position[n] - boundary) <= tolerance)
+		{
+			local = nearest;
+		}
+		child[n] = std::min(unsigned(std::max(0., local)), ratio[n] - 1);
+	}
+	return first + (std::size_t(child[0]) * ratio[1] + child[1]) * ratio[2] + child[2];
+}
+
+double CartesianSubgrid::TraceValue(const Trace &trace, const CartesianSubgridFieldState &amplitude) const
+{
+	double value = 0;
+	for (const auto &term : trace.weights)
+	{
+		value += term.second * amplitude[term.first] / m_SqrtMass[term.first];
+	}
+	return value;
+}
+
+double CartesianSubgrid::Electric(unsigned int n, const Point &position) const
+{
+	Require(n < 3, "CartesianSubgrid: invalid component");
+	const auto index = FindLeaf(position);
+	if (LeafIsOpaque(index))
+	{
+		return 0; // The surface model does not reconstruct interior skin fields.
+	}
+	const Leaf &cell = m_Leaves[index];
+	const unsigned int a = (n + 1) % 3, b = (n + 2) % 3;
+	const double u = LocalFraction(cell, a, position[a]);
+	const double v = LocalFraction(cell, b, position[b]);
+	double value = 0;
+	for (unsigned int i = 0; i < 2; ++i)
+	{
+		for (unsigned int j = 0; j < 2; ++j)
+		{
+			value += (i ? u : 1 - u) * (j ? v : 1 - v) * TraceValue(Restrict(LocalEdge(cell, n, i, j)), m_Electric);
+		}
+	}
+	return value;
+}
+
+double CartesianSubgrid::Magnetic(unsigned int n, const Point &position) const
+{
+	Require(n < 3, "CartesianSubgrid: invalid component");
+	const std::size_t index = FindLeaf(position);
+	const Leaf &cell = m_Leaves[index];
+	const double t = LocalFraction(cell, n, position[n]);
+	const double area = Length(cell, (n + 1) % 3) * Length(cell, (n + 2) % 3);
+	const std::size_t first = 6 * index + 2 * n;
+	return ((1 - t) * m_Magnetic[first] / m_SqrtReluctance[(first) / 2] +
+			t * m_Magnetic[first + 1] / m_SqrtReluctance[(first + 1) / 2]) /
+		   (area * m_Media[index].Permeability(n));
+}
+
+CartesianSubgrid::Integral CartesianSubgrid::ElectricSample(unsigned int n, const Point &position) const
+{
+	Require(n < 3, "CartesianSubgrid: invalid sample component");
+	const auto index = FindLeaf(position);
+	Integral result;
+	if (LeafIsOpaque(index))
+	{
+		return result;
+	}
+	const Leaf &cell = m_Leaves[index];
+	const unsigned int a = (n + 1) % 3, b = (n + 2) % 3;
+	const double u = LocalFraction(cell, a, position[a]);
+	const double v = LocalFraction(cell, b, position[b]);
+	for (unsigned int i = 0; i < 2; ++i)
+	{
+		for (unsigned int j = 0; j < 2; ++j)
+		{
+			const double weight = (i ? u : 1 - u) * (j ? v : 1 - v);
+			for (const auto &term : Restrict(LocalEdge(cell, n, i, j)).weights)
+			{
+				result.weights.emplace_back(term.first, weight * term.second / m_SqrtMass[term.first]);
+			}
+		}
+	}
+	return result;
+}
+
+CartesianSubgrid::Integral CartesianSubgrid::MagneticSample(unsigned int n, const Point &position) const
+{
+	Require(n < 3, "CartesianSubgrid: invalid sample component");
+	const auto index = FindLeaf(position);
+	const Leaf &cell = m_Leaves[index];
+	const double t = LocalFraction(cell, n, position[n]);
+	const double area = Length(cell, (n + 1) % 3) * Length(cell, (n + 2) % 3);
+	const std::size_t first = 6 * index + 2 * n;
+	Integral result;
+	result.magnetic = true;
+	for (unsigned int side = 0; side < 2; ++side)
+	{
+		result.weights.emplace_back(first + side,
+			(side ? t : 1 - t) / (m_SqrtReluctance[(first + side) / 2] * area * m_Media[index].Permeability(n)));
+	}
+	return result;
+}
+
+void CartesianSubgrid::AddElectric(std::size_t edge, double value)
+{
+	Require(std::isfinite(value), "CartesianSubgrid: nonfinite source");
+	m_Electric.at(edge) += value * m_SqrtMass.at(edge);
+}
+
+double CartesianSubgrid::ElectricEnergy() const
+{
+	if (m_Electric.ImplicitZero())
+	{
+		return 0.;
+	}
+	double result = .5 * std::inner_product(m_Electric.Dense().begin(), m_Electric.Dense().end(), m_Electric.Dense().begin(), 0.);
+	for (const auto &term : m_MassOffDiagonal)
+	{
+		result += term.second * m_Electric[term.first.first] * m_Electric[term.first.second];
+	}
+	return result;
+}
+
+double CartesianSubgrid::MagneticEnergy() const
+{
+	if (m_Magnetic.ImplicitZero())
+	{
+		return 0.;
+	}
+	return .5 * std::inner_product(m_Magnetic.Dense().begin(), m_Magnetic.Dense().end(), m_Magnetic.Dense().begin(), 0.);
+}
+
+double CartesianSubgrid::Energy(double timestep) const
+{
+	double value = ElectricEnergy() + MagneticEnergy();
+	if (timestep != 0)
+	{
+		CheckStep(timestep);
+		if (!m_Electric.ImplicitZero() && !m_Magnetic.ImplicitZero())
+		{
+			std::vector<double> curl(m_Magnetic.size());
+			Curl(m_Electric.Dense(), curl);
+			value += .5 * timestep * std::inner_product(curl.begin(), curl.end(), m_Magnetic.Dense().begin(), 0.);
+		}
+	}
+	return value;
+}
+
+double CartesianSubgrid::CurlDivergenceResidual(const Field &field) const
+{
+	std::vector<double> electric(m_Edges.size()), curl(m_Magnetic.size());
+	for (std::size_t i = 0; i < electric.size(); ++i)
+	{
+		electric[i] = field(EdgeDirection(i), EdgePosition(i)) * m_SqrtMass[i];
+	}
+	Curl(electric, curl);
+	double maximum = 0;
+	for (std::size_t cell = 0; cell < m_Leaves.size(); ++cell)
+	{
+		double sum = 0, scale = 0;
+		for (unsigned int n = 0; n < 3; ++n)
+		{
+			const std::size_t i = 6 * cell + 2 * n;
+			sum += curl[i + 1] / m_SqrtReluctance[(i + 1) / 2] - curl[i] / m_SqrtReluctance[(i) / 2];
+			scale += std::abs(curl[i + 1] / m_SqrtReluctance[(i + 1) / 2]) + std::abs(curl[i] / m_SqrtReluctance[(i) / 2]);
+		}
+		maximum = std::max(maximum, std::abs(sum) / std::max(scale, 1e-300));
+	}
+	return maximum;
+}
+
+std::size_t CartesianSubgrid::StorageBytes() const
+{
+	std::size_t bytes = sizeof(*this) + m_Leaves.AllocationBytes();
+	if (const auto diagnostic = m_DiagnosticLeaves.Load())
+	{
+		bytes += sizeof(*diagnostic) + diagnostic->capacity() * sizeof(Leaf);
+	}
+	for (const auto &axis : m_Lines)
+	{
+		bytes += axis.capacity() * sizeof(double);
+	}
+	for (const auto &axis : m_ChildLines)
+	{
+		bytes += axis.capacity() * sizeof(double);
+	}
+	bytes += m_Edges.AllocationBytes() +
+			 m_Regions.capacity() * sizeof(Region) + m_Media.StorageBytes() + m_OpaqueCells.capacity();
+	// Structured address buffers are counted by allocated capacity, not a tree-node estimate.
+	bytes += m_EdgeIndex->StorageBytes();
+	bytes += m_PECEdges.size() * (sizeof(Edge) + 4 * sizeof(void *)) + m_PECFaces.capacity();
+	for (const auto *values :
+		 {&m_SqrtMass, &m_SqrtReluctance, &m_Increment, &m_Curl,
+		  &m_InterfaceWork})
+	{
+		bytes += values->capacity() * sizeof(double);
+	}
+	bytes += (m_Electric.capacity() + m_Magnetic.capacity()) * sizeof(double);
+	bytes += m_CurlOperator.AllocationBytes();
+	bytes += m_MassOffDiagonal.capacity() * sizeof(decltype(m_MassOffDiagonal)::value_type);
+	bytes += m_Sources.capacity() * sizeof(decltype(m_Sources)::value_type);
+	for (const MassBlock &block : m_Blocks)
+	{
+		bytes += sizeof(block) + block.edges.capacity() * sizeof(std::size_t) + block.lower.capacity() * sizeof(double);
+	}
+	bytes += (m_PortConductance.capacity() + m_PortCurrent.capacity() + m_PortLower.capacity() +
+			  m_PortRHS.capacity() + m_PortMid.capacity() + m_SourceCurl.capacity()) *
+			 sizeof(double);
+	for (const auto *ports : {&m_PortVoltage, &m_PortResponse})
+	{
+		bytes += ports->capacity() * sizeof(Integral);
+		for (const auto &port : *ports)
+		{
+			bytes += port.weights.capacity() * sizeof(decltype(port.weights)::value_type);
+		}
+	}
+	return bytes;
+}
+
+CartesianSubgrid::InterfaceStorageInfo CartesianSubgrid::InterfaceStorage() const
+{
+	InterfaceStorageInfo info;
+	info.blocks = m_Blocks.size();
+	info.workspaceEntries = m_InterfaceWork.capacity();
+	info.inverseBoundSolves = m_InverseBoundSolves;
+	info.bipartiteBoundBlocks = m_BipartiteBoundBlocks;
+	for (const auto &block : m_Blocks)
+	{
+		info.largestBlock = std::max(info.largestBlock, block.edges.size());
+		info.largestHalfBandwidth = std::max(info.largestHalfBandwidth, block.halfBandwidth);
+		info.factorEntries += block.lower.capacity();
+		info.denseEquivalentEntries += block.edges.size() * block.edges.size();
+	}
+	return info;
+}
+
+CartesianSubgrid::Integral CartesianSubgrid::LineIntegral(bool magnetic, const Point &start,
+														  const Point &stop) const
+{
+	unsigned int axis = 0, dimensions = 0;
+	for (unsigned int n = 0; n < 3; ++n)
+	{
+		Require(std::isfinite(start[n]) && std::isfinite(stop[n]) && start[n] >= m_Lines[n].front() &&
+					start[n] <= m_Lines[n].back() && stop[n] >= m_Lines[n].front() &&
+					stop[n] <= m_Lines[n].back(),
+				"CartesianSubgrid: integral lies outside the physical grid");
+		if (start[n] != stop[n])
+		{
+			axis = n;
+			++dimensions;
+		}
+	}
+	Require(dimensions == 1, "CartesianSubgrid: an integral segment must be axis aligned and nonzero");
+	const double lo = std::min(start[axis], stop[axis]), hi = std::max(start[axis], stop[axis]);
+	const double sign = stop[axis] > start[axis] ? 1 : -1;
+	// All intersecting leaf boundaries, not base-grid sampling. Midpoint quadrature
+	// is exact for the edge basis and piecewise-constant dual H chain.
+	// H point reconstruction is different: integrating its linear smoothing
+	// would attenuate a Yee current contour even on an identical uniform grid.
+	std::vector<double> cuts{lo, hi};
+	for (std::size_t cell = 0; cell < m_Leaves.size(); ++cell)
+	{
+		const auto origin = LeafStart(cell), length = LeafLengths(cell);
+		bool intersects = true;
+		for (unsigned int n = 0; n < 3; ++n)
+		{
+			if (n != axis)
+			{
+				const double upper = Coordinate(n, m_Leaves[cell].lo[n] + m_Leaves[cell].size[n]);
+				if ((start[n] < origin[n] && !SameBoundaryCoordinate(start[n], origin[n], length[n])) ||
+					(start[n] > upper && !SameBoundaryCoordinate(start[n], upper, length[n])))
+				{
+					intersects = false;
+				}
+			}
+		}
+		if (intersects)
+		{
+			for (double cut : {origin[axis], origin[axis] + (magnetic ? .5 : 1.) * length[axis],
+							   origin[axis] + length[axis]})
+			{
+				if (cut > lo && cut < hi)
+				{
+					cuts.push_back(cut);
+				}
+			}
+		}
+	}
+	std::sort(cuts.begin(), cuts.end());
+	cuts.erase(std::unique(cuts.begin(), cuts.end()), cuts.end());
+	std::map<std::size_t, double> weights;
+	for (std::size_t k = 1; k < cuts.size(); ++k)
+	{
+		Point p = start;
+		p[axis] = .5 * (cuts[k - 1] + cuts[k]);
+		const auto index = FindLeaf(p);
+		if (LeafIsOpaque(index))
+		{
+			continue; // No reconstructed bulk field inside an excluded conductor.
+		}
+		const auto &cell = m_Leaves[index];
+		const double distance = sign * (cuts[k] - cuts[k - 1]);
+		if (magnetic)
+		{
+			const double t = LocalFraction(cell, axis, p[axis]);
+			const double area = Length(cell, (axis + 1) % 3) * Length(cell, (axis + 2) % 3);
+			const auto face = 6 * index + 2 * axis + (t < .5 ? 0 : 1);
+			weights[face] += distance / (area * m_Media[index].Permeability(axis) * m_SqrtReluctance[(face) / 2]);
+		}
+		else
+		{
+			const unsigned int a = (axis + 1) % 3, b = (axis + 2) % 3;
+			const double u = LocalFraction(cell, a, p[a]);
+			const double v = LocalFraction(cell, b, p[b]);
+			for (unsigned int i = 0; i < 2; ++i)
+			{
+				for (unsigned int j = 0; j < 2; ++j)
+				{
+					const auto trace = Restrict(LocalEdge(cell, axis, i, j));
+					for (const auto &term : trace.weights)
+					{
+						weights[term.first] += distance * (i ? u : 1 - u) * (j ? v : 1 - v) * term.second /
+											   m_SqrtMass[term.first];
+					}
+				}
+			}
+		}
+	}
+	Integral result;
+	result.magnetic = magnetic;
+	for (const auto &term : weights)
+	{
+		if (term.second != 0)
+		{
+			result.weights.push_back(term);
+		}
+	}
+	return result;
+}
+
+CartesianSubgrid::Integral CartesianSubgrid::VoltagePath(const Point &start, const Point &stop) const
+{
+	return LineIntegral(false, start, stop);
+}
+
+CartesianSubgrid::Integral CartesianSubgrid::CurrentContour(unsigned int normal, const Point &start,
+															const Point &stop) const
+{
+	Require(normal < 3 && start[normal] == stop[normal], "CartesianSubgrid: invalid current normal");
+	const unsigned int a = (normal + 1) % 3, b = (normal + 2) % 3;
+	Require(stop[a] > start[a] && stop[b] > start[b],
+			"CartesianSubgrid: positive current-contour area required");
+	Point corners[4] = {start, start, stop, stop};
+	corners[1][a] = stop[a];
+	corners[3][a] = start[a];
+	Integral result;
+	result.magnetic = true;
+	std::map<std::size_t, double> weights;
+	for (unsigned int side = 0; side < 4; ++side)
+	{
+		const auto segment = LineIntegral(true, corners[side], corners[(side + 1) % 4]);
+		for (const auto &term : segment.weights)
+		{
+			weights[term.first] += term.second;
+		}
+	}
+	for (const auto &term : weights)
+	{
+		if (term.second != 0)
+		{
+			result.weights.push_back(term);
+		}
+	}
+	return result;
+}
+
+double CartesianSubgrid::Evaluate(const Integral &integral) const
+{
+	const auto &field = integral.magnetic ? m_Magnetic : m_Electric;
+	double value = 0;
+	for (const auto &term : integral.weights)
+	{
+		value += term.second * field.at(term.first);
+	}
+	return value;
+}
+
+bool CartesianSubgrid::IsIndependentEdge(const Point &start, const Point &stop) const
+{
+	for (const auto &edge : m_Edges)
+	{
+		const auto a = EdgePoint(edge, 0), b = EdgePoint(edge, 1);
+		bool forward = true, reverse = true;
+		for (unsigned int n = 0; n < 3; ++n)
+		{
+			const double tolerance =
+				32 * std::numeric_limits<double>::epsilon() *
+				std::max({std::abs(a[n]), std::abs(b[n]), m_Lines[n][1] - m_Lines[n][0]});
+			forward =
+				forward && std::abs(start[n] - a[n]) <= tolerance && std::abs(stop[n] - b[n]) <= tolerance;
+			reverse =
+				reverse && std::abs(start[n] - b[n]) <= tolerance && std::abs(stop[n] - a[n]) <= tolerance;
+		}
+		if (forward || reverse)
+		{
+			return true;
+		}
+	}
+	return false;
+}
+
+std::vector<std::pair<CartesianSubgrid::Point, CartesianSubgrid::Point>> CartesianSubgrid::LocalEdgePathSegments(const Point &start, const Point &stop) const
+{
+	unsigned int axis = 3;
+	for (unsigned int n = 0; n < 3; ++n)
+	{
+		if (!std::isfinite(start[n]) || !std::isfinite(stop[n]) ||
+			start[n] < m_Lines[n].front() || start[n] > m_Lines[n].back() ||
+			stop[n] < m_Lines[n].front() || stop[n] > m_Lines[n].back())
+		{
+			return {};
+		}
+		if (start[n] != stop[n])
+		{
+			if (axis != 3)
+			{
+				return {};
+			}
+			axis = n;
+		}
+	}
+	if (axis == 3)
+	{
+		return {};
+	}
+	const double lower = std::min(start[axis], stop[axis]), upper = std::max(start[axis], stop[axis]);
+	std::vector<std::pair<Point, Point>> segments;
+	double position = lower;
+	while (position < upper)
+	{
+		auto point = start;
+		point[axis] = position;
+		const auto index = FindLeaf(point);
+		const auto &cell = m_Leaves[index];
+		const auto origin = LeafStart(index), length = LeafLengths(index);
+		const double end = Coordinate(axis, cell.lo[axis] + cell.size[axis]);
+		if (LeafIsOpaque(index) || !SameBoundaryCoordinate(position, origin[axis], length[axis]) ||
+			(end > upper && !SameBoundaryCoordinate(end, upper, length[axis])))
+		{
+			return {};
+		}
+		unsigned int transverse[2];
+		for (unsigned int tangent = 1; tangent <= 2; ++tangent)
+		{
+			const auto n = (axis + tangent) % 3;
+			if (SameBoundaryCoordinate(point[n], origin[n], length[n]))
+			{
+				transverse[tangent - 1] = 0;
+			}
+			else if (SameBoundaryCoordinate(point[n], Coordinate(n, cell.lo[n] + cell.size[n]), length[n]))
+			{
+				transverse[tangent - 1] = 1;
+			}
+			else
+			{
+				return {};
+			}
+		}
+		if (Restrict(LocalEdge(cell, axis, transverse[0], transverse[1])).weights.empty() || !(end > position))
+		{
+			return {};
+		}
+		auto first = start, last = start;
+		first[axis] = start[axis] < stop[axis] ? position : end;
+		last[axis] = start[axis] < stop[axis] ? end : position;
+		segments.emplace_back(first, last);
+		if (SameBoundaryCoordinate(end, upper, length[axis]))
+		{
+			if (start[axis] > stop[axis])
+			{
+				std::reverse(segments.begin(), segments.end());
+			}
+			return segments;
+		}
+		position = end;
+	}
+	return {};
+}
+bool CartesianSubgrid::IsLocalEdgePath(const Point &start, const Point &stop) const
+{
+	return !LocalEdgePathSegments(start, stop).empty();
+}
+
+std::pair<double, double> CartesianSubgrid::DualBounds(unsigned int axis, const Point &point) const
+{
+	Require(axis < 3, "CartesianSubgrid: invalid dual-contour axis");
+	FindLeaf(point);
+	double left = -std::numeric_limits<double>::infinity(), right = -left;
+	for (std::size_t index = 0; index < m_Leaves.size(); ++index)
+	{
+		const auto lo = LeafStart(index), lengths = LeafLengths(index);
+		bool incident = true;
+		for (unsigned int n = 0; n < 3; ++n)
+		{
+			const double tolerance =
+				std::min(lengths[n] * 1e-8, 32 * std::numeric_limits<double>::epsilon() *
+												std::max({std::abs(point[n]), std::abs(lo[n]), lengths[n]}));
+			incident =
+				incident && point[n] >= lo[n] - tolerance && point[n] <= lo[n] + lengths[n] + tolerance;
+		}
+		if (!incident)
+		{
+			continue;
+		}
+		for (double coordinate : {lo[axis], lo[axis] + lengths[axis]})
+		{
+			const double tolerance =
+				std::min(lengths[axis] * 1e-8,
+						 32 * std::numeric_limits<double>::epsilon() *
+							 std::max({std::abs(point[axis]), std::abs(coordinate), lengths[axis]}));
+			if (coordinate < point[axis] - tolerance)
+			{
+				left = std::max(left, coordinate);
+			}
+			if (coordinate > point[axis] + tolerance)
+			{
+				right = std::min(right, coordinate);
+			}
+		}
+	}
+	Require(std::isfinite(left) && std::isfinite(right),
+			"CartesianSubgrid: zero-width current probe needs an interior local node");
+	return {.5 * (left + point[axis]), .5 * (right + point[axis])};
+}
+
+std::vector<CartesianSubgrid::Resistor> CartesianSubgrid::DistributedResistor(
+	const Point &start, const Point &stop, unsigned int direction, double resistance) const
+{
+	const auto prepared = PrepareDistributedResistor(start, stop, direction, resistance);
+	std::vector<Resistor> result;
+	result.reserve(prepared.size());
+	for (const auto &entry : prepared)
+	{
+		result.push_back(entry.resistor);
+	}
+	return result;
+}
+
+std::vector<CartesianSubgrid::ResolvedResistor> CartesianSubgrid::PrepareDistributedResistor(
+	const Point &start, const Point &stop, unsigned int direction, double resistance) const
+{
+	Require(direction < 3 && resistance > 0 && std::isfinite(resistance),
+		"CartesianSubgrid: distributed resistor needs an axis and finite positive R");
+	Point lo, hi, tolerance;
+	for (unsigned int n = 0; n < 3; ++n)
+	{
+		Require(std::isfinite(start[n]) && std::isfinite(stop[n]),
+			"CartesianSubgrid: distributed resistor has nonfinite bounds");
+		lo[n] = std::min(start[n], stop[n]);
+		hi[n] = std::max(start[n], stop[n]);
+		tolerance[n] = 64 * std::numeric_limits<double>::epsilon() *
+			std::max({std::abs(lo[n]), std::abs(hi[n]), m_Lines[n].back() - m_Lines[n].front()});
+	}
+	Require(hi[direction] > lo[direction], "CartesianSubgrid: distributed resistor has zero length");
+	struct Selected
+	{
+		Point start, stop;
+		double metric = 0;
+		std::size_t leaf = std::numeric_limits<std::size_t>::max();
+		unsigned int first = 0, second = 0;
+	};
+	std::map<std::size_t, Selected> selected;
+	std::array<std::set<double>, 3> nodes;
+	std::map<double, double> planes;
+	for (std::size_t id = 0; id < m_Edges.size(); ++id)
+	{
+		const auto &edge = m_Edges[id];
+		if (unsigned(edge.axis) != direction)
+		{
+			continue;
+		}
+		const auto a = EdgePoint(edge, 0), b = EdgePoint(edge, 1);
+		bool inside = true;
+		for (unsigned int n = 0; n < 3; ++n)
+		{
+			inside = inside && a[n] >= lo[n] - tolerance[n] && b[n] <= hi[n] + tolerance[n];
+		}
+		if (!inside)
+		{
+			continue;
+		}
+		selected.emplace(id, Selected{a, b, 0});
+		for (unsigned int n = 0; n < 3; ++n)
+		{
+			nodes[n].insert(a[n]);
+			if (n == direction)
+			{
+				nodes[n].insert(b[n]);
+			}
+		}
+		const auto plane = planes.emplace(a[direction], b[direction]);
+		Require(plane.second || plane.first->second == b[direction],
+			"CartesianSubgrid: distributed resistor crosses incompatible local planes");
+	}
+	Require(!selected.empty(), "CartesianSubgrid: distributed resistor resolves no free local edges");
+	std::size_t expected = planes.size();
+	for (unsigned int n = 0; n < 3; ++n)
+	{
+		Require(!nodes[n].empty() && std::abs(*nodes[n].begin() - lo[n]) <= tolerance[n] &&
+			std::abs(*nodes[n].rbegin() - hi[n]) <= tolerance[n],
+			"CartesianSubgrid: distributed resistor bounds must match complete local nodes");
+		if (n != direction)
+		{
+			Require(expected <= std::numeric_limits<std::size_t>::max() / nodes[n].size(),
+				"CartesianSubgrid: distributed resistor edge count overflows");
+			expected *= nodes[n].size();
+		}
+	}
+	Require(selected.size() == expected,
+		"CartesianSubgrid: distributed resistor has missing, PEC or opaque support");
+	double previous = lo[direction];
+	for (const auto &plane : planes)
+	{
+		Require(std::abs(plane.first - previous) <= tolerance[direction],
+			"CartesianSubgrid: distributed resistor has an incomplete longitudinal path");
+		previous = plane.second;
+	}
+	Require(std::abs(previous - hi[direction]) <= tolerance[direction],
+		"CartesianSubgrid: distributed resistor has an incomplete final plane");
+	// Sum geometric dual volumes, without material epsilon. On independent
+	// tensor edges this is exactly the ordinary Yee dual area / edge length.
+	// Include adjacent leaves outside the primitive's transverse bounds: the
+	// edge's dual area is not clipped at the lumped-property boundary.
+	for (std::size_t cell = 0; cell < m_Leaves.size(); ++cell)
+	{
+		if (LeafIsOpaque(cell))
+		{
+			continue;
+		}
+		const auto &leaf = m_Leaves[cell];
+		const Point length{Length(leaf, 0), Length(leaf, 1), Length(leaf, 2)};
+		const double metric = length[0] * length[1] * length[2] /
+			(4 * length[direction] * length[direction]);
+		for (unsigned int i = 0; i < 2; ++i)
+		{
+			for (unsigned int j = 0; j < 2; ++j)
+			{
+				const auto local = LocalEdge(leaf, direction, i, j);
+				const auto trace = Restrict(local);
+				for (const auto &term : trace.weights)
+				{
+					auto found = selected.find(term.first);
+					if (found == selected.end())
+					{
+						continue;
+					}
+					const auto &master = m_Edges[term.first];
+					Require(trace.weights.size() == 1 && term.second == 1 && local.lo == master.lo &&
+						local.size == master.size,
+						"CartesianSubgrid: distributed resistor touches a hanging interface");
+					found->second.metric += metric;
+					if (found->second.leaf == std::numeric_limits<std::size_t>::max())
+					{
+						found->second.leaf = cell;
+						found->second.first = i;
+						found->second.second = j;
+					}
+				}
+			}
+		}
+	}
+	std::map<double, double> parallel;
+	for (const auto &entry : selected)
+	{
+		const auto &edge = entry.second;
+		Require(edge.metric > 0 && std::isfinite(edge.metric),
+			"CartesianSubgrid: distributed resistor has invalid dual geometry");
+		parallel[edge.start[direction]] += edge.metric;
+	}
+	double series = 0;
+	for (const auto &plane : parallel)
+	{
+		Require(plane.second > 0 && std::isfinite(plane.second),
+			"CartesianSubgrid: distributed resistor parallel metric overflows");
+		series += 1 / plane.second;
+	}
+	Require(series > 0 && std::isfinite(series),
+		"CartesianSubgrid: distributed resistor series metric overflows");
+	std::vector<ResolvedResistor> result;
+	result.reserve(selected.size());
+	for (const auto &entry : selected)
+	{
+		const auto &edge = entry.second;
+		const double conductance = (series / resistance) * edge.metric;
+		Require(conductance > 0 && std::isfinite(conductance) && std::isfinite(1 / conductance),
+			"CartesianSubgrid: distributed resistor conductance is unrepresentable");
+		Require(edge.leaf != std::numeric_limits<std::size_t>::max(),
+			"CartesianSubgrid: distributed resistor has no resolved leaf support");
+		result.push_back({{edge.start, edge.stop, 1 / conductance, 0}, entry.first,
+			edge.leaf, edge.first, edge.second});
+	}
+	return result;
+}
+
+void CartesianSubgrid::SetResistors(const std::vector<Resistor> &ports, double timestep)
+{
+	CheckStep(timestep);
+	Require(ports.size() <= 64, "CartesianSubgrid: at most 64 reference resistors supported");
+	Require(m_Sources.empty(), "CartesianSubgrid: configure resistors before soft sources");
+	m_PortVoltage.clear();
+	m_PortResponse.clear();
+	m_PortConductance.clear();
+	m_PortCurrent.clear();
+	m_PortTimestep = timestep;
+	m_ResistorLoss = m_SourceWork = 0;
+	for (const auto &port : ports)
+	{
+		Require(port.resistance > 0 && std::isfinite(port.resistance) && std::isfinite(port.current),
+				"CartesianSubgrid: finite positive resistance and finite Norton current required");
+		auto voltage = VoltagePath(port.start, port.stop);
+		Require(!voltage.weights.empty(), "CartesianSubgrid: resistor voltage is constrained to PEC");
+		const double root = 1 / std::sqrt(port.resistance);
+		std::vector<double> response(m_Electric.size(), 0);
+		for (const auto &term : voltage.weights)
+		{
+			response[term.first] = root * term.second;
+		}
+		SolveMass(response);
+		Integral sparse;
+		for (std::size_t i = 0; i < response.size(); ++i)
+		{
+			if (response[i] != 0)
+			{
+				sparse.weights.emplace_back(i, response[i]);
+			}
+		}
+		m_PortVoltage.push_back(std::move(voltage));
+		m_PortResponse.push_back(std::move(sparse));
+		m_PortConductance.push_back(root * root);
+		m_PortCurrent.push_back(port.current / root);
+	}
+	const auto count = ports.size();
+	m_PortLower.assign(count * count, 0);
+	m_PortRHS.resize(count);
+	m_PortMid.resize(count);
+	// Small Woodbury solve: I + dt/2 C^T S^-1 C, C_p = sqrt(G_p) b_p.
+	// Reuse the already factored interface mass; no dense full-field matrix.
+	for (std::size_t i = 0; i < count; ++i)
+	{
+		for (std::size_t j = 0; j <= i; ++j)
+		{
+			double value = i == j ? 1 : 0;
+			for (const auto &a : m_PortVoltage[i].weights)
+			{
+				for (const auto &b : m_PortResponse[j].weights)
+				{
+					if (a.first == b.first)
+					{
+						value += .5 * timestep * std::sqrt(m_PortConductance[i]) * a.second * b.second;
+					}
+				}
+			}
+			for (std::size_t k = 0; k < j; ++k)
+			{
+				value -= m_PortLower[i * count + k] * m_PortLower[j * count + k];
+			}
+			Require(std::isfinite(value) && (i != j || value > 0),
+					"CartesianSubgrid: resistor matrix is not positive definite");
+			m_PortLower[i * count + j] = i == j ? std::sqrt(value) : value / m_PortLower[j * count + j];
+		}
+	}
+}
+
+void CartesianSubgrid::ApplyResistors(double timestep, double amplitude)
+{
+	ApplyResistors(timestep, amplitude, m_PortResponse, m_PortLower);
+}
+
+void CartesianSubgrid::ApplyResistors(double timestep, double amplitude,
+	const std::vector<Integral> &responses, const std::vector<double> &lower)
+{
+	Require(timestep == m_PortTimestep, "CartesianSubgrid: resistor timestep changed; reconfigure first");
+	auto &electric = m_Electric.MutableDense();
+	const auto count = m_PortVoltage.size();
+	// Solve directly for net normalized current, j - sqrt(G)*V_mid.
+	// (I + dt/2 D)(j - sqrt(G)*V_mid) = j - C^T(u_old + dt/2 S^-1 K^T v).
+	for (std::size_t i = 0; i < count; ++i)
+	{
+		double voltage = 0;
+		for (const auto &term : m_PortVoltage[i].weights)
+		{
+			voltage += term.second * (electric[term.first] + .5 * timestep * m_Increment[term.first]);
+		}
+		m_PortRHS[i] = amplitude * m_PortCurrent[i] - std::sqrt(m_PortConductance[i]) * voltage;
+		for (std::size_t j = 0; j < i; ++j)
+		{
+			m_PortRHS[i] -= lower[i * count + j] * m_PortRHS[j];
+		}
+		m_PortRHS[i] /= lower[i * count + i];
+	}
+	for (std::size_t i = count; i-- > 0;)
+	{
+		for (std::size_t j = i + 1; j < count; ++j)
+		{
+			m_PortRHS[i] -= lower[j * count + i] * m_PortRHS[j];
+		}
+		m_PortRHS[i] /= lower[i * count + i];
+		m_PortMid[i] = amplitude * m_PortCurrent[i] - m_PortRHS[i];
+		m_ResistorLoss += timestep * m_PortMid[i] * m_PortMid[i];
+		m_SourceWork += timestep * m_PortMid[i] * amplitude * m_PortCurrent[i];
+	}
+	for (std::size_t i = 0; i < m_Electric.size(); ++i)
+	{
+		electric[i] += timestep * m_Increment[i];
+	}
+	for (std::size_t port = 0; port < count; ++port)
+	{
+		for (const auto &term : responses[port].weights)
+		{
+			electric[term.first] += timestep * term.second * m_PortRHS[port];
+		}
+	}
+}
+
+double CartesianSubgrid::ResistorVoltage(std::size_t port) const
+{
+	return Evaluate(m_PortVoltage.at(port));
+}
+
+// Checked FP32 upload contract; no CPU numerical update is changed.
+CartesianSubgridDeviceData CartesianSubgrid::DeviceData() const
+{
+	return PrepareDeviceData(true);
+}
+
+CartesianSubgridDeviceData CartesianSubgrid::DeviceStateData() const
+{
+	return PrepareDeviceData(false);
+}
+
+CartesianSubgridDeviceData CartesianSubgrid::DeviceSetupMetadata() const
+{
+	return PrepareDeviceData(false, false);
+}
+
+CartesianSubgridDeviceData CartesianSubgrid::PrepareDeviceData(bool includeCurls, bool includeFields) const
+{
+	Require(!includeCurls || includeFields,
+		"CartesianSubgrid: expanded device preparation requires explicit initial fields");
+	Require(m_PendingMagneticTimestep == 0, "CartesianSubgrid: device upload requires a complete timestep");
+	const auto index = [](std::size_t value)
+	{
+		Require(value <= std::numeric_limits<std::uint32_t>::max(),
+				"CartesianSubgrid: device metadata exceeds 32-bit indexing");
+		return static_cast<std::uint32_t>(value);
+	};
+	const char *quantity = "electric state";
+	const auto scalar = [&](double value)
+	{
+		const float converted = static_cast<float>(value);
+		if (!std::isfinite(value) || !std::isfinite(converted) ||
+			(value != 0 && std::abs(converted) < std::numeric_limits<float>::min()))
+		{
+			throw std::invalid_argument(std::string("CartesianSubgrid: ") + quantity +
+				" is not representable as normal FP32; log10(abs(value))=" + std::to_string(std::log10(std::abs(value))));
+		}
+		return converted;
+	};
+	CartesianSubgridDeviceData data;
+	data.streamCurls = !includeCurls;
+	data.stableTimestep = m_StableStep;
+	if (includeFields)
+	{
+		data.electric = CartesianSubgridFloat::State(m_Electric, data.stateTails);
+		data.magnetic = CartesianSubgridFloat::State(m_Magnetic, data.stateTails);
+	}
+	else
+	{
+		// Validate the same complete E/H states and retain the same FTZ ledger.
+		// Per-domain conversion must not recalculate a bound on smaller subsets.
+		CartesianSubgridFloat::StateTo(m_Electric, data.stateTails, [](float) {});
+		CartesianSubgridFloat::StateTo(m_Magnetic, data.stateTails, [](float) {});
+	}
+	if (includeCurls)
+	{
+		quantity = "curl coefficient";
+		data.transposeStart.assign(m_Electric.size() + 1, 0);
+		for (std::size_t row = 0; row < m_Magnetic.size(); ++row)
+		{
+			m_CurlOperator.ForEach(row, [&](std::size_t edge, double value)
+			{
+				data.curlColumn.push_back(index(edge));
+				const float high = scalar(value);
+				data.curlWeight.push_back(high);
+				quantity = "curl coefficient residual";
+				data.curlLow.push_back(scalar(value - double(high)));
+				quantity = "curl coefficient";
+				++data.transposeStart[edge + 1];
+			}, CurlMetrics());
+			data.curlStart.push_back(index(data.curlColumn.size()));
+		}
+		for (std::size_t edge = 0; edge < m_Electric.size(); ++edge)
+		{
+			data.transposeStart[edge + 1] = index(std::size_t(data.transposeStart[edge + 1]) +
+															 data.transposeStart[edge]);
+		}
+		data.transposeColumn.resize(data.curlColumn.size());
+		data.transposeWeight.resize(data.curlColumn.size());
+		data.transposeLow.resize(data.curlColumn.size());
+		auto cursor = data.transposeStart;
+		for (std::size_t row = 0; row < m_Magnetic.size(); ++row)
+		{
+			for (std::size_t k = data.curlStart[row]; k < data.curlStart[row + 1]; ++k)
+			{
+				const auto target = cursor[data.curlColumn[k]]++;
+				data.transposeColumn[target] = index(row);
+				data.transposeWeight[target] = data.curlWeight[k];
+				data.transposeLow[target] = data.curlLow[k];
+			}
+		}
+	}
+	quantity = "interface factor";
+	for (const auto &block : m_Blocks)
+	{
+		for (std::size_t edge : block.edges)
+		{
+			data.blockEdge.push_back(index(edge));
+		}
+		data.blockStart.push_back(index(data.blockEdge.size()));
+		data.bandwidth.push_back(index(block.halfBandwidth));
+		const auto factor = CartesianSubgridFloat::Factor(block.lower, block.edges.size(),
+			block.halfBandwidth, data.factorTails);
+		data.lower.insert(data.lower.end(), factor.begin(), factor.end());
+		data.lowerStart.push_back(index(data.lower.size()));
+	}
+	quantity = "source amplitude";
+	for (const auto &source : m_Sources)
+	{
+		data.sourceEdge.push_back(index(source.first));
+		data.sourceWeight.push_back(scalar(source.second));
+	}
+	data.portTimestep = m_PortTimestep;
+	for (std::size_t port = 0; port < m_PortVoltage.size(); ++port)
+	{
+		quantity = "port voltage";
+		for (const auto &term : m_PortVoltage[port].weights)
+		{
+			data.portEdge.push_back(index(term.first));
+			data.portWeight.push_back(scalar(term.second));
+		}
+		data.portStart.push_back(index(data.portEdge.size()));
+		quantity = "port response";
+		for (const auto &term : m_PortResponse[port].weights)
+		{
+			data.responseEdge.push_back(index(term.first));
+			data.responseWeight.push_back(scalar(term.second));
+		}
+		data.responseStart.push_back(index(data.responseEdge.size()));
+		quantity = "port conductance/current";
+		data.rootConductance.push_back(scalar(std::sqrt(m_PortConductance[port])));
+		data.portCurrent.push_back(scalar(m_PortCurrent[port]));
+	}
+	quantity = "port factor";
+	for (double value : m_PortLower)
+	{
+		data.portLower.push_back(scalar(value));
+	}
+	quantity = "source mass coupling";
+	for (const auto &source : m_Sources)
+	{
+		if (!m_PortVoltage.empty())
+		{
+			for (const auto &term : m_MassOffDiagonal)
+			{
+				if (term.first.first == source.first)
+				{
+					data.sourceOffEdge.push_back(index(term.first.second));
+					data.sourceOffWeight.push_back(scalar(term.second));
+				}
+				if (term.first.second == source.first)
+				{
+					data.sourceOffEdge.push_back(index(term.first.first));
+					data.sourceOffWeight.push_back(scalar(term.second));
+				}
+			}
+		}
+		data.sourceOffStart.push_back(index(data.sourceOffEdge.size()));
+	}
+	quantity = "ledger state";
+	data.ledger = {scalar(m_ResistorLoss), 0, scalar(m_SourceWork), 0};
+	if (includeCurls)
+	{
+		const CartesianSubgridDeviceGeometry spatial(m_CurlOperator.Regular(), CurlMetrics());
+		data.curlGeometry = spatial.geometry;
+		data.curlMetrics = spatial.metrics;
+	}
+	return data;
+}
+
+void CartesianSubgrid::CurlRow(std::size_t face,
+	std::vector<std::pair<std::size_t, double>> &row) const
+{
+	Require(m_PendingMagneticTimestep == 0,
+		"CartesianSubgrid: curl-row access requires a complete timestep");
+	if (face >= m_Magnetic.size())
+	{
+		throw std::out_of_range("CartesianSubgrid: curl row is out of range");
+	}
+	row.clear();
+	m_CurlOperator.ForEach(face, [&](std::size_t edge, double value)
+	{
+		row.emplace_back(edge, value);
+	}, CurlMetrics());
+}
+
+void CartesianSubgrid::CurlTransposeRow(std::size_t id,
+	std::vector<std::pair<std::size_t, double>> &row) const
+{
+	Require(m_PendingMagneticTimestep == 0,
+		"CartesianSubgrid: transpose-row access requires a complete timestep");
+	const auto &edge = m_Edges.at(id);
+	const auto axis = unsigned(edge.axis), a = (axis + 1) % 3, b = (axis + 2) % 3;
+	struct Support
+	{
+		Index root, ratio;
+		std::size_t first;
+	};
+	std::array<Support, 4> supports;
+	std::size_t count = 0;
+	std::array<std::array<unsigned int, 2>, 2> transverse;
+	std::array<unsigned int, 2> sizes{};
+	for (unsigned int side = 0; side < 2; ++side)
+	{
+		const auto n = side ? b : a;
+		const auto coordinate = unsigned(edge.lo[n]);
+		const auto root = coordinate / m_Ratio[n];
+		if (coordinate % m_Ratio[n] == 0 && root != 0)
+		{
+			transverse[side][sizes[side]++] = root - 1;
+		}
+		if (root < m_Cells[n])
+		{
+			transverse[side][sizes[side]++] = root;
+		}
+	}
+	for (unsigned int i = 0; i < sizes[0]; ++i)
+	{
+		for (unsigned int j = 0; j < sizes[1]; ++j)
+		{
+			Index root;
+			root[axis] = unsigned(edge.lo[axis]) / m_Ratio[axis];
+			root[a] = transverse[0][i];
+			root[b] = transverse[1][j];
+			const auto address = RootIndex(root);
+			supports[count++] = {root, m_Leaves.Ratio(address), m_Leaves.First(address)};
+		}
+	}
+	Require(count != 0, "CartesianSubgrid: independent edge has no incident root");
+	bool coarse = edge.size == int(m_Ratio[axis]);
+	for (unsigned int n = 0; n < 3; ++n)
+	{
+		coarse = coarse && edge.lo[n] % int(m_Ratio[n]) == 0;
+	}
+	bool spread = false;
+	if (coarse && !m_UniformFine)
+	{
+		for (std::size_t k = 1; k < count; ++k)
+		{
+			spread = spread || supports[k].ratio != supports[0].ratio;
+		}
+	}
+	row.clear();
+	const auto append = [&](std::size_t face)
+	{
+		// The canonical row is authoritative, including sign, coefficient
+		// and explicit zero terms. Geometry only bounds candidate support.
+		m_CurlOperator.ForEach(face, [&](std::size_t column, double value)
+		{
+			if (column == id)
+			{
+				row.emplace_back(face, value);
+			}
+		}, CurlMetrics());
+	};
+	for (std::size_t k = 0; k < count; ++k)
+	{
+		const auto &support = supports[k];
+		Index begin{}, end{};
+		bool aligned = true;
+		for (unsigned int n = 0; n < 3; ++n)
+		{
+			const auto step = m_Ratio[n] / support.ratio[n];
+			const auto distance = unsigned(edge.lo[n]) - support.root[n] * m_Ratio[n];
+			if (n == axis)
+			{
+				begin[n] = distance / step;
+				end[n] = (distance + unsigned(edge.size) + step - 1) / step;
+			}
+			else if (spread)
+			{
+				end[n] = support.ratio[n];
+			}
+			else
+			{
+				aligned = aligned && distance % step == 0;
+				const auto point = distance / step;
+				begin[n] = point ? point - 1 : 0;
+				end[n] = std::min(point + 1, support.ratio[n]);
+			}
+			Require(begin[n] <= end[n] && end[n] <= support.ratio[n],
+				"CartesianSubgrid: transpose support exceeds an incident root");
+		}
+		if (!aligned)
+		{
+			continue;
+		}
+		for (unsigned int x = begin[0]; x < end[0]; ++x)
+		{
+			for (unsigned int y = begin[1]; y < end[1]; ++y)
+			{
+				for (unsigned int z = begin[2]; z < end[2]; ++z)
+				{
+					const auto leaf = support.first + (std::size_t(x) * support.ratio[1] + y) * support.ratio[2] + z;
+					const auto cell = m_Leaves[leaf];
+					for (unsigned int n : {a, b})
+					{
+						if (spread)
+						{
+							append(6 * leaf + 2 * n);
+							append(6 * leaf + 2 * n + 1);
+						}
+						else if (edge.lo[n] == cell.lo[n])
+						{
+							append(6 * leaf + 2 * n);
+						}
+						else if (edge.lo[n] == cell.lo[n] + cell.size[n])
+						{
+							append(6 * leaf + 2 * n + 1);
+						}
+					}
+				}
+			}
+		}
+	}
+	std::sort(row.begin(), row.end(), [](const auto &first, const auto &second)
+	{
+		return first.first < second.first;
+	});
+	for (std::size_t k = 1; k < row.size(); ++k)
+	{
+		Require(row[k - 1].first < row[k].first,
+			"CartesianSubgrid: duplicate canonical face in transpose support");
+	}
+}
+
+CartesianSubgridDeviceOperators CartesianSubgrid::DeviceCurls(bool spatialBlocks) const
+{
+	Require(m_PendingMagneticTimestep == 0, "CartesianSubgrid: device curls require a complete timestep");
+	const auto narrow = [](std::size_t value)
+	{
+		Require(value <= std::numeric_limits<std::uint32_t>::max(), "CartesianSubgrid: device curl index overflow");
+		return static_cast<std::uint32_t>(value);
+	};
+	const auto scalar = [](double value)
+	{
+		const float converted = static_cast<float>(value);
+		Require(std::isfinite(value) && std::isfinite(converted) &&
+			(value == 0 || std::abs(converted) >= std::numeric_limits<float>::min()),
+			"CartesianSubgrid: nonrepresentable streamed curl coefficient");
+		return converted;
+	};
+	const auto view = CurlMetrics();
+	CartesianSubgridDeviceGeometry spatial(m_CurlOperator.Regular(), view, spatialBlocks);
+	CartesianSubgridDeviceOperators result;
+	using Curl = CartesianSubgridDeviceCurl;
+	std::vector<Curl::Term> terms, packedTerms;
+	Curl packedCurl;
+	std::vector<std::uint32_t> incoming(m_Electric.size() + 1, 0);
+	// Dictionaries are released before transpose preparation. Their contents
+	// are not needed by the completed compressed row representation.
+	{
+		Curl::Builder builder(m_Magnetic.size(), m_Electric.size());
+		std::unique_ptr<Curl::Builder> packed;
+		if (spatial.rows)
+		{
+			packed = std::make_unique<Curl::Builder>(m_Magnetic.size() - spatial.rows, m_Electric.size());
+		}
+		for (std::size_t face = 0; face < m_Magnetic.size(); ++face)
+		{
+			terms.clear();
+			m_CurlOperator.ForEach(face, [&](std::size_t edge, double value)
+			{
+				const float high = scalar(value), low = scalar(value - double(high));
+				terms.push_back({narrow(edge), high, low});
+				++incoming[edge + 1];
+			}, view);
+			builder.Append(terms);
+			if (!packed)
+			{
+				continue;
+			}
+			if (!subgrid_geometry_regular(spatial.geometry.data(), narrow(face)))
+			{
+				packed->Append(terms);
+				continue;
+			}
+			Require(terms.size() == 4, "CartesianSubgrid: streamed spatial row is not a four-edge curl");
+			// Check every pair before it can be shared by C and C^T. This is
+			// independent of the expanded upload retained by DeviceData().
+			for (unsigned int rank = 0; rank < 4; ++rank)
+			{
+				const auto descriptor = spatial.geometry[spatial.geometry[3] + face];
+				const auto slot = (descriptor >> (2 * rank)) & 3u;
+				SubgridMetricPair coefficient;
+				const auto edge = subgrid_geometry_edge(spatial.geometry.data(), spatial.metrics.data(),
+					narrow(face), slot, coefficient);
+				Require(edge == terms[rank].column &&
+					std::memcmp(&coefficient.high, &terms[rank].high, sizeof(float)) == 0 &&
+					std::memcmp(&coefficient.low, &terms[rank].low, sizeof(float)) == 0,
+					"CartesianSubgrid: streamed spatial pair differs from the canonical curl");
+			}
+		}
+		result.curl = builder.Finish();
+		if (packed)
+		{
+			packedCurl = packed->Finish();
+		}
+	}
+	for (std::size_t edge = 0; edge < m_Electric.size(); ++edge)
+	{
+		incoming[edge + 1] = narrow(std::size_t(incoming[edge]) + incoming[edge + 1]);
+	}
+	// Transpose preparation retains only incoming face IDs, not a second
+	// expanded column/high/low operator. Ascending face traversal preserves
+	// the original accumulation order exactly.
+	std::vector<std::uint32_t> faces(incoming.back());
+	{
+		auto cursor = incoming;
+		for (std::size_t face = 0; face < m_Magnetic.size(); ++face)
+		{
+			const auto pattern = result.curl.pattern[face];
+			for (std::size_t k = result.curl.start[pattern]; k < result.curl.start[pattern + 1]; ++k)
+			{
+				const auto edge = result.curl.base[face] + result.curl.offset[k];
+				faces[cursor[edge]++] = narrow(face);
+			}
+		}
+	}
+	Curl::Builder transpose(m_Electric.size(), m_Magnetic.size());
+	std::unique_ptr<Curl::Builder> packedTranspose;
+	if (spatial.rows)
+	{
+		packedTranspose = std::make_unique<Curl::Builder>(m_Electric.size(), m_Magnetic.size());
+	}
+	for (std::size_t edge = 0; edge < m_Electric.size(); ++edge)
+	{
+		terms.clear();
+		packedTerms.clear();
+		for (std::size_t i = incoming[edge]; i < incoming[edge + 1]; ++i)
+		{
+			const auto face = faces[i], pattern = result.curl.pattern[face];
+			const auto first = result.curl.offset.begin() + result.curl.start[pattern];
+			const auto stop = result.curl.offset.begin() + result.curl.start[pattern + 1];
+			const auto found = std::lower_bound(first, stop, narrow(edge - result.curl.base[face]));
+			Require(found != stop && *found == edge - result.curl.base[face],
+				"CartesianSubgrid: streamed transpose lost its canonical curl term");
+			const auto k = std::size_t(found - result.curl.offset.begin());
+			const Curl::Term term{face, result.curl.weight[k], result.curl.residual[k]};
+			terms.push_back(term);
+			if (!packedTranspose)
+			{
+				continue;
+			}
+			if (!subgrid_geometry_regular(spatial.geometry.data(), face))
+			{
+				packedTerms.push_back(term);
+				continue;
+			}
+			unsigned int slot = 0;
+			while (slot < 4 && subgrid_geometry_edge_index(spatial.geometry.data(), face, slot) != edge)
+			{
+				++slot;
+			}
+			Require(slot < 4, "CartesianSubgrid: streamed transpose lost its spatial slot");
+			packedTerms.push_back({face, static_cast<float>(slot), 0});
+		}
+		transpose.Append(terms);
+		if (packedTranspose)
+		{
+			packedTranspose->Append(packedTerms);
+		}
+	}
+	result.transpose = transpose.Finish();
+	result.legacyBytes = result.curl.DeviceBytes() + result.transpose.DeviceBytes();
+	if (packedTranspose)
+	{
+		auto candidate = packedTranspose->Finish();
+		const std::size_t bytes = packedCurl.DeviceBytes() + candidate.DeviceBytes() +
+			spatial.geometry.size() * sizeof(std::uint32_t) + spatial.metrics.size() * sizeof(float);
+		if (bytes < result.legacyBytes)
+		{
+			result.curl = std::move(packedCurl);
+			result.transpose = std::move(candidate);
+			result.geometry = std::move(spatial.geometry);
+			result.metrics = std::move(spatial.metrics);
+			result.spatialRows = spatial.rows;
+		}
+	}
+	return result;
+}
+
+void CartesianSubgrid::ImportDeviceFields(const float *electric, std::size_t electricCount,
+										const float *magnetic, std::size_t magneticCount)
+{
+	Require(m_PendingMagneticTimestep == 0 && electric && magnetic &&
+			electricCount == m_Electric.size() && magneticCount == m_Magnetic.size(),
+			"CartesianSubgrid: invalid complete-step device field dimensions");
+	Require(std::all_of(electric, electric + electricCount, [](float value) { return std::isfinite(value); }) &&
+			std::all_of(magnetic, magnetic + magneticCount, [](float value) { return std::isfinite(value); }),
+			"CartesianSubgrid: nonfinite device fields");
+	if (!m_OpaqueCells.empty())
+	{
+		for (std::size_t cell = 0; cell < m_Leaves.size(); ++cell)
+		{
+			if (LeafIsOpaque(cell))
+			{
+				for (unsigned int face = 0; face < 6; ++face)
+				{
+					Require(magnetic[6 * cell + face] == 0,
+						"CartesianSubgrid: device import injects a field into excluded conductor volume");
+				}
+			}
+		}
+	}
+	std::copy(electric, electric + electricCount, m_Electric.MutableDense().begin());
+	std::copy(magnetic, magnetic + magneticCount, m_Magnetic.MutableDense().begin());
+}
+
+void CartesianSubgrid::ImportDeviceLedger(double resistorLoss, double sourceWork)
+{
+	Require(m_PendingMagneticTimestep == 0 && std::isfinite(resistorLoss) && resistorLoss >= 0 &&
+			std::isfinite(sourceWork), "CartesianSubgrid: invalid device source/loss ledger");
+	m_ResistorLoss = resistorLoss;
+	m_SourceWork = sourceWork;
+}

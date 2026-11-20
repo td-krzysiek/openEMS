@@ -1,5 +1,37 @@
 # openEMS speed benchmark
 
+## Compact Cartesian subgrid core
+
+`subgrid_core.cpp` measures the experimental serial reference in isolation.
+It reports constructor time, fixed-step update time, accounted storage,
+process peak RSS, timestep, invariant drift and E/H samples. It does not include
+native processing or measure ordinary Yee/GPU antenna performance. Peak RSS
+uses `getrusage` on Unix/macOS; zero means unavailable on other platforms.
+
+Compare the dense PR29 parent with the banded candidate using the same compiler:
+
+```sh
+mkdir -p /tmp/subgrid-dense
+git show fb98953:FDTD/cartesian_subgrid.h > /tmp/subgrid-dense/cartesian_subgrid.h
+git show fb98953:FDTD/cartesian_subgrid.cpp > /tmp/subgrid-dense/cartesian_subgrid.cpp
+c++ -O3 -std=c++17 -I/tmp/subgrid-dense /tmp/subgrid-dense/cartesian_subgrid.cpp \
+    benchmark/subgrid_core.cpp -o /tmp/subgrid-dense/core
+c++ -O3 -std=c++17 -DSUBGRID_FACTOR_STATS -IFDTD FDTD/cartesian_subgrid.cpp \
+    benchmark/subgrid_core.cpp -o /tmp/subgrid-banded
+python3 benchmark/subgrid_compare.py --baseline /tmp/subgrid-dense/core \
+    --candidate /tmp/subgrid-banded --repeat 3 --output /tmp/subgrid-comparison.json
+```
+
+The driver interleaves three repetitions (reversing order on alternating pairs),
+checks identical topology/timestep and peak-normalized E/H agreement, and
+retains every measurement and spread. Seven cases include an uncoupled control,
+two separate regions with different refinement ratios and interface lengths through the unchanged
+1024-edge block limit. Pinned master cannot configure Cartesian subgridding;
+the reference-core comparison therefore uses its prior PR29 implementation.
+Use the native benchmark below separately for ordinary-engine regression.
+
+## Native engines
+
 A small, fixed set of cases that each isolate one cost of the solver, timed
 with the `openEMS` binary. It answers two questions about a build: how fast
 is it on this machine, and — against another build — is it faster, slower,
@@ -172,3 +204,36 @@ A pull request that claims a speed-up includes the `compare` table of master
 against the branch, run interleaved on one machine, together with the machine
 line from its header. A speed-up that only shows on a case outside this suite
 is shown with that case in the pull request, not by adding it here.
+
+
+## Experimental compact Cartesian subgrid on Metal
+
+`subgrid_device_metal.cpp` is a separate, macOS-only small-core control for the
+experimental PR29 compact solver; it is not a case added to the ordinary Yee
+benchmark suite. It requires physical Metal, prints the actual loaded core
+library, warms up400 steps, then measures10,000 queued full steps including
+completion/final field readback. It reports accounted device allocation too.
+It does not measure antenna setup/DFT, ordinary engine speed or multi-device
+scaling. The source is the same standalone driver used for the precision
+increment's interleaved measurements, separately compiled outside the library.
+
+Compile from the source root using the dependency paths of the selected build
+(`SUBGRID_PREFIX`, `CSXCAD_PREFIX`, `SUPPORT_PREFIX`), for example:
+
+```sh
+c++ -std=c++17 -O3 -ffp-contract=off -DTIXML_USE_STL -I. \
+  "-I${CSXCAD_PREFIX}/include/CSXCAD" "-I${SUPPORT_PREFIX}/include" \
+  -I/opt/homebrew/include benchmark/subgrid_device_metal.cpp \
+  "-L${SUBGRID_PREFIX}/lib" -lopenEMS "-Wl,-rpath,${SUBGRID_PREFIX}/lib" \
+  -o /tmp/subgrid-device-metal
+DYLD_LIBRARY_PATH="${SUBGRID_PREFIX}/lib:${CSXCAD_PREFIX}/lib:${SUPPORT_PREFIX}/lib" \
+  /tmp/subgrid-device-metal
+```
+
+For A/B tests, preserve both runtime prefixes and run three interleaved pairs
+on an otherwise idle GPU, alternating the order. Use the loaded-library path
+and its SHA256 to verify selection. Keep the initial shorter-batch measurements
+if changing the measurement duration; do not compare submission-only timing
+with completed batches. The benchmark program uses no `DeviceData()` return
+ABI, allowing this specific driver to load the immediately preceding PR29
+runtime; this is not a blanket ABI guarantee for other revisions.

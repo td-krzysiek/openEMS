@@ -19,6 +19,9 @@
 #define ENGINE_INTERFACE_FDTD_H
 
 #include <cmath>
+#include <map>
+
+class Field_Gather_Subgrid;
 
 #include "Common/engine_interface_base.h"
 #include "operator.h"
@@ -56,6 +59,11 @@ public:
 
 	//! The precomputed evaluation (Field_Gather_FDTD) for the CPU engine, on its fields; NULL for the others
 	virtual Engine_Field_Gather* CreateFieldGather(bool h_field, const unsigned int numLines[3], unsigned int* const posLines[3]) const;
+
+
+	int CreateFieldDFT(const Engine_Field_Gather *gather, unsigned int count) override;
+	void AccumulateFieldDFT(int id, const std::vector<std::complex<float>> &weights) override;
+	bool ReadFieldDFT(int id, std::vector<ArrayLib::ArrayNIJK<std::complex<float>> *> &fields) override;
 
 	//! The interpolated E field at \a pos from raw(n, pos), the voltage of edge n at pos divided by its length
 	/*!
@@ -195,6 +203,8 @@ public:
 	}
 
 protected:
+	//! Borrowed gathers are owned by their dumps; interface/engine outlive them.
+	std::map<int, const Field_Gather_Subgrid *> m_SubgridDFT;
 	Operator* m_Op;
 	Engine* m_Eng;
 

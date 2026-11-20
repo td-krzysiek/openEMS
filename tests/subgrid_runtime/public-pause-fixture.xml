@@ -1,0 +1,97 @@
+<?xml version='1.0' encoding='utf-8'?>
+<openEMS>
+    <FDTD NumberOfTimesteps="4000" CartesianSubgridBox="-30,-30,-75,30,30,75" CartesianSubgridRatio="2,2,1" endCriteria="1e-30" OverSampling="4" TimeStepMethod="3" TimeStep="5e-12">
+        <Excitation Type="0" f0="1e+09" fc="5e+08" DCFree="1" />
+        <BoundaryCond xmin="PML_4" xmax="PML_4" ymin="PML_4" ymax="PML_4" zmin="PML_4" zmax="PML_4" />
+    </FDTD>
+    <ContinuousStructure CoordSystem="0">
+        <RectilinearGrid DeltaUnit="0.001" CoordSystem="0">
+            <XLines Qty="15">-80,-70,-60,-50,-40,-30,-10,0,10,30,40,50,60,70,80</XLines>
+            <YLines Qty="15">-80,-70,-60,-50,-40,-30,-10,0,10,30,40,50,60,70,80</YLines>
+            <ZLines Qty="16">-125,-115,-105,-95,-85,-75,-65,-5,5,65,75,85,95,105,115,125</ZLines>
+        </RectilinearGrid>
+        <BackgroundMaterial Epsilon="1" Mue="1" Kappa="0" Sigma="0" />
+        <ParameterSet />
+        <Properties>
+            <Metal ID="0" Name="dipole">
+                <Primitives>
+                    <Box Priority="10">
+                        <P1 X="-1.000000e+01" Y="-1.000000e+01" Z="-6.500000e+01" />
+                        <P2 X="1.000000e+01" Y="1.000000e+01" Z="-5.000000e+00" />
+                    </Box>
+                    <Box Priority="10">
+                        <P1 X="-1.000000e+01" Y="-1.000000e+01" Z="5.000000e+00" />
+                        <P2 X="1.000000e+01" Y="1.000000e+01" Z="6.500000e+01" />
+                    </Box>
+                </Primitives>
+            </Metal>
+            <LumpedElement ID="1" Name="port_resist_1" Direction="2" Caps="1" R="5.000000e+01" LEtype="0.000000e+00">
+                <Primitives>
+                    <Box Priority="0">
+                        <P1 X="0.000000e+00" Y="0.000000e+00" Z="-5.000000e+00" />
+                        <P2 X="0.000000e+00" Y="0.000000e+00" Z="5.000000e+00" />
+                    </Box>
+                </Primitives>
+            </LumpedElement>
+            <Excitation ID="2" Name="port_excite_1" Number="0" Enabled="1" Frequency="0.000000e+00" Delay="0.000000e+00" Type="0" Excite="0.000000e+00,0.000000e+00,-1.000000e+00" PropDir="0.000000e+00,0.000000e+00,0.000000e+00">
+                <Primitives>
+                    <Box Priority="0">
+                        <P1 X="0.000000e+00" Y="0.000000e+00" Z="-5.000000e+00" />
+                        <P2 X="0.000000e+00" Y="0.000000e+00" Z="5.000000e+00" />
+                    </Box>
+                </Primitives>
+                <Weight X="1.000000e+00" Y="1.000000e+00" Z="1.000000e+00" />
+            </Excitation>
+            <ProbeBox ID="3" Name="port_ut_1" Visible="0" Number="0" Type="0" Weight="-1" NormDir="-1" StartTime="0" StopTime="0">
+                <Primitives>
+                    <Box Priority="0">
+                        <P1 X="0.000000e+00" Y="0.000000e+00" Z="-5.000000e+00" />
+                        <P2 X="0.000000e+00" Y="0.000000e+00" Z="5.000000e+00" />
+                    </Box>
+                </Primitives>
+            </ProbeBox>
+            <ProbeBox ID="4" Name="port_it_1" Visible="0" Number="0" Type="1" Weight="1" NormDir="2" StartTime="0" StopTime="0">
+                <Primitives>
+                    <Box Priority="0">
+                        <P1 X="0.000000e+00" Y="0.000000e+00" Z="0.000000e+00" />
+                        <P2 X="0.000000e+00" Y="0.000000e+00" Z="0.000000e+00" />
+                    </Box>
+                </Primitives>
+            </ProbeBox>
+            <ProbeBox ID="5" Name="arm_lower_i" Visible="0" Number="0" Type="1" Weight="1" NormDir="2" StartTime="0" StopTime="0">
+                <Primitives>
+                    <Box Priority="0">
+                        <P1 X="-1.750000e+01" Y="-1.750000e+01" Z="-1.750000e+01" />
+                        <P2 X="1.750000e+01" Y="1.750000e+01" Z="-1.750000e+01" />
+                    </Box>
+                </Primitives>
+            </ProbeBox>
+            <ProbeBox ID="6" Name="arm_upper_i" Visible="0" Number="0" Type="1" Weight="1" NormDir="2" StartTime="0" StopTime="0">
+                <Primitives>
+                    <Box Priority="0">
+                        <P1 X="-1.750000e+01" Y="-1.750000e+01" Z="1.750000e+01" />
+                        <P2 X="1.750000e+01" Y="1.750000e+01" Z="1.750000e+01" />
+                    </Box>
+                </Primitives>
+            </ProbeBox>
+            <DumpBox ID="9" Name="near_node_e" Visible="0" Number="0" Type="0" Weight="1" NormDir="-1" StartTime="0" StopTime="0" DumpType="10" DumpMode="1" FileType="1" MultiGridLevel="0">
+                <Primitives>
+                    <Box Priority="0">
+                        <P1 X="20" Y="20" Z="5" />
+                        <P2 X="20" Y="20" Z="5" />
+                    </Box>
+                </Primitives>
+                <FD_Samples>900000000,1000000000,1100000000</FD_Samples>
+            </DumpBox>
+            <DumpBox ID="10" Name="near_node_h" Visible="0" Number="0" Type="0" Weight="1" NormDir="-1" StartTime="0" StopTime="0" DumpType="11" DumpMode="1" FileType="1" MultiGridLevel="0">
+                <Primitives>
+                    <Box Priority="0">
+                        <P1 X="20" Y="20" Z="5" />
+                        <P2 X="20" Y="20" Z="5" />
+                    </Box>
+                </Primitives>
+                <FD_Samples>900000000,1000000000,1100000000</FD_Samples>
+            </DumpBox>
+            </Properties>
+    </ContinuousStructure>
+</openEMS>

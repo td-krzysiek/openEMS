@@ -375,6 +375,26 @@ void GPU_Backend_Metal::DeviceDownload(void* host, const void* dev, size_t bytes
 	std::memcpy(host, (const char*)[buf contents] + offset, bytes);
 }
 
+void GPU_Backend_Metal::DeviceUpload(void* dev, const void* host, size_t bytes)
+{
+	if (!bytes)
+	{
+		return;
+	}
+	if (!host)
+	{
+		throw std::invalid_argument("GPU_Backend_Metal: null upload buffer");
+	}
+	size_t offset;
+	id<MTLBuffer> buf = BufferOf(d->ctx->addresses, dev, offset);
+	if (bytes > [buf length] - offset)
+	{
+		throw std::invalid_argument("GPU_Backend_Metal: upload exceeds allocation");
+	}
+	d->Flush();
+	std::memcpy((char*)[buf contents] + offset, host, bytes);
+}
+
 float* GPU_Backend_Metal::DeviceField(bool currents)
 {
 	uint64_t address = 0;

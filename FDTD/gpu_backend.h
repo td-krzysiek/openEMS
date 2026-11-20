@@ -19,6 +19,7 @@
 #define GPU_BACKEND_H
 
 #include <complex>
+#include "gpu_cartesiansubgrid.h"
 #include <cstdint>
 #include <stdexcept>
 #include <string>
@@ -77,7 +78,16 @@ enum GPU_PointOp
 	GPU_OP_CYLINDER,
 	GPU_OP_MULTIGRID,
 	GPU_OP_DISPERSIVE,
+	GPU_OP_SUBGRID_CURL, GPU_OP_SUBGRID_MASS, GPU_OP_SUBGRID_ELECTRIC, GPU_OP_SUBGRID_SOURCE,
+	GPU_OP_SUBGRID_SOURCE_CURL, GPU_OP_SUBGRID_PORT_SOLVE, GPU_OP_SUBGRID_PORT_APPLY,
+	GPU_OP_SUBGRID_PML_PRE, GPU_OP_SUBGRID_PML_POST,
+	GPU_OP_SUBGRID_ELECTRIC_LOSS, GPU_OP_SUBGRID_MAGNETIC_LOSS, GPU_OP_SUBGRID_LOSS_REDUCE,
+	GPU_OP_SUBGRID_SURFACE_STATE,
+	GPU_OP_SUBGRID_ENERGY_MAX, GPU_OP_SUBGRID_ENERGY_TERMS,
+	GPU_OP_SUBGRID_DFT,
 };
+//! Same indexed-copy operation; retain the existing opcode and plugin layout.
+constexpr GPU_PointOp GPU_OP_SUBGRID_GATHER = GPU_OP_SUBGRID_SOURCE_CURL;
 
 //! Abstract interface to the device used by Engine_GPU
 /*!
@@ -112,6 +122,15 @@ public:
 	static GPU_Backend* New(const std::string& name);
 
 	virtual ~GPU_Backend() {}
+
+	//! Select this backend's device on the calling thread before a batch of operations.
+	//! Compact multi-device callers use this boundary; it adds no device wait.
+	//! Backends with explicit device handles need no ambient selection.
+	virtual void Activate() {}
+
+	//! Compact Cartesian execution through this backend's shared point operations.
+	//! Used before regular Init(): owns separate local fields, no rectangular lattice.
+	std::unique_ptr<GPU_CartesianSubgrid> CreateCartesianSubgrid(const CartesianSubgrid &grid);
 
 	virtual std::string GetName() const = 0;
 
@@ -205,6 +224,13 @@ public:
 
 	//! Create a backend for a sub-grid (e.g. a cylindrical multi-grid level) whose work is ordered with the work of this backend. It's the responsibility of the caller to free it.
 	virtual GPU_Backend* NewSubGridBackend() = 0;
+	//! Ordered blocking upload into existing storage; host memory may be reused on return.
+	//! Backends/plugins must be rebuilt with matching headers/build identity.
+	virtual void DeviceUpload(void* dev, const void* host, size_t bytes)
+	{
+		UNUSED(dev); UNUSED(host); UNUSED(bytes);
+		throw std::logic_error("GPU_Backend: existing-buffer upload is unavailable");
+	}
 };
 
 #endif // GPU_BACKEND_H

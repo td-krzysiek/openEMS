@@ -27,6 +27,11 @@
 
 #if !defined(__METAL_VERSION__)
 #include "cell_update.h"
+#include "subgrid_update.h"
+#include "subgrid_conductivity.h"
+#include "subgrid_energy.h"
+#include "subgrid_dft.h"
+#include "subgrid_pml.h"
 #endif
 
 //! Soft excitation of the voltages or currents (Engine_Ext_Excitation): field += amp*signal
@@ -331,6 +336,22 @@ struct Op_Dispersive
 //! The backends expand the list to their launches (GPU_Backend::RunPoints()), so a new operation goes here and into
 //! GPU_PointOp only
 #define CM_POINT_OPS(X) \
+	X(GPU_OP_SUBGRID_DFT, Op_SubgridDFT, op_subgrid_dft) \
+	X(GPU_OP_SUBGRID_ENERGY_MAX, Op_SubgridEnergyMax, op_subgrid_energy_max) \
+	X(GPU_OP_SUBGRID_ENERGY_TERMS, Op_SubgridEnergyTerms, op_subgrid_energy_terms) \
+	X(GPU_OP_SUBGRID_SURFACE_STATE, Op_SubgridSurfaceState, op_subgrid_surface_state) \
+	X(GPU_OP_SUBGRID_ELECTRIC_LOSS, Op_SubgridElectricLoss, op_subgrid_electric_loss) \
+	X(GPU_OP_SUBGRID_MAGNETIC_LOSS, Op_SubgridMagneticLoss, op_subgrid_magnetic_loss) \
+	X(GPU_OP_SUBGRID_LOSS_REDUCE, Op_SubgridLossReduce, op_subgrid_loss_reduce) \
+	X(GPU_OP_SUBGRID_PML_PRE, Op_SubgridPMLPre, op_subgrid_pml_pre) \
+	X(GPU_OP_SUBGRID_PML_POST, Op_SubgridPMLPost, op_subgrid_pml_post) \
+	X(GPU_OP_SUBGRID_SOURCE_CURL, Op_SubgridSourceCurl, op_subgrid_source_curl) \
+	X(GPU_OP_SUBGRID_PORT_SOLVE, Op_SubgridPortSolve, op_subgrid_port_solve) \
+	X(GPU_OP_SUBGRID_PORT_APPLY, Op_SubgridPortApply, op_subgrid_port_apply) \
+	X(GPU_OP_SUBGRID_CURL, Op_SubgridCurl, op_subgrid_curl) \
+	X(GPU_OP_SUBGRID_MASS, Op_SubgridMass, op_subgrid_mass) \
+	X(GPU_OP_SUBGRID_ELECTRIC, Op_SubgridElectric, op_subgrid_electric) \
+	X(GPU_OP_SUBGRID_SOURCE, Op_SubgridSource, op_subgrid_source) \
 	X(GPU_OP_EXCITATION,   Op_Excitation,  op_excitation) \
 	X(GPU_OP_SHEET,        Op_Sheet,       op_sheet) \
 	X(GPU_OP_LUMPED_RLC,   Op_LumpedRLC,   op_lumped_rlc) \

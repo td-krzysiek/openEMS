@@ -19,6 +19,7 @@
 #define PROCESSVOLTAGE_H
 
 #include "processintegral.h"
+#include <functional>
 
 //! Process voltage along a line from start to stop coordinates. ATM integration along the axis e.g.: in x, then y then z direction (Future: diagonal integration)
 class ProcessVoltage : public ProcessIntegral
@@ -36,6 +37,9 @@ public:
 	virtual double CalcIntegral();
 
 protected:
+	std::string IntegrationGeometry() const override;
+	std::function<double()> m_LocalIntegral;
+	std::string m_LocalGeometry;
 };
 
 #endif // PROCESSVOLTAGE_H
