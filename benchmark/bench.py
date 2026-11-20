@@ -180,10 +180,11 @@ def _decode(d):
 
 
 def read_probes(rundir):
-    """ the probe files of a run: the files without an extension """
+    """ the probe files of a run: the files without an extension, except et and ht,
+        which hold the excitation signal """
     probes = {}
     for f in sorted(os.listdir(rundir)):
-        if '.' not in f and os.path.isfile(os.path.join(rundir, f)):
+        if '.' not in f and f not in ('et', 'ht') and os.path.isfile(os.path.join(rundir, f)):
             probes[f] = _encode(np.loadtxt(os.path.join(rundir, f), comments='%', ndmin=2))
     return probes
 
@@ -216,12 +217,19 @@ ENGINE_INFO = (
     ('layout', r'^Engine_CPU: fast axis (\S+), layout (\S+)$'),
     ('blocking', r'^Engine_CPU: temporal blocking, up to (\d+) timesteps per block, tiles of (\d+) lines'),
     ('flat', r'^Engine_CPU: no temporal blocking: (.*)$'),
-    ('trials', r'^Multithreaded engine: tried (.*); running (.*)$'),
+    ('trials', r'^(?:Multithreaded engine|Engine_GPU): tried (.*); running (.*)$'),
 )
+
+# the engines report the start and the end of their trials (-v, Engine::MarkTrialsStart() and MarkTrialsEnd()): the
+# timed window starts at the end (the speed after the trials, the variant they keep, as in a long run). They must end
+# within TRIALS_LIMIT windows, 60 s at least (a trial of a variant takes well under a second)
+TRIALS_STARTED = re.compile(r'^Engine: trials started', re.M)
+TRIALS_DONE = re.compile(r'^Engine: trials done', re.M)
+TRIALS_LIMIT = 10
 
 
 def engine_info(text):
-    """ the settings the CPU engine chose for a run (empty for the other engines) """
+    """ the settings the CPU engine chose for a run, and the GPU engine's trials (empty for the other engines) """
     info = {}
     for key, rx in ENGINE_INFO:
         m = re.search(rx, text, re.M)
@@ -234,7 +242,7 @@ def engine_note(info):
     """ a short line of engine_info() for the tables """
     if not info:
         return ''
-    parts = [info.get('kernels', '?')]
+    parts = [info['kernels']] if 'kernels' in info else []
     if 'layout' in info:
         parts.append('fast ' + info['layout'][0])
     if 'blocking' in info:
@@ -261,10 +269,6 @@ def run_once(path, xml, rundir, engine, threads, gpu_device, duration, log, env=
     with open(log, 'w') as logf:
         t0 = time.perf_counter()
         run_env = dict(os.environ, **(env or {}))
-        # the CPU engine tries its tiles during its first seconds (OPENEMS_CPU_TRIAL), a start-up cost
-        # like the setup: off unless asked for, so a run of a few seconds times the steady state
-        if engine == 'cpu' and 'OPENEMS_CPU_TRIAL' not in run_env:
-            run_env['OPENEMS_CPU_TRIAL'] = '0'
         p = subprocess.Popen(cmd, cwd=rundir, stdout=logf, stderr=subprocess.STDOUT, env=run_env)
         try:
             # the setup, until the time-stepping starts
@@ -275,9 +279,26 @@ def run_once(path, xml, rundir, engine, threads, gpu_device, duration, log, env=
                 with open(log) as f:
                     if 'Running FDTD engine' in f.read():
                         started = time.perf_counter()
-            while done is None and time.perf_counter() - started < duration:
+            # the window starts at the end of the trials, if the engine runs any
+            window = started
+            limit = max(60.0, TRIALS_LIMIT*duration)
+            trials_late = False
+            trials_ended = False   # the window restarted at the end of the trials
+            while done is None and (window is None or time.perf_counter() - window < duration):
                 time.sleep(0.02)
                 done = _reap(p, False)
+                with open(log) as f:
+                    text = f.read()
+                if TRIALS_STARTED.search(text):
+                    if not TRIALS_DONE.search(text):
+                        window = None
+                        trials_late = time.perf_counter() - started > limit
+                        if trials_late:
+                            break
+                    elif not trials_ended:
+                        # also when the trials started and ended between two polls
+                        trials_ended = True
+                        window = time.perf_counter()
             if done is None:
                 with open(abort, 'w'):
                     pass
@@ -289,6 +310,8 @@ def run_once(path, xml, rundir, engine, threads, gpu_device, duration, log, env=
             _remove(abort)
         wall = time.perf_counter() - t0
     code, rss = done
+    if trials_late:
+        return {'error': 'the trials of the engine did not end within {:.0f} s, see {}'.format(limit, log)}
     with open(log) as f:
         text = f.read()
     t = re.search(r'^Time for (\d+) iterations with (\S+) cells : (\S+) sec', text, re.M)
@@ -299,7 +322,10 @@ def run_once(path, xml, rundir, engine, threads, gpu_device, duration, log, env=
     if 'Found file "ABORT"' not in text:
         return {'error': 'stopped on its own after {} timesteps, see {}'.format(t.group(1), log)}
     run_s = float(t.group(3))
-    r = {'mcells_s': float(s.group(1)), 'timesteps': int(t.group(1)), 'cells': float(t.group(2)), 'run_s': run_s,
+    # the speed after the trials, if the engine ran any (openEMS -v), else of the whole run
+    after = re.search(r'^Speed after the trials: (\S+) MCells/s', text, re.M)
+    r = {'mcells_s': float(after.group(1) if after else s.group(1)), 'mcells_s_total': float(s.group(1)),
+         'timesteps': int(t.group(1)), 'cells': float(t.group(2)), 'run_s': run_s,
          'wall_s': wall, 'setup_s': wall - run_s, 'rss_mib': rss, 'engine_info': engine_info(text)}
     try:
         profile = read_setup_profile(text)
@@ -310,7 +336,6 @@ def run_once(path, xml, rundir, engine, threads, gpu_device, duration, log, env=
     if engine == 'gpu':
         backend = re.search(r'^Create FDTD engine \(GPU, backend: (.*)\)$', text, re.M)
         r['gpu_backend'] = backend.group(1) if backend else None
-        r['gpu_on_device'] = '(host fallback)' not in text
     return r
 
 
@@ -349,7 +374,11 @@ def _variants(specs):
 
 def cmd_run(args):
     names = _list(args.cases, list(cases.CASES), 'case') if args.cases else list(cases.CASES)
-    sizes = _list(args.size, cases.SIZES, 'size') if args.size else list(cases.DEFAULT_SIZES)
+    sizes = [x.strip() for x in args.size.split(',') if x.strip()] if args.size else list(cases.DEFAULT_SIZES)
+    for size in sizes:
+        why = cases.check_size(size)
+        if why:
+            sys.exit('bench.py: size "{}": {}'.format(size, why))
     engines = _list(args.engine, ENGINES, 'engine') if args.engine else None
 
     paths = args.openems or [shutil.which('openEMS') or 'openEMS']
@@ -463,7 +492,8 @@ def cmd_run(args):
                         pt['error'] = r['error']
                         print(tag + ' FAILED: ' + r['error'], flush=True)
                         continue
-                    print(tag + ' {:9.1f} MC/s  setup {:6.2f} s'.format(r['mcells_s'], r['setup_s']), flush=True)
+                    print(tag + ' {:9.1f} MC/s  setup {:6.2f} s  total {:6.2f} s'.format(
+                        r['mcells_s'], r['setup_s'], r['wall_s']), flush=True)
                     if rep == 0:
                         pt['probes'] = read_probes(pt['dir'])
                     pt['runs'].append(r)
@@ -477,7 +507,6 @@ def cmd_run(args):
                     pt['engine_info'] = pt['runs'][0].get('engine_info', {})
                     if engine == 'gpu':
                         pt['gpu_backend'] = pt['runs'][0]['gpu_backend']
-                        pt['gpu_on_device'] = all(r['gpu_on_device'] for r in pt['runs'])
                 result['points'].append(pt)
     except KeyboardInterrupt:
         print('\ninterrupted, writing the results so far')
@@ -513,8 +542,8 @@ def print_table(result, label):
     info = result['binaries'][label]
     env = ' '.join('{}={}'.format(k, v) for k, v in (info.get('env') or {}).items())
     print('{}: openEMS {} ({}){}'.format(label, info['version'], info['path'], ', ' + env if env else ''))
-    print('{:14s} {:4s} {:14s} {:>4s} {:>7s} {:>9s} {:>9s} {:>6s} {:>8s} {:>8s}'.format(
-        'case', 'size', 'engine', 'thr', 'MCells', 'timesteps', 'MC/s', 'spread', 'setup s', 'RSS MiB'))
+    print('{:14s} {:4s} {:14s} {:>4s} {:>7s} {:>9s} {:>9s} {:>6s} {:>8s} {:>8s} {:>8s}'.format(
+        'case', 'size', 'engine', 'thr', 'MCells', 'timesteps', 'MC/s', 'spread', 'setup s', 'total s', 'RSS MiB'))
     for pt in result['points']:
         if pt['label'] != label:
             continue
@@ -522,13 +551,14 @@ def print_table(result, label):
         if not pt['runs']:
             print(head + '  FAILED')
             continue
-        note = '  (extensions on the host)' if pt.get('gpu_on_device') is False else ''
+        note = ''
         if engine_note(pt.get('engine_info')):
             note += '  ' + engine_note(pt.get('engine_info'))
-        print(head + ' {:7.2f} {:9d} {:9.1f} {:>6s} {:8.2f} {:>8s}{}'.format(
+        print(head + ' {:7.2f} {:9d} {:9.1f} {:>6s} {:8.2f} {:8.2f} {:>8s}{}'.format(
             pt['runs'][0]['cells'] / 1e6, int(statistics.median(r['timesteps'] for r in pt['runs'])),
             pt['mcells_s']['median'], _spread_text(pt),
-            pt['setup_s']['median'], '{:.0f}'.format(pt['rss_mib']) if pt['rss_mib'] else '-', note))
+            pt['setup_s']['median'], statistics.median(r['wall_s'] for r in pt['runs']),
+            '{:.0f}'.format(pt['rss_mib']) if pt['rss_mib'] else '-', note))
     print()
 
 
@@ -651,7 +681,7 @@ def main(argv=None):
                    help='run every point once more with these environment variables, e.g. '
                         'flat:OPENEMS_CPU_TBLOCK=0; several, interleaved like binaries; "NAME:" runs as is')
     p.add_argument('--cases', help='comma separated, default: all of ' + ', '.join(cases.CASES))
-    p.add_argument('--size', help='comma separated of {}, default: {}'.format(
+    p.add_argument('--size', help='comma separated of {} or million cells, e.g. 200, default: {}'.format(
         ', '.join(cases.SIZES), ','.join(cases.DEFAULT_SIZES)))
     p.add_argument('--engine', help='comma separated of {}, default: multithreaded, and gpu with a device'.format(
         ', '.join(ENGINES)))

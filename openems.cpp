@@ -18,6 +18,7 @@
 
 #include "tools/setup_profile.h"
 #include "openems.h"
+#include <algorithm>
 #include <iomanip>
 #include <iostream>
 #include <fstream>
@@ -102,6 +103,7 @@ openEMS::openEMS()
 	m_runtimeGateIndex = 0;
 	m_startupGateStep = 0;
 	m_startupGateTimeout = 300;
+	m_MemoryCheck = true;
 
 	m_engine = EngineType_SSE; //default engine type
 	m_engine_numThreads = 0;
@@ -219,7 +221,7 @@ void openEMS::collectCommandLineArguments()
 					DebugOperator();
 				}
 			),
-			"Dump operator to vtk file for debugging (the CPU engine: also its cell model, 'cellmodel_dump.h5')"
+			"Dump operator to vtk file for debugging (the CPU and GPU engines: also their cell model, 'cellmodel_dump.h5')"
 		)
 		(
 			"debug-boxes",
@@ -350,6 +352,17 @@ void openEMS::collectCommandLineArguments()
 				}
 			),
 			"only run preprocessing; do not simulate"
+		)
+		(
+			"no-memory-check",
+			po::bool_switch()->notifier(
+				[&](bool val)
+				{
+					if (val)
+						m_MemoryCheck = false;
+				}
+			),
+			"set up the simulation also if the free memory cannot hold what the engine needs at least for the mesh"
 		)
 		(
 			"dump-statistics",
@@ -494,6 +507,40 @@ void openEMS::WelcomeScreen()
 	cout << " | (C) 2010-2026 Thorsten Liebig <thorsten.liebig@gmx.de>  GPL license"   << endl;
 	cout << " ---------------------------------------------------------------------- " << endl;
 	cout << openEMS::GetExtLibsInfo("\t") << endl;
+}
+
+bool openEMS::CheckMemory() const
+{
+	// what the engine cannot do without, per node: the E and H fields (24 bytes); the basic engine keeps
+	// its coefficients dense (48 bytes) for the run, the SSE engine builds into them next to the index of
+	// the material table (4 bytes) before it compresses them
+	double perNode = 24;
+	if (m_engine==EngineType_Basic)
+		perNode = 72;
+	else if (m_engine==EngineType_SSE)
+		perNode = 52;
+	const double nodes = FDTD_Op->GetNumberCells();
+	const double need = perNode*nodes;
+	const size_t avail = AvailableMemory();
+	if (avail==0)
+		return true;   // the system does not say
+	const double GiB = 1024.0*1024.0*1024.0;
+	// formatted on their own stream: setprecision on cout or cerr would stay set for everything printed after
+	std::ostringstream msg;
+	msg << std::fixed << std::setprecision(1);
+	if (g_settings.GetVerboseLevel()>0)
+	{
+		msg << "Memory: " << avail/GiB << " GiB available, the engine needs at least " << need/GiB << " GiB";
+		cout << msg.str() << endl;
+		msg.str("");
+	}
+	if (need<=avail)
+		return true;
+	msg << "openEMS::SetupFDTD: Error, the mesh of " << nodes/1e6 << " MCells needs at least " << need/GiB
+	    << " GiB of memory with this engine, " << avail/GiB << " GiB are available. Check the mesh,"
+	    << " or set up anyway with --no-memory-check.";
+	cerr << msg.str() << endl;
+	return false;
 }
 
 bool openEMS::SetupBoundaryConditions()
@@ -873,9 +920,9 @@ bool openEMS::SetupMaterialStorages()
 			  (db->GetDumpType()==20) || (db->GetDumpType()==21) || (db->GetDumpType()==22)) && // SAR dump types
 			  Enable_Dumps )
 			FDTD_Op->SetMaterialStoreFlags(1,true); //tell operator to store kappa material data
-		if ( ((db->GetDumpType()==4) || (db->GetDumpType()==14)) || Enable_Dumps) // electric flux density storage
+		if ( ((db->GetDumpType()==4) || (db->GetDumpType()==14)) && Enable_Dumps) // electric flux density storage
 			FDTD_Op->SetMaterialStoreFlags(0,true); //tell operator to store epsR material data
-		if ( ((db->GetDumpType()==5) || (db->GetDumpType()==15)) || Enable_Dumps) // magnetic flux density storage
+		if ( ((db->GetDumpType()==5) || (db->GetDumpType()==15)) && Enable_Dumps) // magnetic flux density storage
 			FDTD_Op->SetMaterialStoreFlags(2,true); //tell operator to store mueR material data
 	}
 	return true;
@@ -1063,12 +1110,10 @@ bool openEMS::Parse_XML_FDTDSetup(TiXmlElement* FDTD_Opts)
 	if (dhelp>0)
 		this->SetMaxTime(dhelp);
 
-	dhelp = 0;
+	// a missing one is the default, 0 is none (run all timesteps)
+	dhelp = 1e-6;
 	FDTD_Opts->QueryDoubleAttribute("endCriteria",&dhelp);
-	if (dhelp==0)
-		this->SetEndCriteria(1e-6);
-	else
-		this->SetEndCriteria(dhelp);
+	this->SetEndCriteria(dhelp);
 
 	ihelp = 0;
 	FDTD_Opts->QueryIntAttribute("OverSampling",&ihelp);
@@ -1246,7 +1291,7 @@ bool openEMS::Write2XML(TiXmlNode* rootNode)
 	fdtd.SetAttribute("TimeStepMethod", m_TS_method);
 	if (m_TS>0)
 		fdtd.SetDoubleAttribute("TimeStep", m_TS);
-	if (m_TS_fac>1)
+	if (m_TS_fac<1)
 		fdtd.SetDoubleAttribute("TimeStepFactor", m_TS_fac);
 	fdtd.InsertEndChild(exc);
 
@@ -1420,6 +1465,9 @@ int openEMS::SetupFDTD()
 			return(2);
 		}
 	}
+	// before the build, which can take long on a mesh too large by mistake
+	if (m_MemoryCheck && !CheckMemory())
+		return 2;
 
 	SetupBoundaryConditions();
 
@@ -1534,7 +1582,7 @@ int openEMS::SetupFDTD()
 	}
 	else
 	{
-		int p = int(m_Exc->GetSignalPeriod()/FDTD_Op->GetTimestep());
+		int p = m_Exc->GetSignalPeriodTS();
 		cout << "Excitation signal period is: " <<  p << " timesteps (" <<  m_Exc->GetSignalPeriod() << "s)" << endl;
 		cout << "Max. number of timesteps: " << NrTS << " ( --> " << (double)NrTS/(double)(m_Exc->GetLength()) << " * Excitation signal period)" << endl;
 		if (NrTS/p < 3)
@@ -1813,8 +1861,14 @@ void openEMS::RunFDTD()
 		{
 			t_run = CalcDiffTime(currTime,startTime) - startupWait;
 			speed = numCells*(currTS-prevTS)/t_diff;
-			cout << "[@" <<  FormatTime(t_run) <<  "] Timestep: " << setw(12)  << currTS ;
-			cout << " || Speed: " << setw(6) << setprecision(1) << std::fixed << speed*1e-6 << " MC/s (" <<  setw(4) << setprecision(3) << std::scientific << t_diff/(currTS-prevTS) << " s/TS)" ;
+			// formatted on its own stream: fixed and setprecision on cout would stay set
+			// for everything printed after, even for the next Run() in the same process
+			ostringstream line;
+			line << "[@" <<  FormatTime(t_run) <<  "] Timestep: " << setw(12)  << currTS ;
+			// timesteps per second, three digits at least: below 1 for very large models
+			const double ts_rate = (currTS-prevTS)/t_diff;
+			line << " || Speed: " << setw(6) << setprecision(1) << std::fixed << speed*1e-6 << " MC/s ("
+			     << setw(5) << setprecision((ts_rate<10) ? 2 : ((ts_rate<100) ? 1 : 0)) << ts_rate << " TS/s)";
 			if (Eng_Ext_SSD==NULL)
 			{
 				if (!exactEndCrit) // otherwise already kept current above, every Nyquist period
@@ -1825,10 +1879,11 @@ void openEMS::RunFDTD()
 					if (maxE)
 						change = currE/maxE;
 				}
-				cout << " || Energy: ~" << setw(6) << setprecision(2) << std::scientific << currE << " (-" << setw(5)  << setprecision(2) << std::fixed << fabs(10.0*log10(change)) << "dB)" << endl;
+				line << " || Energy: ~" << setw(6) << setprecision(2) << std::scientific << currE << " (-" << setw(5)  << setprecision(2) << std::fixed << fabs(10.0*log10(change)) << "dB)";
 			}
 			else
-				cout << " || SteadyState: " << setw(6) << setprecision(2) << std::fixed << 10.0*log10(change) << " dB" << endl;
+				line << " || SteadyState: " << setw(6) << setprecision(2) << std::fixed << 10.0*log10(change) << " dB";
+			cout << line.str() << endl;
 			prevTime=currTime;
 			prevTS=currTS;
 
@@ -1843,26 +1898,40 @@ void openEMS::RunFDTD()
 	{
 		throw std::runtime_error("Startup gate: simulation ended before qualification");
 	}
+	// the decay reached, two decimals like the progress line
+	ostringstream decay;
+	decay << setprecision(2) << std::fixed << fabs(10.0*log10(change));
 	if (aborted)
 	{
 		// not the timestep limit: say so, the advice below would be wrong
 		cout << "RunFDTD: simulation aborted after " << FDTD_Eng->GetNumberOfTimesteps() << " timesteps";
 		// the energy decay, once there is one: with a Gaussian pulse, after the first check
 		if ((Eng_Ext_SSD==NULL) && (FDTD_Op->GetExcitationSignal()->GetExciteType()==0) && (change<1))
-			cout << " (-" << setprecision(2) << std::fixed << fabs(10.0*log10(change)) << "dB)";
+			cout << " (-" << decay.str() << "dB)";
 		cout << endl;
 	}
+	else if (endCrit<=0) // none set, nothing to report
+		;
 	else if ((change>endCrit) && (FDTD_Op->GetExcitationSignal()->GetExciteType()==0))
 		cerr << "RunFDTD: Warning: Max. number of timesteps was reached before the end-criteria of -" << fabs(10.0*log10(endCrit)) << "dB was reached... " << endl << \
 				"\tYou may want to choose a higher number of max. timesteps... " << endl;
 	else if (FDTD_Op->GetExcitationSignal()->GetExciteType()==0)
-		cout << "RunFDTD: end-criteria of -" << fabs(10.0*log10(endCrit)) << "dB reached after " << FDTD_Eng->GetNumberOfTimesteps() << " timesteps (-" << fabs(10.0*log10(change)) << "dB)" << endl;
+		cout << "RunFDTD: end-criteria of -" << fabs(10.0*log10(endCrit)) << "dB reached after " << FDTD_Eng->GetNumberOfTimesteps() << " timesteps (-" << decay.str() << "dB)" << endl;
 
 	gettimeofday(&currTime,NULL);
 	t_diff = CalcDiffTime(currTime,startTime) - startupWait;
 
 	cout << "Time for " << FDTD_Eng->GetNumberOfTimesteps() << " iterations with " << FDTD_Op->GetNumberCells() << " cells : " << t_diff << " sec" << endl;
 	cout << "Speed: " << numCells*(double)FDTD_Eng->GetNumberOfTimesteps()/t_diff*1e-6 << " MCells/s " << endl;
+	unsigned int trialsTS;
+	double trialsSeconds;
+	if ((g_settings.GetVerboseLevel()>0) && FDTD_Eng->GetTrialsEnd(trialsTS, trialsSeconds) && (FDTD_Eng->GetNumberOfTimesteps()>trialsTS))
+	{
+		// the variant the engine kept, without its trials at the start (Engine::MarkTrialsEnd())
+		const unsigned int steps = FDTD_Eng->GetNumberOfTimesteps()-trialsTS;
+		cout << "Speed after the trials: " << numCells*(double)steps/(std::max)(trialsSeconds, 1e-9)*1e-6 << " MCells/s ("
+		     << steps << " timesteps in " << trialsSeconds << " sec)" << endl;
+	}
 
 	if (m_DumpStats)
 		DumpStatistics(OPENEMS_STAT_FILE, t_diff);

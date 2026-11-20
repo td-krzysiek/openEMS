@@ -54,7 +54,7 @@ cdef class openEMS:
     >>> FDTD.Run(sim_path='/tmp/test')
 
     :param NrTS:           max. number of timesteps to simulate (e.g. default=1e9)
-    :param EndCriteria:    end criteria, e.g. 1e-5, simulations stops if energy has decayed by this value (<1e-4 is recommended, default=1e-5)
+    :param EndCriteria:    end criteria, e.g. 1e-5, simulations stops if energy has decayed by this value (<1e-4 is recommended, default=1e-6), 0: none, run all timesteps
     :param MaxTime:        max. real time in seconds to simulate
     :param OverSampling:   nyquist oversampling of the time domain dumps and probes (default 4).
                             Frequency-domain dumps/probes accumulate at the plain Nyquist rate
@@ -131,7 +131,7 @@ cdef class openEMS:
     def SetEndCriteria(self, val):
         """ SetEndCriteria(val)
 
-        Set the end criteria value. E.g. 1e-6 for -60dB
+        Set the end criteria value. E.g. 1e-6 for -60dB, 0 for none (run all timesteps)
         """
         self.thisptr.SetEndCriteria(val)
 
@@ -677,6 +677,8 @@ cdef class openEMS:
           '0,1'; requires ENABLE_DOMAIN_RUNTIME and qualified HIP backends.
           Mutually exclusive with gpu_device. See MULTI_GPU.md.
         * disable_dumps (bool) -- disable all field dumps for faster simulation
+        * no_memory_check (bool) -- set up also if the free memory cannot hold
+          what the engine needs at least for the mesh (the setup stops then)
         * debug_material (bool) - dump material distribution to a vtk file for
           debugging.
         * debug_PEC (bool) - dump metal distribution to a vtk file for debugging

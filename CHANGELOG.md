@@ -1,5 +1,16 @@
 # openEMS Changelog
 
+## Fork integration — 20 November 2026
+
+- Merge upstream master c22a0638 and adapt local GPU domains to its cell model.
+- Partition coefficient combinations and material histories with owned-only
+  point operations, halo-safe field readback and energy reductions.
+- Migrate surface-model circuit changes to the distinct-material-table API;
+  share opaque-surface point kernels across reference, HIP and Metal backends.
+- Add cell-model domain equivalence fixtures and native reference copy/energy
+  coverage. Document unavailable legacy A/B controls and domain blocking limits.
+
+
 Notable, user-visible changes in openEMS. The format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow
 `0.MINOR.PATCH`.
@@ -65,16 +76,20 @@ to what a user notices, in a few lines; the details belong in the commit.
   meshes and the usual extensions. `--gpu-device=N` picks one of the GPUs
   listed at `--verbose=1`.
 - **A CPU engine, experimental**, `--engine=cpu` (`engine='cpu'`): on an
-  8-core Ryzen 7 5800X it runs typical models 3-6x faster than the default
-  engine, with dispersive materials up to 10x, and needs less memory, at
-  the peak of the setup about a third less. Benchmarks from other machines
-  are welcome (`benchmark/bench.py`).
+  8-core Ryzen 7 5800X it runs typical models 3-6x faster than the
+  `sse-compressed` engine, with dispersive materials up to 10x, at about half
+  its memory (26 MiB per million cells, setup included). Benchmarks from other
+  machines are welcome (`benchmark/bench.py`).
 - `python -m openEMS.compare <sim_path_a> <sim_path_b>` (or
   `openEMS.compare.compare_sim_results()`) compares the probes and field
   dumps of two runs.
 - A DC-free Gaussian pulse, `SetGaussExcite(f0, fc, dc_free=True)` (Matlab
   `'DCFree',1`): it leaves no static charge behind, e.g. in a structure
   closed by PEC.
+- The setup stops right away if the free memory cannot hold what the engine
+  needs at least for the mesh, instead of failing after a long build, e.g. on
+  a mesh far finer than intended. `--no-memory-check` (`no_memory_check=True`)
+  sets up anyway.
 
 ### Changed
 
@@ -93,20 +108,35 @@ to what a user notices, in a few lines; the details belong in the commit.
 - A mesh line within 1/1000 of the smallest mesh step of a primitive's
   surface counts as lying on it, e.g. for STL files or rounded coordinates;
   a few more edges can become metal.
-- The CPU engines use all threads (`--numThreads`); `sse` and
-  `sse-compressed` are other names of the default engine now. Small models
-  run up to twice as fast, cylindrical multi-grid meshes 12-25 % faster.
+- The CPU engines use all threads (`--numThreads`); `sse`, `sse-compressed`
+  and `multithreaded` are one engine now. Small models run up to twice as
+  fast, cylindrical multi-grid meshes 12-25 % faster.
 - The setup is 5-10x faster on large models, most of it runs on all threads
   now, and openEMS prints how long it took.
+- The setup needs less memory: per million cells the peak drops from 93 to
+  51 MiB with `sse-compressed`, from 92 to 69 MiB with `basic`.
+- D-, B- and J-field dumps hold their material in 4 bytes per cell during
+  the run, instead of 12 per dump type.
+- D- and J-field dumps show lumped elements and conducting sheets, e.g. the
+  current through a lumped resistor, instead of the material around them.
+- The progress line shows timesteps per second (`TS/s`) instead of seconds
+  per timestep.
 
 ### Fixed
 
 - The non-installed Metal logical-domain test plugin reuses the loaded solver
   library, avoiding duplicate globals when testing an installed macOS build.
 
+- Any field dump made the setup store the permittivity and permeability of
+  every cell, about 24 bytes per cell more peak memory than needed; only D-
+  and B-field dumps need them.
 - More than 2^31 timesteps made the setup fail; the number is now limited to
   that.
 - Python: numpy lost denormal values after `Run()`.
+- Python: `Write2XML()` left out the `TimeStepFactor`, so a run from the
+  written file used the full timestep.
+- An end criteria of 0 (none, run all timesteps) read from an XML file, e.g.
+  from Matlab/Octave, became the default -60 dB.
 - Python: an option passed as `False` to `Run()`, e.g. `debug_PEC=False`,
   silently disabled all options after it.
 - A node-interpolated B-field dump of a closed cylindrical mesh was zero on
@@ -120,6 +150,14 @@ to what a user notices, in a few lines; the details belong in the commit.
 - A SAR dump needs 24 bytes per dumped cell and frequency less memory.
 - `Write2XML()` crashed when no excitation or no structure was set.
 - A delayed excitation injected its first sample before the delay.
+- Lumped RLC elements (series, or parallel with an L and no C) could turn the
+  fields into NaN at random with any excitation but the Gaussian pulse (#255).
+- A sine excitation could miss its frequency slightly and never reach the
+  steady state.
+- Python: a second `Run()` in the same script printed the timestep and other
+  numbers of its setup with two decimals, e.g. `Timestep (s): 0.00` (#256).
+- A series lumped RL element (no C) made the fields grow again late in a
+  simulation, with any R exponentially until they exploded (#241).
 
 ### Build
 
@@ -132,6 +170,8 @@ to what a user notices, in a few lines; the details belong in the commit.
 - C++17 is now required (was C++11), e.g. GCC 8 or newer.
 - VTK is no longer needed; zlib is needed instead, which HDF5 usually brings
   along.
+- With vcpkg (Windows), only the Boost libraries openEMS uses are built
+  instead of all of Boost, which is much faster.
 
 ### Upgrade notes
 

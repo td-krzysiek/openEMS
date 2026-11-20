@@ -198,7 +198,6 @@ bool Operator_Ext_ConductingSheet::BuildExtension()
 		v_ext_ADE[1][n]  = new FDTD_FLOAT[numCS];
 	}
 
-	unsigned int index;
 	float w_stop = m_f_max*2*PI;
 	float Omega_max=0;
 	float G,L1,L2,R1,R2,Lmin;
@@ -212,7 +211,6 @@ bool Operator_Ext_ConductingSheet::BuildExtension()
 	{
 		pos[0]=m_LM_pos[0][0][i];pos[1]=m_LM_pos[0][1][i];pos[2]=m_LM_pos[0][2][i];
 		tpos[0]=pos[0];tpos[1]=pos[1];tpos[2]=pos[2];
-		index = m_Op->MainOp->SetPos(pos[0],pos[1],pos[2]);
 		for (int n=0;n<3;++n)
 		{
 			tpos[0]=pos[0];tpos[1]=pos[1];tpos[2]=pos[2];
@@ -258,8 +256,8 @@ bool Operator_Ext_ConductingSheet::BuildExtension()
 				Lmin = L1;
 				if (L2<L1)
 					Lmin = L2;
-				m_Op->EC_G[n][index]= G;
-				m_Op->EC_C[n][index]= dT*dT/4.0*(16.0/Lmin + 1/L1 + 1/L2);
+				const double ec[4] = {dT*dT/4.0*(16.0/Lmin + 1/L1 + 1/L2), G, 0, 0};
+				m_Op->SetEC(n, pos, (1u<<Operator::EC_CAP) | (1u<<Operator::EC_CON), ec);
 				m_Op->Calc_ECOperatorPos(n,pos);
 
 				v_int_ADE[0][n][i]=(2.0*L1-dT*R1)/(2.0*L1+dT*R1);
@@ -452,7 +450,6 @@ bool Operator_Ext_ConductingSheet::BuildFittedExtension()
     for (unsigned int i=0; i<numCS; ++i)
     {
         for (int n=0; n<3; ++n) pos[n] = v_pos[n][i];
-        const auto index = m_Op->MainOp->SetPos(pos[0],pos[1],pos[2]);
         for (int n=0; n<3; ++n)
         {
             const int t_dir = tanDir(n,pos[0],pos[1],pos[2]);
@@ -473,10 +470,11 @@ bool Operator_Ext_ConductingSheet::BuildFittedExtension()
                 inv_l_sum += inv_l;
                 inv_l_max = std::max(inv_l_max, inv_l);
             }
-            m_Op->EC_G[n][index] = fit.g/scale;
+            double ec[4] = {0, fit.g/scale, 0, 0};
             // Same stabilizing-capacitance rule as the legacy 2-branch sheet.
             // Its phase error must be checked by timestep/mesh refinement.
-            m_Op->EC_C[n][index] = dT*dT/4.0*(16.0*inv_l_max + inv_l_sum);
+            ec[Operator::EC_CAP] = dT*dT/4.0*(16.0*inv_l_max + inv_l_sum);
+            m_Op->SetEC(n, pos, (1u<<Operator::EC_CAP)|(1u<<Operator::EC_CON), ec);
             m_Op->Calc_ECOperatorPos(n,pos);
             for (size_t o=0; o<fit.weight.size(); ++o)
             {

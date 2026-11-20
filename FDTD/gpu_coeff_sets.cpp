@@ -23,6 +23,8 @@
 #include <vector>
 
 #include "gpu_coeff_sets.h"
+#include "gpu_backend.h"
+#include "operator.h"
 #include "tools/useful.h"
 
 namespace
@@ -111,4 +113,15 @@ bool GPU_FindSets(size_t count, unsigned int width, const std::function<void(siz
 	sets.count = found.size();
 	sets.mode = (sets.count<=max_sets16) ? 1 : 2;
 	return true;
+}
+
+void GPU_NodeCoefficients(const Operator* op, const unsigned int numLines[3], size_t node, float values[12])
+{
+	const unsigned int x = node/((size_t)numLines[1]*numLines[2]);
+	const unsigned int y = (node/numLines[2]) % numLines[1];
+	const unsigned int z = node % numLines[2];
+	const unsigned int pos[3] = {x, y, z};
+	for (int n=0; n<3; ++n)
+		for (int f=0; f<2; ++f)
+			op->GetCoeffPair(f, n, pos, values[3*(2*f)+n], values[3*(2*f+1)+n]);
 }

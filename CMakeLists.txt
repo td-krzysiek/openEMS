@@ -287,7 +287,7 @@ ELSEIF(ENABLE_HIP)
   enable_language(HIP)
   set(CMAKE_HIP_STANDARD 17)
   # No fused multiply-add and the same denormal handling, so the kernels round like the
-  # CPU engines (python/Tests/Engine_Compare.py compares them value by value). The flags are
+  # reference backend (python/Tests/Engine_Compare.py compares them value by value). The flags are
   # those of the compiler behind hipcc: hipcc on the NVIDIA platform, clang on AMD, and
   # the clang spelling would only reach the host compiler under hipcc.
   IF(CMAKE_HIP_PLATFORM STREQUAL "nvidia")
@@ -393,6 +393,19 @@ IF(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|amd64")
   ENDIF()
 ENDIF()
 
+# Without fused multiply-add, whatever the target offers: the reference backend of the GPU
+# engine computes as a device (HIP below), and the CPU engine's generic kernels and engine
+# extensions (which the reference runs as kernels/ext_ops.h) as both;
+# python/Tests/Engine_Compare.py compares HIP with the reference bit for bit and the reference
+# with the CPU engine (Clang contracts by default, e.g. on ARM). The AVX2 kernels keep their FMA.
+IF(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|IntelLLVM" AND NOT MSVC)
+  file(GLOB ENGINE_EXT_SOURCES ${CMAKE_CURRENT_SOURCE_DIR}/FDTD/extensions/engine_ext_*.cpp)
+  set_source_files_properties(${CMAKE_CURRENT_SOURCE_DIR}/FDTD/gpu_backend_reference.cpp
+                              ${CMAKE_CURRENT_SOURCE_DIR}/FDTD/engine_cpu_kernels.cpp
+                              ${ENGINE_EXT_SOURCES}
+                              PROPERTIES COMPILE_OPTIONS "-ffp-contract=off")
+ENDIF()
+
 add_library( openEMS SHARED ${SOURCES})
 IF(OPENEMS_CPU_AVX2)
   target_compile_definitions(openEMS PRIVATE OPENEMS_CPU_AVX2)
@@ -467,6 +480,10 @@ if(ENABLE_DOMAIN_RUNTIME)
     target_link_libraries(test_domain_energy openEMS)
     add_executable(test_domain_copy TESTSUITE/distributed/test_native_copy.cpp)
     target_link_libraries(test_domain_copy openEMS)
+    add_test(NAME domain_copy_reference COMMAND test_domain_copy
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/manual/fixtures/lorentz-control.xml reference)
+    add_test(NAME domain_energy_reference COMMAND test_domain_energy
+      ${CMAKE_CURRENT_SOURCE_DIR}/tests/manual/fixtures/lorentz-control.xml reference)
     add_executable(test_domain_performance TESTSUITE/distributed/test_domain_performance.cpp)
     target_link_libraries(test_domain_performance openEMS)
     add_test(NAME domain_performance COMMAND test_domain_performance

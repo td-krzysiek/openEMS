@@ -2,6 +2,8 @@
 #include "FDTD/gpu_backend_reference.h"
 #include "FDTD/gpu_plugin.h"
 #include "FDTD/operator.h"
+#include "FDTD/cell_model.h"
+#include "FDTD/gpu_cell_model.h"
 #include "openems.h"
 #include <algorithm>
 #include <iostream>
@@ -64,11 +66,11 @@ static void BorrowedUpload(GPU_Backend &backend, bool currents, ArrayLib::ArrayN
 		Require(lifetime.expired(), "borrowed native storage owner leaked");
 		if (currents)
 		{
-			backend.DownloadCurrents(actual);
+			backend.Download(true, actual);
 		}
 		else
 		{
-			backend.DownloadVoltages(actual);
+			backend.Download(false, actual);
 		}
 		Require(std::equal(expected.data(), expected.data() + expected.size(), actual.data()),
 				"borrowed native upload changed fields or failed to drain");
@@ -113,7 +115,11 @@ int main(int argc, char** argv)
 			{
 				shape[n] = op.GetNumberOfLines(n, true);
 			}
-			Require(domain ? backend->InitDomain(&op, 1, shape[0] - 3) : backend->Init(&op),
+			CellModel cell(&op);
+			cell.Analyse(true);
+			cell.Build(2, 0, 1);
+			GPU_CellModel model(cell, shape);
+			Require(domain ? backend->InitDomain(&op, model, 1, shape[0] - 3) : backend->Init(&op, model),
 			    "initialization failed");
 			if (domain)
 			{
@@ -131,11 +137,11 @@ int main(int argc, char** argv)
 				}
 				if (currents)
 				{
-					backend->UploadCurrents(expected);
+					backend->Upload(true, expected);
 				}
 				else
 				{
-					backend->UploadVoltages(expected);
+					backend->Upload(false, expected);
 				}
 				// Queue dependent copies without an intervening host wait. Cross components
 				// and include the exact owned-to-ghost plane used by the native adapter.
@@ -160,11 +166,11 @@ int main(int argc, char** argv)
 				Require(!backend->CopyRange(currents, overflow, 0, 1), "offset overflow accepted");
 				if (currents)
 				{
-					backend->DownloadCurrents(actual);
+					backend->Download(true, actual);
 				}
 				else
 				{
-					backend->DownloadVoltages(actual);
+					backend->Download(false, actual);
 				}
 				Require(
 				    std::equal(expected.data(), expected.data() + expected.size(), actual.data()),

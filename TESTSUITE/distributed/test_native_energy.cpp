@@ -1,7 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #include "FDTD/gpu_backend_domains.h"
 #include "FDTD/gpu_plugin.h"
+#include "FDTD/gpu_backend_reference.h"
 #include "FDTD/operator.h"
+#include "FDTD/cell_model.h"
+#include "FDTD/gpu_cell_model.h"
 #include "openems.h"
 #include <algorithm>
 #include <cmath>
@@ -35,6 +38,7 @@ int main(int argc, char** argv)
 		}
 		std::vector<std::string> messages;
 		const GPU_Plugin* plugin = nullptr;
+		const bool reference=argc==3 && std::string(argv[2])=="reference";
 		for (const auto* candidate : GPU_LoadPlugins(messages))
 		{
 			if (std::string(candidate->name).find(argc == 3 ? argv[2] : "hip") !=
@@ -45,7 +49,7 @@ int main(int argc, char** argv)
 				break;
 			}
 		}
-		if (!plugin)
+		if (!plugin && !reference)
 		{
 			throw std::runtime_error(
 			    "this manual test requires a matching selected plugin and two visible executors");
@@ -56,6 +60,10 @@ int main(int argc, char** argv)
 		{
 			shape[n] = op.GetNumberOfLines(n, true);
 		}
+		CellModel cell(&op);
+		cell.Analyse(true);
+		cell.Build(2, 0, 1);
+		GPU_CellModel model(cell, shape);
 		ArrayLib::ArrayNIJK<float> electric, magnetic;
 		electric.Init("test_electric", shape);
 		magnetic.Init("test_magnetic", shape);
@@ -73,19 +81,20 @@ int main(int argc, char** argv)
 				}
 			}
 		}
-		for (unsigned int devices : { 1u, 2u })
+		for (unsigned int devices : { 1u, 2u, 3u })
 		{
+			if (!reference && devices>unsigned(plugin->DeviceCount())) continue;
 			std::unique_ptr<GPU_Backend> backend;
 			if (devices == 1)
 			{
-				backend.reset(plugin->NewBackend(0));
+				backend.reset(reference ? new GPU_Backend_Reference() : plugin->NewBackend(0));
 			}
 			else
 			{
 				std::vector<std::unique_ptr<GPU_Backend>> domains;
 				for (unsigned int n = 0; n < devices; ++n)
 				{
-					domains.emplace_back(plugin->NewBackend(n));
+					domains.emplace_back(reference ? new GPU_Backend_Reference() : plugin->NewBackend(n));
 				}
 				backend.reset(new GPU_Backend_Domains(std::move(domains)));
 			}
@@ -94,12 +103,12 @@ int main(int argc, char** argv)
 				throw std::runtime_error("backend allocation failed");
 			}
 			backend->Activate();
-			if (!backend->Init(&op))
+			if (!backend->Init(&op, model))
 			{
 				throw std::runtime_error("backend initialization failed");
 			}
-			backend->UploadVoltages(electric);
-			backend->UploadCurrents(magnetic);
+			backend->Upload(false, electric);
+			backend->Upload(true, magnetic);
 			for (unsigned int nx :
 			    { 0u, 1u, shape[0] / 2, shape[0] / 2 + 1, shape[0] - 1, shape[0] })
 			{

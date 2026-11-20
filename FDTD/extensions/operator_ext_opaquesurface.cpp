@@ -140,9 +140,8 @@ void Operator_Ext_OpaqueSurface::PreprocessEC()
         std::copy(pos,pos+3,e.pos);edges.push_back(e);
         // Use the same physical exterior C in the CFL calculation and update.
         // No artificial stabilizing capacitance is added to the RF model.
-        const unsigned int index=m_Op->MainOp->SetPos(pos[0],pos[1],pos[2]);
-        m_Op->EC_C[n][index]=cap;
-        m_Op->EC_G[n][index]=gd;
+        const double ec[4]={cap,gd,0,0};
+        m_Op->SetEC(n,pos,(1u<<Operator::EC_CAP)|(1u<<Operator::EC_CON),ec);
     }
     if (edges.empty()) throw std::runtime_error("No active opaque surface edges");
 }

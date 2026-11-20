@@ -42,32 +42,15 @@ public:
 	{
 		return "fake \"device\"\n";
 	}
-	bool Init(const Operator*) override
-	{
-		return true;
-	}
-	GPU_Backend* NewSubGridBackend() override
-	{
-		return nullptr;
-	}
-	void UpdateVoltages() override
-	{
-	}
-	void UpdateCurrents() override
-	{
-	}
-	void DownloadVoltages(ArrayLib::ArrayNIJK<float>&) override
-	{
-	}
-	void DownloadCurrents(ArrayLib::ArrayNIJK<float>&) override
-	{
-	}
-	void UploadVoltages(const ArrayLib::ArrayNIJK<float>&) override
-	{
-	}
-	void UploadCurrents(const ArrayLib::ArrayNIJK<float>&) override
-	{
-	}
+	bool Init(const Operator*, const GPU_CellModel&) override {return true;}
+	GPU_Backend* NewSubGridBackend() override {return nullptr;}
+	void UpdateVoltages(const Engine_Box&) override {}
+	void UpdateCurrents(const Engine_Box&) override {}
+	void Download(bool, ArrayLib::ArrayNIJK<float>&) override {}
+	void* DeviceAlloc(size_t, const void*) override {return nullptr;}
+	void DeviceDownload(void*, const void*, size_t) override {}
+	float* DeviceField(bool) override {return nullptr;}
+	void RunPoints(GPU_PointOp, const void*, uint64_t, uint64_t, bool, const CM_PointFilter&) override {}
 	void Synchronize() override
 	{
 		++counts.synchronized;

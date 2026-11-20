@@ -2,7 +2,8 @@
 
 Build with `ENABLE_DOMAIN_RUNTIME=ON` and a matching HIP plugin. This opt-in
 adapter connects the existing domain runtime to the native `Engine_GPU` loop.
-Existing single-device selection and arithmetic stay unchanged by default.
+The cell-model migration and current qualification limits are documented in
+[UPSTREAM_GPU_CELL_MODEL.md](UPSTREAM_GPU_CELL_MODEL.md).
 
 ```sh
 openEMS model.xml --engine=gpu --gpu-devices=0,1 -vv

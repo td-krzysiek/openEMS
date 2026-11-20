@@ -1,5 +1,8 @@
 # Experimental GPU LossyMetal branch fusion
 
+> Historical runtime documentation. The current cell-model integration replaces
+> these kernel controls; see [migration and qualification](UPSTREAM_GPU_CELL_MODEL.md).
+
 `OPENEMS_GPU_LOSSY_FUSION=off|apply|all` selects an opt-in HIP/Metal path.
 The default is `off`. Set the environment before starting the native process;
 Python and Matlab callers can use their normal environment forwarding. No XML

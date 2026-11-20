@@ -1,11 +1,14 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 #ifdef OPENEMS_WITH_DOMAIN_RUNTIME
 #include "gpu_backend_domains.h"
+#include "gpu_ext.h"
+#include "gpu_cell_model.h"
 #include "tools/setup_profile.h"
 #include "distributed/runtime.h"
 #include "domain_performance.h"
 #include "extensions/engine_ext_excitation.h"
 #include "extensions/engine_ext_lorentzmaterial.h"
+#include "extensions/engine_ext_debyematerial.h"
 #include "extensions/engine_ext_lumpedRLC.h"
 #include "extensions/engine_ext_opaquesurface.h"
 #include "extensions/engine_ext_upml.h"
@@ -285,48 +288,20 @@ public:
 			child.second.reset();
 		}
 	}
-	void Invoke(void (GPU_Extension::*hook)(), DomainPerformance::ExtensionHook label)
+	void Hook(bool currents, GPU_Hook hook, const Engine_Box& box, unsigned int ts) override
 	{
-		for (size_t i = 0; i < children.size(); ++i)
+		const DomainPerformance::ExtensionHook voltage[] = {DomainPerformance::PreVoltage, DomainPerformance::PostVoltage, DomainPerformance::ApplyVoltage};
+		const DomainPerformance::ExtensionHook current[] = {DomainPerformance::PreCurrent, DomainPerformance::PostCurrent, DomainPerformance::ApplyCurrent};
+		for (size_t i=0; i<children.size(); ++i)
 		{
 			auto& child = children[i];
 			child.first->Activate();
-			auto* timing = m_Profile ? m_Profile->BeginExtension(i, m_ProfileId, label) : nullptr;
-			(child.second.get()->*hook)();
-			if (m_Profile)
-			{
-				m_Profile->End(i, timing);
-			}
+			auto* timing = m_Profile ? m_Profile->BeginExtension(i, m_ProfileId, (currents ? current : voltage)[hook]) : nullptr;
+			child.second->Hook(currents, hook, box, ts);
+			if (m_Profile) m_Profile->End(i, timing);
 		}
 	}
-	void DoPreVoltageUpdates() override
-	{
-		Invoke(&GPU_Extension::DoPreVoltageUpdates, DomainPerformance::PreVoltage);
-	}
-	void DoPostVoltageUpdates() override
-	{
-		Invoke(&GPU_Extension::DoPostVoltageUpdates, DomainPerformance::PostVoltage);
-	}
-	void Apply2Voltages() override
-	{
-		Invoke(&GPU_Extension::Apply2Voltages, DomainPerformance::ApplyVoltage);
-	}
-	void DoPreCurrentUpdates() override
-	{
-		Invoke(&GPU_Extension::DoPreCurrentUpdates, DomainPerformance::PreCurrent);
-	}
-	void DoPostCurrentUpdates() override
-	{
-		Invoke(&GPU_Extension::DoPostCurrentUpdates, DomainPerformance::PostCurrent);
-	}
-	void Apply2Current() override
-	{
-		Invoke(&GPU_Extension::Apply2Current, DomainPerformance::ApplyCurrent);
-	}
-	void Synchronize() override
-	{
-		Invoke(&GPU_Extension::Synchronize, DomainPerformance::SynchronizeHook);
-	}
+
 };
 }
 
@@ -412,7 +387,7 @@ std::string GPU_Backend_Domains::GetName() const
 	return name + "]";
 }
 
-bool GPU_Backend_Domains::Init(const Operator* op)
+bool GPU_Backend_Domains::Init(const Operator* op, const GPU_CellModel& model)
 {
 	SetupProfile::Phase phase("gpu.domains_init");
 	if (dynamic_cast<const Operator_Cylinder*>(op))
@@ -459,7 +434,7 @@ bool GPU_Backend_Domains::Init(const Operator* op)
 		SetupProfile::Phase domainPhase("gpu.domain_init", SetupProfile::Active() ? std::to_string(domain.id) : "");
 		auto* backend = d->devices[domain.id].get();
 		backend->Activate();
-		if (!backend->InitDomain(op, domain.begin, domain.end))
+		if (!backend->InitDomain(op, model, domain.begin, domain.end))
 		{
 			throw std::runtime_error("selected executor does not support domain initialization");
 		}
@@ -479,6 +454,21 @@ bool GPU_Backend_Domains::Init(const Operator* op)
 		d->profile->StartStep(d->coordinator->NextStep());
 	}
 	return true;
+}
+
+void GPU_Backend_Domains::UpdateVoltages(const Engine_Box& box)
+{
+	const auto& s=d->plan->Shape();
+	if (box.start[0] || box.start[1] || box.start[2] || box.stop[0]!=s.nx || box.stop[1]!=s.ny || box.stop[2]!=s.nz)
+		throw std::invalid_argument("temporal tiles cannot span independent GPU domains");
+	UpdateVoltages();
+}
+void GPU_Backend_Domains::UpdateCurrents(const Engine_Box& box)
+{
+	const auto& s=d->plan->Shape();
+	if (box.start[0] || box.start[1] || box.start[2] || box.stop[0]!=s.nx || box.stop[1]!=s.ny || box.stop[2]!=s.nz)
+		throw std::invalid_argument("temporal tiles cannot span independent GPU domains");
+	UpdateCurrents();
 }
 
 void GPU_Backend_Domains::UpdateVoltages()
@@ -588,23 +578,6 @@ void GPU_Backend_Domains::Upload(bool currents, const ArrayLib::ArrayNIJK<float>
 	Synchronize();
 }
 
-void GPU_Backend_Domains::DownloadVoltages(ArrayLib::ArrayNIJK<float>& field)
-{
-	Download(false, field);
-}
-void GPU_Backend_Domains::DownloadCurrents(ArrayLib::ArrayNIJK<float>& field)
-{
-	Download(true, field);
-}
-void GPU_Backend_Domains::UploadVoltages(const ArrayLib::ArrayNIJK<float>& field)
-{
-	Upload(false, field);
-}
-void GPU_Backend_Domains::UploadCurrents(const ArrayLib::ArrayNIJK<float>& field)
-{
-	Upload(true, field);
-}
-
 void GPU_Backend_Domains::Synchronize()
 {
 	for (auto& backend : d->devices)
@@ -621,24 +594,12 @@ GPU_Extension* GPU_Backend_Domains::CreateExtension(Engine_Extension* ext, Engin
 	for (auto& backend : d->devices)
 	{
 		backend->Activate();
-		if (!dynamic_cast<GPU_Backend_Reference*>(backend.get()) &&
-		    !dynamic_cast<Engine_Ext_UPML*>(ext) && !dynamic_cast<Engine_Ext_Excitation*>(ext) &&
-		    !dynamic_cast<Engine_Ext_LumpedRLC*>(ext) &&
-		    !dynamic_cast<Engine_Ext_OpaqueSurface*>(ext) &&
-		    !dynamic_cast<Engine_Ext_LorentzMaterial*>(ext))
-		{
+		if (!dynamic_cast<Engine_Ext_Excitation*>(ext) && !dynamic_cast<Engine_Ext_LumpedRLC*>(ext) && !dynamic_cast<Engine_Ext_OpaqueSurface*>(ext) && !dynamic_cast<Engine_Ext_LorentzMaterial*>(ext) && !dynamic_cast<Engine_Ext_DebyeMaterial*>(ext))
 			throw std::runtime_error("unsupported extension for native device-domain execution");
-		}
-		std::unique_ptr<GPU_Extension> child(backend->CreateExtension(ext, engine));
-		if (!child)
-		{
-			if (!dynamic_cast<GPU_Backend_Reference*>(backend.get()))
-			{
-				throw std::runtime_error(
-				    "extension has no qualified device-domain implementation; host fallback is disabled for multi-GPU execution");
-			}
-			return nullptr;
-		}
+		const auto& shape = d->plan->Shape();
+		const unsigned int lines[3] = {shape.nx, shape.ny, shape.nz};
+		std::unique_ptr<GPU_Extension> child(GPU_CreateExtension(ext, backend.get(), lines));
+		if (!child) throw std::runtime_error("extension has no device-domain implementation");
 		result->children.emplace_back(backend.get(), std::move(child));
 	}
 	return result.release();

@@ -78,6 +78,8 @@ public:
 		In a cartesian mesh this is equal to the NodeArea, may be different in other coordinate systems.
 	*/
 	virtual double GetEdgeArea(int ny, const unsigned int pos[3], bool dualMesh = false) const;
+	virtual bool TableGeometry() const {return false;}
+	virtual void GetECGeometry(int n, bool dual, const unsigned int pos[3], double& area, double& delta) const;
 
 	virtual double FitToAlphaRange(double a_coord, bool fullMesh=false) const;
 

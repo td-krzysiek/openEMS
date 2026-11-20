@@ -21,7 +21,7 @@ probes of every run next to it. Other binaries: `--openems path/to/openEMS`.
 | Option | Default | |
 |---|---|---|
 | `--cases a,b` | all | `ideal`, `pml`, `inhomogeneous`, `dispersive`, `antenna`, `cylindrical` |
-| `--size S,M` | `S,M` | `XS` (~50 k cells, smoke test), `S` (~1 M), `M` (~8 M), `L` (~30 M, 3–4 GB RAM) |
+| `--size S,M` | `S,M` | `XS` (~50 k cells, smoke test), `S` (~1 M), `M` (~8 M), `L` (~30 M, 3–4 GB RAM); only when asked for: `XL` (~100 M, 5–9 GB); or a number of million cells, e.g. `200` |
 | `--engine a,b` | `multithreaded`, plus `gpu` with a device | also `basic`, `cpu` |
 | `--threads 1,4,8` | the physical cores | performance cores only on a hybrid CPU |
 | `--gpu-device N` | the best device | |
@@ -101,8 +101,9 @@ in `result.json` too (`engine_info` of each point).
 
 The CPU engine (`--engine=cpu`, experimental) is tuned on one 8-core desktop
 CPU: how many timesteps a block holds and how wide a tile is come from the
-cache size, all threads work on one tile. At the start of a run it tries two
-tile sizes and the flat sweep and keeps the fastest, which covers a cache size
+cache size, each thread works on tiles of its own, sized for its share of the
+cache. At the start of a run it tries the tiles of up to two timesteps more
+and fewer and the flat sweep and keeps the fastest, which covers a cache size
 that is off; machines with many cores, an L3 split over several chiplets or two
 sockets may still want other choices. To help,
 run on such a machine, with the physical core counts you want to compare:
@@ -113,10 +114,8 @@ python3 benchmark/bench.py run --engine cpu,multithreaded --size M,L --threads 8
 ```
 
 and send the `result.json`: it holds the machine, the build, the speeds,
-what the engine chose and the probes, no field data. `bench.py` turns the
-engine's trials of tile sizes off (a start-up cost, like the setup); a
-variant `trials:OPENEMS_CPU_TRIAL=1` with `--duration 10` shows what they
-choose on that machine. The `multithreaded`
+what the engine chose and the probes, no field data. The speeds are those
+of the tile the engine's trials keep (see below). The `multithreaded`
 rows are the default engine on that machine for reference; the variables do
 not touch it, so its two variants agree up to noise.
 
@@ -124,7 +123,7 @@ Its variables, all experimental (they may change or go):
 
 | Variable | |
 |---|---|
-| `OPENEMS_CPU_TBLOCK` | `0`: no temporal blocking; `k` or `k:W`: k timesteps per block (2 at least), tiles of W lines, several separated by commas, ordered: the trials search them from the first (default: the tile from the cache size, and tiles 4x and 2x, half and a quarter as wide) |
+| `OPENEMS_CPU_TBLOCK` | `0`: no temporal blocking; `k` or `k:W`: k timesteps per block (2 at least), tiles of W x W lines (along the two slow axes, 2k+1 at least), several separated by commas, ordered: the trials search them from the first (default: the tile from the cache size, and those of up to two timesteps more and fewer) |
 | `OPENEMS_CPU_TRIAL` | the seconds the engine runs each tile it tries and the flat sweep at the start before it keeps the fastest; `0` none (default: 0.5 with the automatic tiles, none with `OPENEMS_CPU_TBLOCK`) |
 | `OPENEMS_CPU_CACHE` | the cache size in MiB the tiles are sized for (default: the last level cache the system reports) |
 | `OPENEMS_CPU_FAST_AXIS` | `x`, `y` or `z`: the axis contiguous in memory (default: the one with the longest runs of equal cells) |
@@ -138,9 +137,9 @@ Its variables, all experimental (they may change or go):
 | `ideal` | uniform | vacuum, PEC and PMC walls | the bare update kernel, one coefficient set (both walls are only zeroed coefficients) |
 | `pml` | uniform | vacuum, PML_8 on all sides | the UPML extension |
 | `inhomogeneous` | graded 0.25–1 mm | microstrip with two lumped ports, dielectric, lossy and metal blocks, PML_8 | many distinct coefficients, the usual extensions |
-| `dispersive` | uniform | a Lorentz and a Debye block, Mur | the dispersive material extensions |
+| `dispersive` | uniform | a Lorentz and a Debye block, PEC | the dispersive material extensions |
 | `antenna` | graded 0.25–1 mm | patch with a lumped port, a lossy Debye block, PML_8; an NF2FF box (frequency domain) and a time-domain E-field plane | the field dumps of a typical model |
-| `cylindrical` | cylindrical incl. r=0 | a dielectric ring, PEC and Mur | the cylinder operator and extension |
+| `cylindrical` | cylindrical incl. r=0 | a dielectric tube through both Mur ends, PEC and Mur | the cylinder operator and extension |
 
 Changing a case changes the results: bump `cases.CASES_VERSION` with it.
 
@@ -154,6 +153,17 @@ and stops gracefully. This works with every openEMS build, also an old
 release to compare against. The speed is the one openEMS measured itself,
 over the timesteps it did. The setup before comes on top and is reported
 separately.
+
+The CPU and GPU engines try their tiles, and the flat sweep, during the first
+seconds of a run and keep the fastest. Then the `--duration` starts only at
+the end of these trials, and the speed is the one after them, which openEMS
+reports at `-v` (`Speed after the trials`): what a long run gets.
+`mcells_s_total` in `result.json` keeps the speed of the whole run, the
+trials included, and the table's **total s** the wall time of the whole
+process: the setup, the trials and the `--duration`. Long trials show there;
+trials that do not end within ten times the `--duration` (60 s at least) fail
+the run. `OPENEMS_CPU_TRIAL=0` or `OPENEMS_GPU_TRIAL=0` time the engine's
+first choice without trials.
 
 The cases are driven by a sinusoidal source, so the energy never decays and
 no run ends on its own; one that does is reported as failed. A sinus also

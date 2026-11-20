@@ -647,7 +647,6 @@ bool Operator_Ext_LossyMetal::BuildExtension()
 	for (size_t i=0; i<numLM; ++i)
 	{
 		pos[0]=v_pos[0].at(i); pos[1]=v_pos[1].at(i); pos[2]=v_pos[2].at(i);
-		unsigned int index = m_Op->MainOp->SetPos(pos[0],pos[1],pos[2]);
 		for (int n=0; n<3; ++n)
 		{
 			for (int o=0; o<m_Order; ++o)
@@ -683,8 +682,10 @@ bool Operator_Ext_LossyMetal::BuildExtension()
 				sumInvL += a[o]*m_w_k[o];
 				maxInvL = std::max(maxInvL, a[o]*m_w_k[o]);
 			}
-			m_Op->EC_C[n][index] += dT*dT/4.0*(16.0*maxInvL + sumInvL);
-			m_Op->EC_G[n][index] += G;
+			const double ec[4] = {
+				m_Op->GetEC(Operator::EC_CAP,n,pos) + dT*dT/4.0*(16.0*maxInvL + sumInvL),
+				m_Op->GetEC(Operator::EC_CON,n,pos) + G, 0, 0};
+			m_Op->SetEC(n, pos, (1u<<Operator::EC_CAP)|(1u<<Operator::EC_CON), ec);
 			m_Op->Calc_ECOperatorPos(n,pos);
 
 			for (int o=0; o<m_Order; ++o)

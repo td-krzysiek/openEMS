@@ -1,5 +1,8 @@
 # Experimental main-update coefficient storage policy
 
+> Historical runtime documentation. The current cell-model integration replaces
+> these kernel controls; see [migration and qualification](UPSTREAM_GPU_CELL_MODEL.md).
+
 `OPENEMS_GPU_MAIN_COEFF=auto|raw` applies to HIP and Metal. The default `auto`
 retains the existing bit-exact coefficient-set compression heuristic and raw
 fallback. `raw` bypasses table construction for the main E/H update and uploads
