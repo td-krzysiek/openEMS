@@ -61,7 +61,7 @@ python3 tests/manual/gpu_cell_domains.py --binary /candidate/bin/openEMS \
   --engine gpu --halos serial --output /new/physical-cell-domains
 ```
 
-The fixed-step matrix covers nine public fixtures and four layouts: one
+The fixed-step matrix covers ten public fixtures and four layouts: one
 executor, unequal two-domain cuts, a one-line middle domain through the source
 and conductor, and one-line domains at both physical boundaries. It compares
 all complex E/H dump components and the cut-plane probe against the same
@@ -72,3 +72,19 @@ The existing `tests/manual/domain_backend.py` also covers equal 2/3/8-domain
 layouts; it requires matching CSXCAD Python bindings with LossyMetal support.
 The older coefficient/fusion A/B harnesses target the previous runtime and
 must not be used as evidence for this integration.
+
+## Recorded qualification
+
+The 20 November qualification covers a native Metal/domain build and a Linux
+HIP-as-CUDA plugin build for architectures 86/89, each with 14/14 CTest checks.
+Fresh Python bindings pass all 19 unit-test modules. The fixed-step matrices
+cover 40 reference runs and 40 Metal runs (ten fixtures, four layouts); compared
+complex fields and probes are identical within each backend. The material-table
+fallback and two-domain checkpoint/snapshot continuation controls also pass.
+Legacy control rejection is checked against the native reference engine.
+
+These are local/public-fixture controls. Physical multi-device HIP transport
+and performance remain unqualified: the physical devices were leased by other
+work during this integration. The qualification does not authorize replacing
+an existing runtime. Offline Metal compilation needs the optional Apple Metal
+Toolchain; runtime compilation and execution are tested on the actual device.

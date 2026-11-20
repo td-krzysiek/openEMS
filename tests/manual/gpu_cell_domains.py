@@ -19,11 +19,17 @@ from extension_profile import compare
 
 
 def model(path, case, steps):
-    conductor_model(path, case if case not in ['opaque', 'rlc'] else 'smooth', steps)
+    conductor_model(path, 'sheet' if case=='positive-sheet' else
+                    (case if case not in ['opaque', 'rlc'] else 'smooth'), steps)
     tree = ET.parse(path)
     tree.getroot().find('FDTD').set('endCriteria', '0')
     props = tree.getroot().find('.//Properties')
-    if case == 'opaque':
+    if case == 'positive-sheet':
+        metal = props.find('LossyMetal')
+        metal.tag = 'ConductingSheet'
+        metal.attrib = dict(ID='3', Name='positive-sheet', Conductivity='1e4', Thickness='1e-5')
+        ET.SubElement(metal, 'Attributes', ExperimentalSheetAdmittanceV1='1;10,1e-12;20,2e-12')
+    elif case == 'opaque':
         metal = props.find('LossyMetal')
         metal.tag = 'Metal'
         metal.attrib = dict(ID='3', Name='opaque')
@@ -38,12 +44,30 @@ def model(path, case, steps):
     tree.write(path, encoding='utf-8', xml_declaration=True)
 
 
+
+def check_legacy_controls(binary, root, environment):
+    checks = []
+    for name, value, message in [
+            ('OPENEMS_GPU_MAIN_COEFF', 'raw', 'only supports auto'),
+            ('OPENEMS_GPU_LOSSY_FUSION', 'all', 'unset OPENEMS_GPU_LOSSY_FUSION')]:
+        folder = root/('rejected-'+name.lower())
+        folder.mkdir()
+        model(folder/'model.xml', 'vacuum', 32)
+        with (folder/'solver.log').open('x') as log:
+            run = subprocess.run([str(binary), 'model.xml', '--engine=gpu-reference', '--numThreads=2'],
+                                 cwd=folder, env=dict(environment, **{name: value}), stdout=log,
+                                 stderr=subprocess.STDOUT, timeout=30)
+        assert run.returncode != 0 and message in (folder/'solver.log').read_text()
+        checks.append(dict(control=name, value=value, rejected=True))
+    return checks
+
+
 def main():
     p = argparse.ArgumentParser(__doc__)
     p.add_argument('--binary', type=Path, required=True)
     p.add_argument('--output', type=Path, required=True)
     p.add_argument('--engine', default='gpu-reference')
-    p.add_argument('--cases', default='vacuum,smooth,rough,sheet,curved-void,multiple,lorentz,opaque,rlc')
+    p.add_argument('--cases', default='vacuum,smooth,rough,sheet,curved-void,multiple,lorentz,opaque,rlc,positive-sheet')
     p.add_argument('--layouts', default='single;0,9,25;0,12,13,25;0,1,24,25')
     p.add_argument('--steps', type=int, default=768)
     p.add_argument('--halos', choices=['serial', 'async', 'overlap'], default='serial')
@@ -74,6 +98,8 @@ def main():
             assert f'Time for {args.steps} iterations' in text
             if case == 'opaque':
                 assert 'EXPERIMENTAL_OPAQUE_SURFACE_V1 active:' in text
+            elif case == 'positive-sheet':
+                assert 'EXPERIMENTAL_POSITIVE_RL_SHEET_V1 active:' in text
             elif case not in ['vacuum', 'lorentz', 'rlc']:
                 assert 'Surface edges' in text and 'fallback to PEC' not in text
             record = dict(case=case, layout=layout, command=cmd,
@@ -85,7 +111,9 @@ def main():
             records.append(record)
             (root/'result.json').write_text(json.dumps(dict(status='RUNNING', runs=records), indent=2)+'\n')
             print(folder.name, 'PASS', flush=True)
-    (root/'result.json').write_text(json.dumps(dict(status='PASS', tolerance=1e-6, runs=records), indent=2)+'\n')
+    controls = check_legacy_controls(binary, root, env)
+    (root/'result.json').write_text(json.dumps(dict(status='PASS', tolerance=1e-6, runs=records,
+                                                   rejected_legacy_controls=controls), indent=2)+'\n')
 
 
 if __name__ == '__main__':

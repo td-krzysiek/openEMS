@@ -79,6 +79,7 @@ Engine_GPU::~Engine_GPU()
 
 void Engine_GPU::Init()
 {
+	SetupProfile::Phase initPhase("gpu.engine_init");
 	// These A/B controls addressed the retired coefficient-array/branch kernels.
 	// Reject them rather than silently presenting identical runs as comparisons.
 	if (const char* value = getenv("OPENEMS_GPU_MAIN_COEFF"))
@@ -106,8 +107,14 @@ void Engine_GPU::Init()
 	// The memory peak as in Engine_CPU::Init(): the operator's coefficients go once the model
 	// is built, the model is expanded and uploaded (and freed) before the host mirror comes
 	CellModel model(Op);
-	model.Analyse(true);
-	model.Build(2, 0, 1);
+	{
+		SetupProfile::Phase phase("gpu.cell_model_analyse");
+		model.Analyse(true);
+	}
+	{
+		SetupProfile::Phase phase("gpu.cell_model_build");
+		model.Build(2, 0, 1);
+	}
 	if (Op->GetDebugFlags() & Operator::debugOperator)
 		model.Dump("cellmodel_dump");
 	if (m_ModelBuilt)
@@ -116,13 +123,17 @@ void Engine_GPU::Init()
 		m_ModelBuilt = nullptr;
 	}
 	{
+		SetupProfile::Phase phase("gpu.cell_model_expand_upload");
 		const GPU_CellModel expanded(model, numLines);
 		m_NodeBytes = expanded.NodeBytes();
 		if (!m_Backend->Init(Op, expanded))
 			throw std::runtime_error("Engine_GPU::Init: GPU backend initialization failed");
 	}
 	// allocates the host mirror and creates the extensions
-	Engine::Init();
+	{
+		SetupProfile::Phase phase("gpu.engine_base_init");
+		Engine::Init();
+	}
 	model.DropFused(m_Eng_exts);
 	model.FreeFused();
 
@@ -146,6 +157,9 @@ void Engine_GPU::Init()
 	}
 	if (!missing.empty())
 		throw std::runtime_error("Engine_GPU: no device implementation (gpu_ext.h) of the " + missing);
+	if (g_settings.GetVerboseLevel()>0)
+		cout << "Engine_GPU: all extensions run on the device (" << m_GPU_exts.size()
+		     << " point extensions, fused cell-model updates)" << endl;
 	m_BlockingPrepared = false;
 }
 
